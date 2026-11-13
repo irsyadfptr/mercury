@@ -164,3 +164,87 @@ export interface TransactionFormValues {
 }
 
 export type TransactionResult = { ok: true; tx: NewTransaction } | { ok: false; error: FormError }
+
+// ---- Portfolio in the Sheet ----
+
+export type ColumnKind = 'string' | 'number' | 'boolean'
+/** [field name, how to read the cell] */
+export type ColumnSpec = readonly [string, ColumnKind]
+
+export interface ParsedTable<T> {
+  items: T[]
+  /** Rows that failed validation (hand-edited) and were left out. */
+  skipped: number
+}
+
+/** What the sync does with the portfolio this pass. merge = first sync on a device that already has data. */
+export type PortfolioSyncAction = 'push' | 'pull' | 'merge' | 'none'
+
+export interface PortfolioLocalState {
+  hasData: boolean
+  /** Last local edit, ISO. */
+  changedAt?: string
+  /** Last successful portfolio sync on this device, ISO. */
+  syncedAt?: string
+}
+
+export interface PortfolioRemoteState {
+  hasData: boolean
+  /** When a device last wrote the portfolio tabs, ISO. */
+  updatedAt?: string
+}
+
+// ---- Cashflow ----
+
+export type CashType = z.infer<typeof schema.CashType>
+export type CashEntry = z.infer<typeof schema.CashEntry>
+export type NewCashEntry = Omit<CashEntry, 'id' | 'createdAt'>
+export type ExpenseCategory = (typeof schema.EXPENSE_CATEGORIES)[number]
+export type IncomeCategory = (typeof schema.INCOME_CATEGORIES)[number]
+export type CashCategory = ExpenseCategory | IncomeCategory
+/** yyyy-mm */
+export type MonthKey = string
+
+/** A category the user created. Entries store its name directly, so it syncs through the Sheet with them. */
+export interface CustomCategory {
+  type: CashType
+  name: string
+}
+
+export type CategoryNameError = 'required' | 'tooLong' | 'duplicate'
+
+export interface CategoryTotal {
+  category: string
+  amount: number
+  /** Share of the month's spending (or income), 0–100. */
+  pct: number
+}
+
+export interface MonthSummary {
+  month: MonthKey
+  income: number
+  expense: number
+  /** income − expense */
+  net: number
+  /** net ÷ income × 100; null without income. */
+  savingsRate: number | null
+  expenseByCategory: CategoryTotal[]
+  incomeByCategory: CategoryTotal[]
+  /** Days elapsed in the month (all of it for past months). */
+  daysElapsed: number
+  daysInMonth: number
+  /** Straight-line month-end spending at today's pace; equals expense for past months. */
+  projectedExpense: number
+}
+
+export interface MonthTotal {
+  month: MonthKey
+  income: number
+  expense: number
+}
+
+/** Result of reading Sheet rows: valid entries plus how many rows were skipped. */
+export interface ParsedRows {
+  entries: CashEntry[]
+  skipped: number
+}

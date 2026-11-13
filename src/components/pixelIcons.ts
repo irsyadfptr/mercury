@@ -17,4 +17,22 @@ export const ICONS = {
     pix(['........', '........', '...X....', '..XXX...', '..XXXX..', '.XXXXXX.', '.XXXXXX.', '..XXXX..']),
     pix(['........', '........', '........', '........', '...X....', '..XXX...', '..XXXX..', '...XX...']),
   ],
+  // Cashflow categories (single layer, coloured by the category swatch).
+  house: [pix(['...XX...', '..XXXX..', '.XXXXXX.', 'XXXXXXXX', '.X....X.', '.X.XX.X.', '.X.XX.X.', '.XXXXXX.'])],
+  basket: [pix(['..X..X..', '.X....X.', 'XXXXXXXX', 'X.X.X.XX', '.XXXXXX.', '.X.X.XX.', '..XXXX..', '........'])],
+  bowl: [pix(['.X.X.X..', 'X.X.X...', '........', 'XXXXXXXX', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '........'])],
+  car: [pix(['........', '..XXXX..', '.X....X.', 'XXXXXXXX', 'XXXXXXXX', 'XX....XX', '.XX..XX.', '........'])],
+  receipt: [pix(['.XXXXXX.', '.X....X.', '.X.XX.X.', '.X....X.', '.X.XX.X.', '.X....X.', '.XXXXXX.', '.X.X.X..'])],
+  cross: [pix(['..XXXX..', '..XXXX..', 'XXXXXXXX', 'XXXXXXXX', 'XXXXXXXX', '..XXXX..', '..XXXX..', '........'])],
+  bag: [pix(['..XXXX..', '.X....X.', 'XXXXXXXX', 'XXXXXXXX', 'XXXXXXXX', 'XXXXXXXX', 'XXXXXXXX', '........'])],
+  gamepad: [pix(['........', '.XXXXXX.', 'XX.XXXXX', 'X...XX.X', 'XX.XXXXX', 'XXXXXXXX', 'XX....XX', '........'])],
+  dots: [pix(['........', '........', '........', 'XX.XX.XX', 'XX.XX.XX', '........', '........', '........'])],
+  gift: [pix(['.X...X..', '..X.X...', 'XXXXXXXX', 'XXX.XXXX', '.XX.XXX.', '.XX.XXX.', '.XX.XXX.', '.XXXXXX.'])],
+  laptop: [pix(['........', '.XXXXXX.', '.X....X.', '.X....X.', '.XXXXXX.', 'XXXXXXXX', 'XXXXXXXX', '........'])],
+  chartUp: [pix(['.......X', '......XX', '.....X.X', 'X...X...', 'XX.X....', 'X.X.....', 'X.......', 'XXXXXXXX'])],
+  plus: [pix(['...XX...', '...XX...', '...XX...', 'XXXXXXXX', 'XXXXXXXX', '...XX...', '...XX...', '...XX...'])],
+  tag: [pix(['XXXX....', 'X..XX...', 'X..XXX..', 'XXXXXXX.', '.XXXXXXX', '..XXXXX.', '...XXX..', '....X...'])],
+  // Money out / in.
+  arrowDown: [pix(['...XX...', '...XX...', '...XX...', '...XX...', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '...XX...'])],
+  arrowUp: [pix(['...XX...', '..XXXX..', '.XXXXXX.', 'XXXXXXXX', '...XX...', '...XX...', '...XX...', '...XX...'])],
 } as const

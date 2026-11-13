@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ICONS } from '@/components/pixelIcons'
 import type { Holding, Transaction } from './domain'
-import type { Route } from './app'
+import type { SheetSync, Route } from './app'
 import type { Segment } from './view'
 
 // ---- PixelIcon ----
@@ -12,6 +12,8 @@ export interface PixelIconProps {
   name: PixelIconName
   /** Rendered size in CSS px (square). */
   size?: number
+  /** Overrides the icon's fixed colours (used for category icons). */
+  color?: string
   className?: string
 }
 
@@ -48,6 +50,14 @@ export interface FieldProps {
   error?: string
   className?: string
   children: ReactNode
+}
+
+// ---- SyncBar ----
+
+export interface SyncBarProps {
+  sync: SheetSync
+  /** Phone layout: one line, no explanation. */
+  compact?: boolean
 }
 
 // ---- Shell ----

@@ -1,6 +1,6 @@
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
-import { href, ROUTES } from '@/routes'
+import { href, NAV_ROUTES } from '@/routes'
 import { useSettings } from '@/settings'
 import type { Key, Lang, ShellProps, ThemePref } from '@/types'
 import { PixelIcon } from './PixelIcon'
@@ -27,7 +27,7 @@ export function Shell({ route, children }: ShellProps) {
           <span className="font-display text-3xl leading-none">MERCURY</span>
         </a>
         <nav aria-label="Main" className="flex flex-wrap gap-1" title={t('nav.soon')}>
-          {ROUTES.map((r) => (
+          {NAV_ROUTES.map((r) => (
             <a
               key={r}
               href={href(r)}

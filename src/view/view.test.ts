@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { flameSizes, heatBar, riskBar, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, riskBar, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -22,6 +22,15 @@ describe('bars', () => {
   it('flames: centre tallest', () => {
     expect(flameSizes(0)).toEqual([])
     expect(flameSizes(3)).toEqual([33, 40, 33])
+  })
+
+  it('budget bar: accent, warn near limit, red spill when over (capped at 2x)', () => {
+    expect(filled(budgetBar(500, 1000), COLOR.accent)).toBe(12)
+    expect(filled(budgetBar(900, 1000), COLOR.warn)).toBe(22)
+    const over = budgetBar(1250, 1000)
+    expect(over).toHaveLength(30)
+    expect(filled(over, COLOR.down)).toBe(30)
+    expect(budgetBar(10_000, 1000)).toHaveLength(48)
   })
 
   it('risk bar statuses', () => {

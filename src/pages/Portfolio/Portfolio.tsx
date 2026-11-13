@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { HoldingDialog } from '@/components/HoldingDialog'
+import { SyncBar } from '@/components/SyncBar'
 import { Badge, Card, CardTitle, Field, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, RARITIES, RARITY_MIN_DAYS, rarity, sizeQuote } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { useSettings } from '@/settings'
 import type { Group, HoldingDialogTarget } from '@/types'
+import { useSheetSync } from '@/useSheetSync'
 import { useSummary } from '@/useSummary'
 import { RARITY_COLOR, signColor } from '@/view/tokens'
 import type { HoldingRowProps, HoldingRowsProps, SizeInputs } from './Portfolio.types'
@@ -16,14 +18,18 @@ export function Portfolio() {
   const { t, money } = useI18n()
   const summary = useSummary()
   const [dialog, setDialog] = useState<HoldingDialogTarget>({ mode: 'closed' })
+  const sync = useSheetSync()
 
   return (
     <>
-      <Card className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-5xl leading-none uppercase">{t('pf.title')}</h1>
-        <Button onClick={() => setDialog({ mode: 'create' })} className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
-          {t('pf.add')}
-        </Button>
+      <Card className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-5xl leading-none uppercase">{t('pf.title')}</h1>
+          <Button onClick={() => setDialog({ mode: 'create' })} className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
+            {t('pf.add')}
+          </Button>
+        </div>
+        <SyncBar sync={sync} compact />
       </Card>
 
       <div className="flex flex-wrap gap-4">

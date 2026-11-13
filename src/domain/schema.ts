@@ -60,6 +60,26 @@ export const Backup = z.object({
   transactions: z.array(Transaction),
 })
 
+// ---- Cashflow (stored in the user's Google Sheet, cached locally) ----
+
+export const EXPENSE_CATEGORIES = ['housing', 'groceries', 'food', 'transport', 'bills', 'health', 'shopping', 'entertainment', 'family', 'other'] as const
+export const INCOME_CATEGORIES = ['salary', 'bonus', 'freelance', 'investment', 'otherIncome'] as const
+export const CashType = z.enum(['expense', 'income'])
+const yyyyMmDd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+export const CashEntry = z.object({
+  id,
+  /** Local calendar date the money moved, yyyy-mm-dd. */
+  date: yyyyMmDd,
+  type: CashType,
+  /** Whole rupiah, always positive; type says the direction. */
+  amount: z.number().int().positive(),
+  /** One of the category ids above; unknown ids (typed in the Sheet) show as "other". */
+  category: z.string().min(1),
+  note: z.string().optional(),
+  createdAt: isoDate,
+})
+
 /** How fast an asset turns into cash. Derived, never stored. */
 export const LIQUIDITY: Record<AssetClassType, Liquidity> = {
   crypto: 'instant',

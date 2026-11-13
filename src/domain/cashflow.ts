@@ -1,0 +1,148 @@
+// Pure cashflow math and Sheet row mapping. No clock, storage or network: every input is a parameter.
+import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows } from '@/types'
+import { CashEntry as CashEntrySchema, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
+
+export const monthOf = (yyyyMmDd: string): MonthKey => yyyyMmDd.slice(0, 7)
+
+/** Local calendar date, not UTC: an expense at 01:00 WIB belongs to that local day. */
+export function localDate(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function addMonths(month: MonthKey, delta: number): MonthKey {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+export function daysInMonth(month: MonthKey): number {
+  const [y, m] = month.split('-').map(Number)
+  return new Date(Date.UTC(y, m, 0)).getUTCDate()
+}
+
+const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])
+
+/** Built-in categories are stored as ids (translated in the UI); custom ones are stored as the name the user typed. */
+export const isBuiltIn = (c: string): boolean => BUILT_IN.has(c)
+
+export const MAX_CATEGORY_LENGTH = 24
+
+/**
+ * Categories offered for a type: built-ins first, then custom names created on this device or found in
+ * entries (so a category made on the phone appears on the laptop after a sync). Deduped case-insensitively.
+ */
+export function categoriesFor(type: CashType, custom: readonly CustomCategory[], entries: readonly CashEntry[]): string[] {
+  const builtIns: readonly string[] = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
+  const seen = new Set(builtIns.map((c) => c.toLowerCase()))
+  const extra: string[] = []
+  const names = [...custom.filter((c) => c.type === type).map((c) => c.name), ...entries.filter((e) => e.type === type).map((e) => e.category)]
+  for (const name of names) {
+    const key = name.toLowerCase()
+    if (isBuiltIn(name) || seen.has(key)) continue
+    seen.add(key)
+    extra.push(name)
+  }
+  return [...builtIns, ...extra.sort((a, b) => a.localeCompare(b))]
+}
+
+/** Checks a new category name against what exists. labels = names shown for existing categories (translated built-ins + custom). */
+export function validateCategoryName(raw: string, labels: readonly string[]): { ok: true; name: string } | { ok: false; error: CategoryNameError } {
+  const name = raw.trim().replace(/\s+/g, ' ')
+  if (!name) return { ok: false, error: 'required' }
+  if (name.length > MAX_CATEGORY_LENGTH) return { ok: false, error: 'tooLong' }
+  if (isBuiltIn(name) || labels.some((l) => l.toLowerCase() === name.toLowerCase())) return { ok: false, error: 'duplicate' }
+  return { ok: true, name }
+}
+
+const sumOf = (entries: readonly CashEntry[], type: CashType) => entries.reduce((a, e) => (e.type === type ? a + e.amount : a), 0)
+
+function totals(entries: readonly CashEntry[], type: CashType): CategoryTotal[] {
+  const by = new Map<string, number>()
+  for (const e of entries) if (e.type === type) by.set(e.category, (by.get(e.category) ?? 0) + e.amount)
+  const total = sumOf(entries, type)
+  return [...by].map(([category, amount]) => ({ category, amount, pct: total ? (amount / total) * 100 : 0 })).sort((a, b) => b.amount - a.amount)
+}
+
+/** One month's totals. today (yyyy-mm-dd) decides how far into the month we are, for the pace projection. */
+export function monthSummary(entries: readonly CashEntry[], month: MonthKey, today: string): MonthSummary {
+  const inMonth = entries.filter((e) => monthOf(e.date) === month)
+  const income = sumOf(inMonth, 'income')
+  const expense = sumOf(inMonth, 'expense')
+  const total = daysInMonth(month)
+  const current = monthOf(today)
+  const daysElapsed = month < current ? total : month > current ? 0 : Number(today.slice(8, 10))
+  return {
+    month,
+    income,
+    expense,
+    net: income - expense,
+    savingsRate: income ? ((income - expense) / income) * 100 : null,
+    expenseByCategory: totals(inMonth, 'expense'),
+    incomeByCategory: totals(inMonth, 'income'),
+    daysElapsed,
+    daysInMonth: total,
+    projectedExpense: daysElapsed ? Math.round((expense / daysElapsed) * total) : 0,
+  }
+}
+
+/** Income and expense for `count` months ending at `month`, oldest first. */
+export function lastMonths(entries: readonly CashEntry[], month: MonthKey, count: number): MonthTotal[] {
+  return Array.from({ length: count }, (_, i) => {
+    const m = addMonths(month, i - count + 1)
+    const inMonth = entries.filter((e) => monthOf(e.date) === m)
+    return { month: m, income: sumOf(inMonth, 'income'), expense: sumOf(inMonth, 'expense') }
+  })
+}
+
+/** Synced entries plus local pending ones; pending wins on id clash; newest date first. */
+export function mergeEntries(synced: readonly CashEntry[], pending: readonly CashEntry[]): CashEntry[] {
+  const pendingIds = new Set(pending.map((e) => e.id))
+  return [...pending, ...synced.filter((e) => !pendingIds.has(e.id))].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt),
+  )
+}
+
+// ---- Number pad ----
+
+/** Max digits the pad accepts (Rp99,999,999,999). */
+export const PAD_MAX_DIGITS = 11
+
+/** Applies a pad key to the digit string: a digit, '000', or 'back'. Leading zeros are dropped. */
+export function padInput(digits: string, key: string): string {
+  if (key === 'back') return digits.slice(0, -1)
+  if (!/^\d+$/.test(key)) return digits
+  const next = (digits + key).replace(/^0+/, '')
+  return next.length > PAD_MAX_DIGITS ? digits : next
+}
+
+// ---- Google Sheet rows ----
+
+/** Column order of the Entries tab. The header row is written once when the sheet is created. */
+export const SHEET_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'createdAt'] as const
+
+export const entryToRow = (e: CashEntry): (string | number)[] => [e.id, e.date, e.type, e.amount, e.category, e.note ?? '', e.createdAt]
+
+/** Rows come from a sheet the user can edit by hand: validate each one and skip what does not fit. */
+export function rowsToEntries(rows: readonly unknown[][]): ParsedRows {
+  const entries: CashEntry[] = []
+  let skipped = 0
+  for (const row of rows) {
+    const cells = SHEET_COLUMNS.map((_, i) => String(row[i] ?? '').trim())
+    if (!cells.some(Boolean)) continue // blank line
+    const [id, date, type, amount, category, note, createdAt] = cells
+    const parsed = CashEntrySchema.safeParse({
+      id,
+      date,
+      type,
+      // Tolerate "Rp25,000" typed in the sheet.
+      amount: Number(amount.replace(/[^\d.-]/g, '')),
+      category,
+      note: note || undefined,
+      createdAt,
+    })
+    if (parsed.success) entries.push(parsed.data)
+    else skipped++
+  }
+  return { entries, skipped }
+}

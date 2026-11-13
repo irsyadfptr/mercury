@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
+import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Field, fieldClass } from '@/components/ui-bits'
 import { parseBackup, toBackup } from '@/domain/backup'
 import { useI18n } from '@/i18n'
+import { install, useInstallState } from '@/pwa'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import type { Lang, ThemePref } from '@/types'
+import { useSheetSync } from '@/useSheetSync'
 import type { StatusMessage } from './Settings.types'
 
 /** Triggers a browser download of a JSON value. */
@@ -31,9 +34,67 @@ export function Settings() {
       <div className="grid gap-4 md:grid-cols-2">
         <Preferences />
         <RiskLimits />
+        <CashflowSettings />
+        <PhoneApp />
         <Backup />
       </div>
     </>
+  )
+}
+
+function PhoneApp() {
+  const { t } = useI18n()
+  const state = useInstallState()
+  return (
+    <Card className="md:col-span-2">
+      <CardTitle icon="coin">{t('pwa.title')}</CardTitle>
+      {state === 'installed' && <p className="text-sm">{t('pwa.installed')}</p>}
+      {state === 'available' && (
+        <Button onClick={() => void install()} className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
+          {t('pwa.install')}
+        </Button>
+      )}
+      {state === 'manual' && (
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-text-muted">
+          <li>{t('pwa.other')}</li>
+          <li>{t('pwa.ios')}</li>
+          <li>{t('pwa.needsHttps')}</li>
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+function CashflowSettings() {
+  const { t } = useI18n()
+  const monthlyBudget = useSettings((s) => s.monthlyBudget)
+  const set = useSettings((s) => s.set)
+  const sync = useSheetSync()
+  return (
+    <Card className="md:col-span-2">
+      <CardTitle icon="coin">{t('set.cashflow')}</CardTitle>
+      <div className="flex flex-col gap-3">
+        <Field label={t('set.budget')} className="max-w-xs">
+          <input
+            className={fieldClass}
+            type="number"
+            min="0"
+            step="any"
+            value={monthlyBudget ?? ''}
+            onChange={(e) => {
+              const n = optional(e.target.value)
+              set({ monthlyBudget: n && n > 0 ? Math.round(n) : undefined })
+            }}
+          />
+        </Field>
+        <SyncBar sync={sync} />
+        {(sync.status === 'idle' || sync.status === 'error') && (
+          <Button variant="ghost" size="sm" className="self-start" onClick={sync.disconnect}>
+            {t('sync.disconnect')}
+          </Button>
+        )}
+      </div>
+    </Card>
   )
 }
 

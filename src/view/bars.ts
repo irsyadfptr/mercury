@@ -32,6 +32,14 @@ export function flameSizes(flames: number): number[] {
 /** Share of the per-trade limit at which a trade counts as "close". */
 export const CLOSE_TO_LIMIT = 0.8
 
+/** Spending vs budget: accent while fine, warn from CLOSE_TO_LIMIT, red segments spill past the bar when over. */
+export function budgetBar(spent: number, budget: number, n = 24): Segment[] {
+  const ratio = budget > 0 ? spent / budget : 0
+  const filled = Math.round(ratio * n)
+  const fill = ratio > 1 ? COLOR.down : ratio >= CLOSE_TO_LIMIT ? COLOR.warn : COLOR.accent
+  return range(Math.max(n, Math.min(filled, n * 2))).map((i) => ({ bg: i >= filled ? COLOR.empty : i >= n ? COLOR.down : fill }))
+}
+
 /** Trade risk as a health bar. Returns null for holdings that carry no trade risk. */
 export function riskBar(risk: TradeRisk, limit: number, n = 20): RiskBar | null {
   if (risk.kind === 'none') return null
