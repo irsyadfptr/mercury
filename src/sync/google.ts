@@ -1,4 +1,8 @@
-// Google sign-in (token flow) for the browser. The access token lives in memory only, never in storage.
+// Google sign-in (token flow) for the browser.
+// The access token is kept in localStorage until it expires (~1 hour) so a refresh or reopening the PWA stays
+// connected. It only opens the one sheet this app made (drive.file) and is dropped as soon as Google rejects it.
+// shortcut: browser token flow has no refresh token, so after ~1h the user taps Connect again (no consent screen);
+// a Vercel function holding a refresh token would keep the connection for weeks.
 import type { AccessToken } from '@/types'
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
@@ -8,15 +12,46 @@ const CLIENT_ID: string | undefined = import.meta.env.VITE_GOOGLE_CLIENT_ID
 /** Treat the token as expired a minute early so a request never races its expiry. */
 const EXPIRY_MARGIN_MS = 60_000
 
+/** Pure: is this token still usable at `now`? (Declared before the stored token is read at load.) */
+export const isFresh = (t: AccessToken | undefined, now: number): t is AccessToken => Boolean(t && t.expiresAt - EXPIRY_MARGIN_MS > now)
+
+const TOKEN_KEY = 'mercury.googleToken'
+
+/** Pure: a stored token string → token, or undefined if missing, malformed or expired at `now`. */
+export function parseStoredToken(raw: string | null, now: number): AccessToken | undefined {
+  try {
+    const t = JSON.parse(raw ?? 'null') as Partial<AccessToken> | null
+    const candidate = t && typeof t.value === 'string' && typeof t.expiresAt === 'number' ? { value: t.value, expiresAt: t.expiresAt } : undefined
+    return isFresh(candidate, now) ? candidate : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function storeToken(t: AccessToken | undefined) {
+  token = t
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, JSON.stringify(t))
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Storage blocked: the token still works for this page load.
+  }
+}
+
+function readStoredToken(): AccessToken | undefined {
+  try {
+    return parseStoredToken(localStorage.getItem(TOKEN_KEY), Date.now())
+  } catch {
+    return undefined
+  }
+}
+
 let client: google.accounts.oauth2.TokenClient | undefined
-let token: AccessToken | undefined
+let token: AccessToken | undefined = readStoredToken()
 let pending: { resolve: (t: string) => void; reject: (e: Error) => void } | undefined
 let loading: Promise<void> | undefined
 
 export const isConfigured = (): boolean => Boolean(CLIENT_ID)
-
-/** Pure: is this token still usable at `now`? */
-export const isFresh = (t: AccessToken | undefined, now: number): t is AccessToken => Boolean(t && t.expiresAt - EXPIRY_MARGIN_MS > now)
 
 /** A usable token, or undefined when the user must tap "Connect" again. */
 export const currentToken = (now = Date.now()): string | undefined => (isFresh(token, now) ? token.value : undefined)
@@ -38,7 +73,7 @@ export function prepareGoogle(): Promise<void> {
         callback: (r) => {
           if (r.error) pending?.reject(new Error(r.error_description ?? r.error))
           else {
-            token = { value: r.access_token, expiresAt: Date.now() + r.expires_in * 1000 }
+            storeToken({ value: r.access_token, expiresAt: Date.now() + r.expires_in * 1000 })
             pending?.resolve(r.access_token)
           }
           pending = undefined
@@ -72,10 +107,10 @@ export function signIn(): Promise<string> {
 
 export function signOut(): void {
   if (token) google.accounts.oauth2.revoke(token.value)
-  token = undefined
+  storeToken(undefined)
 }
 
 /** Called when Google rejects the token (401) so the next action asks to connect again. */
 export function forgetToken(): void {
-  token = undefined
+  storeToken(undefined)
 }
