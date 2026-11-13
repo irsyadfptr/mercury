@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { install, useInstallState } from '@/pwa'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
+import { ENV_KEY } from '@/useCryptoMarket'
 import type { Lang, ThemePref } from '@/types'
 import { useSheetSync } from '@/useSheetSync'
 import type { StatusMessage } from './Settings.types'
@@ -34,6 +35,7 @@ export function Settings() {
       <div className="grid gap-4 md:grid-cols-2">
         <Preferences />
         <RiskLimits />
+        <MarketData />
         <CashflowSettings />
         <PhoneApp />
         <Backup />
@@ -147,6 +149,22 @@ function RiskLimits() {
           <input className={fieldClass} type="number" min="0" step="any" value={usdIdr ?? ''} onChange={(e) => set({ usdIdr: optional(e.target.value) })} />
         </Field>
       </div>
+    </Card>
+  )
+}
+
+function MarketData() {
+  const { t } = useI18n()
+  const { coingeckoKey, set } = useSettings()
+  const source = coingeckoKey ? 'set.keyActive' : ENV_KEY ? 'set.keyFromEnv' : 'set.keyMissing'
+  return (
+    <Card>
+      <CardTitle icon="chartUp" aside={t(source)}>
+        {t('set.market')}
+      </CardTitle>
+      <Field label={t('set.cgKey')} hint={t('set.cgKeyHint')}>
+        <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={coingeckoKey ?? ''} onChange={(e) => set({ coingeckoKey: e.target.value.trim() || undefined })} />
+      </Field>
     </Card>
   )
 }

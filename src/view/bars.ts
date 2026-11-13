@@ -54,3 +54,17 @@ export function riskBar(risk: TradeRisk, limit: number, n = 20): RiskBar | null 
   const segments = range(Math.max(n, filled)).map((i) => ({ bg: i >= filled ? COLOR.empty : i >= n ? COLOR.down : fill }))
   return { status, segments }
 }
+
+/** Fear & greed zones on CoinGecko's 0–100 scale: red fear, yellow neutral, green greed. */
+export function moodColor(value: number): CssColor {
+  if (value < 25) return COLOR.fireRed
+  if (value < 45) return COLOR.fireOrange
+  if (value <= 55) return COLOR.warn
+  return COLOR.up
+}
+
+/** Mood gauge: each filled segment takes the colour of its own zone, so the bar reads red → green. */
+export function moodBar(value: number, n = 20): Segment[] {
+  const filled = Math.round((Math.min(100, Math.max(0, value)) / 100) * n)
+  return range(n).map((i) => ({ bg: i < filled ? moodColor(((i + 0.5) / n) * 100) : COLOR.empty }))
+}

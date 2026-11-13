@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, riskBar, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -56,5 +56,15 @@ describe('allocation', () => {
     expect(t.restWeight).toBe(30)
     expect(t.rightWeight).toBe(54)
     expect(treemap([])).toBeNull()
+  })
+})
+
+describe('mood gauge', () => {
+  it('colours zones and fills to the score', () => {
+    expect([10, 30, 50, 80].map(moodColor)).toEqual([COLOR.fireRed, COLOR.fireOrange, COLOR.warn, COLOR.up])
+    const bar = moodBar(33, 20)
+    expect(bar.filter((s) => s.bg !== COLOR.empty)).toHaveLength(7)
+    expect(bar[0].bg).toBe(COLOR.fireRed)
+    expect(moodBar(150, 20).every((s) => s.bg !== COLOR.empty)).toBe(true)
   })
 })

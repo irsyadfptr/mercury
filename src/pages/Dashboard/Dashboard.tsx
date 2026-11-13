@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
+import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import type { AllocationItem, I18n, Quest, RiskStatus, Row, Summary } from '@/types'
+import { WATCHLIST } from '@/market/coingecko'
+import { useCryptoMarket } from '@/useCryptoMarket'
 import { useNow } from '@/useNow'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
-import { flameSizes, heatBar, riskBar, xpBar } from '@/view/bars'
+import { flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { QuestView, StatTile } from './Dashboard.types'
 
@@ -22,6 +25,7 @@ export function Dashboard() {
       <div className="flex flex-wrap gap-4">
         <HeatCard heat={summary.heat} />
         <TradeRisk rows={summary.rows} />
+        <MoodCard />
       </div>
       <Inventory summary={summary} />
       <Quests summary={summary} />
@@ -173,6 +177,73 @@ function HeatCard({ heat }: { heat: number }) {
         </div>
       </div>
       <Segments items={heatBar(heat, limit)} height={16} label={`${t('heat.title')} ${num(heat, 1)}% / ${limit}%: ${tierLabel}`} />
+    </Card>
+  )
+}
+
+// ---- Crypto mood ----
+
+function MoodCard() {
+  const { t, locale, num, change } = useI18n()
+  const { mood, prices, at, status, hasKey, refresh } = useCryptoMarket()
+  const tone = mood && moodColor(mood.value)
+  const extreme = mood != null && (mood.value < 25 || mood.value > 75)
+  return (
+    <Card
+      aria-label={t('mood.title')}
+      className="flex min-w-0 flex-[1_1_240px] flex-col gap-3"
+      // Pops off the page without tinting the surface: zone-coloured thick border, hard pixel drop shadow, soft halo.
+      style={tone ? { border: `2px solid ${tone}`, boxShadow: `0 5px 0 ${tone}, 0 0 28px color-mix(in oklch, ${tone} 40%, transparent)` } : undefined}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-3xl leading-none uppercase">{t('mood.title')}</h2>
+        {mood && (
+          <span className={`rounded-md px-2 py-0.5 font-label text-[11px] font-bold uppercase ${extreme ? 'glow' : ''}`}
+            // Yellow (neutral) needs dark text to stay readable.
+            style={{ background: tone, color: tone === COLOR.warn ? 'oklch(0.22 0.03 275)' : 'white' }}
+          >
+            {mood.sentiment}
+          </span>
+        )}
+      </div>
+      {!hasKey ? (
+        <p className="text-sm text-text-muted">{t('mood.noKey')}</p>
+      ) : (
+        <>
+          <div className="flex flex-col gap-1">
+            <span className="font-display text-7xl leading-[0.85]" style={{ color: tone }}>
+              {mood ? mood.value : '–'}
+            </span>
+            <Label>{t('mood.source')}</Label>
+          </div>
+          {mood && <Segments items={moodBar(mood.value)} height={14} label={`${t('mood.title')} ${mood.value} / 100: ${mood.sentiment}`} />}
+          {prices && (
+            <ul aria-label={t('mood.prices')} className="flex flex-col gap-1 border-t border-border pt-2">
+              {WATCHLIST.map((sym) => {
+                const p = prices[sym]
+                if (p?.usd == null) return null
+                const ch = p.usd_24h_change ?? 0
+                return (
+                  <li key={sym} className="flex items-baseline justify-between gap-2 text-sm tabular-nums">
+                    <span className="font-label text-[11px] uppercase">{sym}</span>
+                    <span className="ml-auto">${num(p.usd, p.usd < 10 ? 4 : 2)}</span>
+                    <span className="w-16 text-right text-xs" style={{ color: signColor(ch) }}>
+                      {change(ch, 1)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {status === 'error' && <p className="text-xs text-down">{t('mood.error')}</p>}
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+            <Label>{at ? t('mood.updated', { t: new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) : ''}</Label>
+            <Button size="sm" variant="outline" disabled={status === 'loading'} onClick={() => void refresh()}>
+              {t('mood.refresh')}
+            </Button>
+          </div>
+        </>
+      )}
     </Card>
   )
 }

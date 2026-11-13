@@ -95,7 +95,7 @@ function HoldingRow({ row, onEdit }: HoldingRowProps) {
       className="flex w-full items-center gap-3 border-b border-border py-2 pr-1 pl-2.5 text-left hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       style={{ borderLeft: `3px solid ${RARITY_COLOR[r]}` }}
     >
-      <span className="flex min-w-[150px] flex-col gap-0.5">
+      <span className="flex min-w-0 flex-col gap-0.5 sm:min-w-[150px]">
         <span className="font-semibold">
           {h.symbol} {h.name && <span className="font-normal text-text-muted">{h.name}</span>}
         </span>
@@ -110,10 +110,13 @@ function HoldingRow({ row, onEdit }: HoldingRowProps) {
         </span>
       </span>
       <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
-      <span className="min-w-[116px] text-right font-mono font-medium">{value}</span>
-      <span className="min-w-[80px] text-right font-mono text-[13px] font-medium" style={{ color: signColor(v.unrealized) }}>
-        <span className="sr-only">{t('pf.pl')} </span>
-        {change(v.unrealizedPct)}
+      {/* Phone width: value over change, so the row never overflows. */}
+      <span className="flex shrink-0 flex-col items-end sm:flex-row sm:items-baseline sm:gap-3">
+        <span className="text-right font-mono font-medium sm:min-w-[116px]">{value}</span>
+        <span className="text-right font-mono text-[13px] font-medium sm:min-w-[80px]" style={{ color: signColor(v.unrealized) }}>
+          <span className="sr-only">{t('pf.pl')} </span>
+          {change(v.unrealizedPct)}
+        </span>
       </span>
     </button>
   )
