@@ -2,22 +2,24 @@
 // - Page (navigation): network-first, so a new deploy shows on the next online visit; cached copy when offline.
 // - Built assets (/assets/*, icons): cache-first; Vite puts a content hash in their names, so they never go stale.
 // - Other origins (Google sign-in, Sheets API, fonts CDN): never touched, always straight to the network.
-const CACHE = 'mercury-v3'
+const CACHE = 'mercury-v4'
+// The folder the app is served from: "/" on Vercel, "/mercury/" on GitHub Pages.
+const BASE = new URL(self.registration.scope).pathname
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE)
-      const html = await (await fetch('/', { cache: 'no-store' })).text()
+      const html = await (await fetch(BASE, { cache: 'no-store' })).text()
       // Precache everything the page links to (scripts, styles, manifest, icons) so the first offline open works.
       const linked = [...html.matchAll(/(?:src|href)="(\/[^"/][^"]*)"/g)].map((m) => m[1])
       // Fonts are only requested when text renders, so read them out of the stylesheets too (woff2 only; every phone supports it).
       const fonts = []
       for (const css of linked.filter((u) => u.endsWith('.css'))) {
         const text = await (await fetch(css)).text()
-        fonts.push(...[...text.matchAll(/url\(["']?(\/assets\/[^)"']+\.woff2)["']?\)/g)].map((m) => m[1]))
+        fonts.push(...[...text.matchAll(/url\(["']?(\/[^)"']+\.woff2)["']?\)/g)].map((m) => m[1]))
       }
-      await cache.addAll([...new Set(['/', ...linked, ...fonts])])
+      await cache.addAll([...new Set([BASE, ...linked, ...fonts])])
       await self.skipWaiting()
     })(),
   )
@@ -41,10 +43,10 @@ self.addEventListener('fetch', (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone()
-          if (res.ok) caches.open(CACHE).then((c) => c.put('/', copy))
+          if (res.ok) caches.open(CACHE).then((c) => c.put(BASE, copy))
           return res
         })
-        .catch(async () => (await caches.match('/', { ignoreVary: true })) ?? Response.error()),
+        .catch(async () => (await caches.match(BASE, { ignoreVary: true })) ?? Response.error()),
     )
     return
   }

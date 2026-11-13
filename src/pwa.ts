@@ -11,7 +11,7 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 export function initPwa(): void {
   // Not in dev: a service worker would cache Vite's dev modules and hide live edits.
   if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
       // Offline support is a bonus; the app works without it.
     })
   }

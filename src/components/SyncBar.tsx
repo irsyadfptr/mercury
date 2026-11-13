@@ -15,8 +15,10 @@ export function SyncBar({ sync, compact = false }: SyncBarProps) {
   const spreadsheetId = useCashflow((s) => s.spreadsheetId)
   const portfolioWaiting = useStore((s) => s.changedAt !== undefined && (s.syncedAt === undefined || s.changedAt > s.syncedAt))
 
+  // Builds without a Google client ID (the public GitHub Pages site) are local-only: no sync UI at all.
+  if (sync.status === 'unconfigured') return null
+
   const statusText = {
-    unconfigured: t('sync.unconfigured'),
     signedOut: t('sync.signedOut'),
     syncing: t('sync.syncing'),
     error: `${t('sync.error')}${sync.error ? `: ${sync.error}` : ''}`,
