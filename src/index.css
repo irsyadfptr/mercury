@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+@import "@fontsource/jersey-10/400.css";
+@import "@fontsource/silkscreen/400.css";
+@import "@fontsource/silkscreen/700.css";
+
+/* Theme is resolved to data-theme="light|dark" (Day / Night) on <html> by the inline script in index.html. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  /* Pixel faces: titles, labels and hero numbers only, never tables or inputs (DESIGN.md). */
+  --font-display: "Jersey 10", "Geist Variable", sans-serif;
+  --font-label: "Silkscreen", "Geist Mono Variable", monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+
+  /* Mercury tokens (DESIGN.md) */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-empty: var(--empty);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-text: var(--warn-text);
+  --color-fire-yellow: var(--fire-yellow);
+  --color-fire-orange: var(--fire-orange);
+  --color-fire-red: var(--fire-red);
+  --color-fire-soft: var(--fire-soft);
+  --color-fire-edge: var(--fire-edge);
+  --color-cat-stocks: var(--cat-stocks);
+  --color-cat-cash: var(--cat-cash);
+  --color-cat-crypto: var(--cat-crypto);
+  --color-cat-bonds: var(--cat-bonds);
+  --color-cat-gold: var(--cat-gold);
+  --color-rarity-common: var(--rarity-common);
+  --color-rarity-rare: var(--rarity-rare);
+  --color-rarity-epic: var(--rarity-epic);
+  --color-rarity-legendary: var(--rarity-legendary);
+
+  /* shadcn names, mapped onto Mercury tokens */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--down);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --color-sidebar: var(--surface);
+  --color-sidebar-foreground: var(--text);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: var(--accent-fg);
+  --color-sidebar-accent: var(--surface-2);
+  --color-sidebar-accent-foreground: var(--text);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--accent);
+  --color-chart-1: var(--cat-stocks);
+  --color-chart-2: var(--cat-cash);
+  --color-chart-3: var(--cat-crypto);
+  --color-chart-4: var(--cat-bonds);
+  --color-chart-5: var(--cat-gold);
+}
+
+/* Day */
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --bg: oklch(0.965 0.006 270);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.955 0.008 270);
+  --border: oklch(0.90 0.010 270);
+  --empty: oklch(0.92 0.010 270);
+  --text: oklch(0.24 0.030 275);
+  --text-muted: oklch(0.48 0.025 275);
+  /* Ocean palette */
+  --accent: oklch(0.55 0.14 232);
+  --accent-deep: oklch(0.42 0.12 232);
+  --accent-soft: oklch(0.93 0.035 228);
+  --accent-text: oklch(0.44 0.13 232);
+  --accent-fg: oklch(0.99 0 0);
+  --up: oklch(0.50 0.13 150);
+  --down: oklch(0.55 0.19 25);
+  --warn: oklch(0.75 0.15 70);
+  --warn-soft: oklch(0.94 0.05 75);
+  --warn-text: oklch(0.48 0.12 60);
+  --fire-yellow: oklch(0.90 0.16 95);
+  --fire-orange: oklch(0.76 0.18 55);
+  --fire-red: oklch(0.60 0.21 30);
+  --fire-soft: oklch(0.97 0.03 60);
+  --fire-edge: oklch(0.86 0.09 50);
+  --cat-stocks: oklch(0.56 0.15 255);
+  --cat-cash: oklch(0.86 0.14 92);
+  --cat-crypto: oklch(0.56 0.17 310);
+  --cat-bonds: oklch(0.76 0.09 195);
+  --cat-gold: oklch(0.80 0.14 75);
+  --rarity-common: oklch(0.60 0.01 270);
+  --rarity-rare: oklch(0.58 0.15 250);
+  --rarity-epic: oklch(0.55 0.20 310);
+  --rarity-legendary: oklch(0.70 0.16 65);
+}
+
+/* Night */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(0.17 0.020 280);
+  --surface: oklch(0.21 0.022 280);
+  --surface-2: oklch(0.25 0.025 280);
+  --border: oklch(0.31 0.025 280);
+  --empty: oklch(0.29 0.022 280);
+  --text: oklch(0.95 0.010 280);
+  --text-muted: oklch(0.72 0.020 280);
+  --accent: oklch(0.75 0.12 222);
+  --accent-deep: oklch(0.56 0.12 228);
+  --accent-soft: oklch(0.31 0.06 228);
+  --accent-text: oklch(0.85 0.08 222);
+  --accent-fg: oklch(0.16 0.02 240);
+  --up: oklch(0.76 0.15 150);
+  --down: oklch(0.70 0.17 25);
+  --warn: oklch(0.80 0.14 75);
+  --warn-soft: oklch(0.33 0.06 70);
+  --warn-text: oklch(0.86 0.12 80);
+  --fire-yellow: oklch(0.92 0.15 95);
+  --fire-orange: oklch(0.78 0.17 55);
+  --fire-red: oklch(0.64 0.21 30);
+  --fire-soft: oklch(0.25 0.05 45);
+  --fire-edge: oklch(0.45 0.12 45);
+  --cat-stocks: oklch(0.62 0.14 255);
+  --cat-cash: oklch(0.84 0.13 92);
+  --cat-crypto: oklch(0.64 0.15 310);
+  --cat-bonds: oklch(0.74 0.09 195);
+  --cat-gold: oklch(0.80 0.14 75);
+  --rarity-common: oklch(0.70 0.01 280);
+  --rarity-rare: oklch(0.72 0.13 250);
+  --rarity-epic: oklch(0.72 0.16 310);
+  --rarity-legendary: oklch(0.82 0.14 75);
+}
+
+/* Game motion (DESIGN.md: Motion). Stepped flicker, gentle glow; off under reduced motion. */
+.flame { transform-origin: 50% 100%; animation: flick 0.45s steps(2) infinite alternate; }
+.flame:nth-child(2) { animation-duration: 0.38s; animation-delay: -0.2s; }
+.flame:nth-child(3) { animation-duration: 0.52s; animation-delay: -0.1s; }
+@keyframes flick { to { transform: scale(0.92, 1.12); } }
+.glow { animation: glow 1.2s ease-in-out infinite alternate; }
+@keyframes glow { from { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .flame, .glow { animation: none; }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-sm antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+}

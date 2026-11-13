@@ -1,0 +1,65 @@
+import type { ComponentProps } from 'react'
+import { cn } from '@/lib/utils'
+import type { BadgeProps, BadgeTone, CardTitleProps, FieldProps, LabelProps, SegmentsProps } from '@/types'
+import { PixelIcon } from './PixelIcon'
+
+/** Snug card (DESIGN.md: 1px border, 10px radius, solid surface). */
+export function Card({ className, children, ...rest }: ComponentProps<'section'>) {
+  return (
+    <section className={cn('rounded-[10px] border border-border bg-surface p-4 sm:p-5', className)} {...rest}>
+      {children}
+    </section>
+  )
+}
+
+export function CardTitle({ icon, aside, children }: CardTitleProps) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h2 className="flex items-center gap-2 font-display text-3xl leading-none uppercase">
+        {icon && <PixelIcon name={icon} />}
+        {children}
+      </h2>
+      {aside && <span className="font-label text-[11px] text-text-muted uppercase">{aside}</span>}
+    </div>
+  )
+}
+
+/** Small pixel-caps label (DESIGN.md: Silkscreen, 11px minimum). */
+export function Label({ className, children }: LabelProps) {
+  return <span className={cn('font-label text-[11px] text-text-muted uppercase', className)}>{children}</span>
+}
+
+const BADGE_TONE: Record<BadgeTone, string> = {
+  paper: 'bg-accent-soft text-accent-text',
+  warn: 'bg-warn-soft text-warn-text',
+  neutral: 'bg-surface-2 text-text-muted',
+}
+
+export function Badge({ tone, children }: BadgeProps) {
+  return <span className={cn('rounded px-1.5 py-px font-label text-[11px] uppercase', BADGE_TONE[tone])}>{children}</span>
+}
+
+export function Segments({ items, label, height = 10 }: SegmentsProps) {
+  return (
+    <div role="img" aria-label={label} className="flex gap-0.5">
+      {items.map((s, i) => (
+        <span key={i} className="flex-1 rounded-[2px]" style={{ height, background: s.bg, border: s.edge ? `1px solid ${s.edge}` : undefined }} />
+      ))}
+    </div>
+  )
+}
+
+/** Label + control + error/hint, stacked. The error replaces the hint. */
+export function Field({ label, hint, error, className, children }: FieldProps) {
+  return (
+    <label className={cn('flex flex-col gap-1', className)}>
+      <span className="text-xs font-medium text-text-muted">{label}</span>
+      {children}
+      {error ? <span className="text-xs text-down">{error}</span> : hint && <span className="text-xs text-text-muted">{hint}</span>}
+    </label>
+  )
+}
+
+/** Shared class for text inputs and selects. */
+export const fieldClass =
+  'h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-down'
