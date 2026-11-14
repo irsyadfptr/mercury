@@ -148,6 +148,8 @@ export interface MarketRules {
   step: (price: number) => number
   /** Bars in the ~8-week time stop. */
   timeStopBars: number
+  /** Stop never wider than this many ATRs (default MAX_ATR_STOP); the rules test tries other values. */
+  maxAtrStop?: number
 }
 /** IDX: Rp5 bn a day, whole rupiah, 40 trading days. shortcut: whole rupiah, not IDX tick sizes (fraksi), add those to step when they're in config. */
 export const IDX_RULES: MarketRules = { minValue: 5e9, step: () => 1, timeStopBars: 40 }
@@ -222,7 +224,7 @@ export function checkSetup(allBars: readonly Bar[], { rules: market = IDX_RULES,
   // Stop: one step below the 20-bar low, but never wider than 3× ATR.
   let stop: number | undefined
   // The 20-bar low only counts when it is below the entry (a strong rally can leave it above the buy zone).
-  if (low20 !== undefined && a !== undefined) stop = roundTo(Math.max(low20 - step < entry ? low20 - step : -Infinity, entry - MAX_ATR_STOP * a), step, 'floor')
+  if (low20 !== undefined && a !== undefined) stop = roundTo(Math.max(low20 - step < entry ? low20 - step : -Infinity, entry - (market.maxAtrStop ?? MAX_ATR_STOP) * a), step, 'floor')
   const risk = stop !== undefined && stop < entry ? roundTo(entry - stop, step, 'round') : undefined
   return {
     buyZone,

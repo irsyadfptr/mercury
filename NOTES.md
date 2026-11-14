@@ -100,6 +100,38 @@ Source: IDX press release 2734 (https://www.idx.co.id/en/news/press-release/2734
 - **idx price adjustment (2026-11-13, from the idx docs, not yet seen on a real run):** history comes from Yahoo Finance `v8/finance/chart`. Each candle has `open/high/low/close` plus `adj_close` ("when the source supplies split/dividend adjusted closes"). Yahoo's chart `close` is normally split-adjusted but not dividend-adjusted; `adj_close` is both. The scanner uses the plain OHLC, so it matches what Stockbit shows; dividend drops are not smoothed out.
 - **UMA notices, tick sizes, ARA/ARB:** not in the idx docs. Hardcode them in config when needed.
 
+## Rules test (pooled backtest), first results 2026-11-14
+
+Scanner → Rules test replays every ticker in the list and pools all trades, for 5 setting variants. Buys at the next open, gaps sell at the open, no fees.
+
+| Settings | LQ45 (5 y): trades · win · avg | Top 30 crypto (2.7 y): trades · win · avg |
+|---|---|---|
+| **Current:** stop ≤ 3× ATR, 2R, MACD cross | 193 · 33% · −0.13R | 77 · 23% · −0.35R |
+| 3R target | 188 · 30% · −0.14R | 74 · 18% · −0.42R |
+| Stop ≤ 2× ATR | 224 · 31% · −0.16R | 91 · 21% · −0.39R |
+| No MACD rule | 446 · 37% · −0.06R | 159 · 23% · −0.34R |
+| No MACD, 3R | 419 · 33% · −0.04R | 150 · 17% · −0.36R |
+
+- **No variant made money in either market.** Treat scanner signals as watch / paper only until a variant tests above 0R.
+- Caveats: LQ45 2021–2026 was mostly sideways to down; the LQ45 list is today's members (survivorship); crypto history is short; no fees.
+
+Second round (same day): mood filter (skip signals on days the mood was Defensive, < 35, using the mood as it was that day) and a trailing stop (highest close − 3× ATR, no fixed target; 8-week time stop only without progress; max ~6 months).
+
+| Settings | LQ45 | Top 30 crypto |
+|---|---|---|
+| Current, skip Defensive | 167 · 35% · −0.05R (worst run 7, was 12) | 74 · 23% · −0.35R |
+| Current, trailing stop | 211 · 27% · −0.20R | 81 · 20% · −0.41R |
+| No MACD, skip Defensive | 407 · 39% · −0.01R | 156 · 22% · −0.34R |
+| No MACD, trailing stop | 449 · 29% · −0.05R | 171 · 19% · −0.08R |
+| **No MACD, skip Defensive, trailing stop** | **385 · 30% · +0.01R** | **167 · 19% · −0.07R** |
+
+- Best on both markets: no MACD + skip Defensive + trailing stop, but only break-even, and fees (~0.4% a round trip on IDX) would likely push it below zero.
+- The mood filter is the clearest gain on IDX (−0.13R → −0.05R, worst losing run 12 → 7). On crypto it barely matters.
+- The trailing stop only helps once the MACD rule is dropped (more trades in long trends).
+- The "longer MA buy zone" idea was not tested: a zone below MA50 conflicts with the close-above-MA50 rule.
+- **Live rule change (2026-11-14, user's decision): the mood filter is now part of the live rules**, for IDX and crypto. While a market's mood is Defensive (< 35, `MOOD_DEFENSIVE` in src/market/mood.ts): no "All pass" badges, the scan reports "No buys", paper trades are paused, the scan log records nobody as passing (so no Dashboard "new setup" alerts), and the per-ticker backtest skips Defensive days. The Rules test marks that row as Current.
+- Still no setting with a clear edge after fees; keep the scanner for watchlists and paper trades.
+
 ## Crypto scanner (2026-11-14)
 
 - Same rules, buy zone, stop, targets and backtest as IDX (src/market/indicators.ts); only `CRYPTO_RULES` differs: liquidity ≥ $10M a day, prices rounded to 5 significant digits, time stop 56 days (crypto trades every day).

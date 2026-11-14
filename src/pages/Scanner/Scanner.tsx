@@ -3,13 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
-import { backtest } from '@/market/backtest'
+import { backtest, summarize, type Backtest, type BacktestOptions, type Trade } from '@/market/backtest'
 import { COIN, fetchCryptoHistory } from '@/market/binance'
 import { CRYPTO_COINS } from '@/market/cryptoList'
 import { fetchHistory, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
 import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
-import { idxMood, type IdxMood, type MoodLight } from '@/market/mood'
+import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood, type MoodLight } from '@/market/mood'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
@@ -201,7 +201,9 @@ function MarketView({ m }: { m: Market }) {
     if (ok.length) {
       const date = ok.map((r) => r.bars[r.bars.length - 1].time).sort().at(-1)!
       const pick = (f: (c: Check) => boolean) => ok.filter((r) => f(r.check)).map((r) => r.symbol).sort()
-      saveScanLog(recordScan(loadScanLog(m.id), { date, passing: pick((c) => c.score === c.rules.length), inZone: pick((c) => c.zone === 'in') }), m.id)
+      const defensive = idxMood(index ?? [], ok.map((r) => r.bars))?.light === 'red'
+      const passing = defensive ? [] : pick((c) => c.score === c.rules.length)
+      saveScanLog(recordScan(loadScanLog(m.id), { date, passing, inZone: pick((c) => c.zone === 'in') }), m.id)
     }
   }
 
@@ -212,14 +214,118 @@ function MarketView({ m }: { m: Market }) {
   }, [])
 
   const mood = useMemo(() => (scan && !scan.running ? idxMood(scan.index ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined), [scan])
+  // Mood filter (live rule since 2026-11-14): no new buys while the market mood is Defensive, today and in the backtest.
+  const filter = useMemo<MoodFilter>(() => {
+    const series = scan && !scan.running ? moodSeries(scan.index ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined
+    return { defensive: mood?.light === 'red', skip: series && ((d: string) => (series.get(d) ?? 100) < MOOD_DEFENSIVE) }
+  }, [scan, mood])
 
   return (
     <>
       <MoodCard m={m} mood={mood} running={!!scan?.running} />
-      <TickerCheck m={m} load={check} onCheck={run} mood={mood} />
-      <ScanCard m={m} scan={scan} onStart={() => void startScan()} onPick={(s) => void run(s)} />
+      <TickerCheck m={m} load={check} onCheck={run} filter={filter} />
+      <ScanCard m={m} scan={scan} defensive={filter.defensive} onStart={() => void startScan()} onPick={(s) => void run(s)} />
+      <RulesTest m={m} scan={scan} />
     </>
   )
+}
+
+const VARIANT_IDS = ['live', 'target3', 'stop2', 'noMacd', 'noMacd3', 'mood', 'trail', 'noMacdMood', 'noMacdTrail', 'noMacdMoodTrail'] as const
+type VariantId = (typeof VARIANT_IDS)[number]
+/** Trailing stop distance, in ATRs. */
+const TRAIL_ATR = 3
+/** Settings the rules test compares; 'mood' is what the scanner uses today. mood = skip signals while the market mood was Defensive. */
+const VARIANTS: { id: VariantId; stop?: number; mood?: boolean; opts: BacktestOptions }[] = [
+  { id: 'live', opts: {} },
+  { id: 'target3', opts: { targetR: 3 } },
+  { id: 'stop2', stop: 2, opts: {} },
+  { id: 'noMacd', opts: { requireMacd: false } },
+  { id: 'noMacd3', opts: { requireMacd: false, targetR: 3 } },
+  { id: 'mood', mood: true, opts: {} },
+  { id: 'trail', opts: { trailAtr: TRAIL_ATR } },
+  { id: 'noMacdMood', mood: true, opts: { requireMacd: false } },
+  { id: 'noMacdTrail', opts: { requireMacd: false, trailAtr: TRAIL_ATR } },
+  { id: 'noMacdMoodTrail', mood: true, opts: { requireMacd: false, trailAtr: TRAIL_ATR } },
+]
+type RulesTestResult = { id: VariantId; bt: Backtest }[]
+const lastRulesTest: Partial<Record<ScanMarket, RulesTestResult>> = {}
+
+/** Every setting variant backtested over every scanned ticker, trades pooled into one result per variant. */
+function RulesTest({ m, scan }: { m: Market; scan?: Scan }) {
+  const { t, num } = useI18n()
+  const [result, setResult] = useState(lastRulesTest[m.id])
+  const [progress, setProgress] = useState<number>()
+  const tickers = scan && !scan.running ? scan.rows.filter(isResult) : []
+  const u = { u: m.listName }
+  const signed = (x: number | undefined, d = 2) => (x === undefined ? '—' : `${x >= 0 ? '+' : '−'}${num(Math.abs(x), d)}`)
+
+  const run = async () => {
+    const trades = Object.fromEntries(VARIANT_IDS.map((id) => [id, [] as Trade[]])) as Record<VariantId, Trade[]>
+    // The mood as it was on each day; a day with no score (early history) counts as not Defensive.
+    const mood = moodSeries(scan?.index ?? [], tickers.map((r) => r.bars))
+    const defensive = (d: string) => (mood.get(d) ?? 100) < 35
+    for (let k = 0; k < tickers.length; k++) {
+      setProgress(k)
+      await new Promise((r) => setTimeout(r)) // let the page repaint between tickers
+      for (const v of VARIANTS) {
+        const rules = v.stop ? { ...m.rules, maxAtrStop: v.stop } : m.rules
+        trades[v.id].push(...backtest(tickers[k].bars, rules, v.mood ? { ...v.opts, skip: defensive } : v.opts).trades)
+      }
+    }
+    const r = VARIANTS.map((v) => ({ id: v.id, bt: summarize(trades[v.id]) }))
+    setResult((lastRulesTest[m.id] = r))
+    setProgress(undefined)
+  }
+
+  return (
+    <Card>
+      <CardTitle icon="chest" aside={t('rt.sub', { ...u, n: tickers.length })}>
+        {t('rt.title')}
+      </CardTitle>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <Button onClick={() => void run()} disabled={!tickers.length || progress !== undefined} className={primary}>
+          {progress !== undefined ? t('rt.running', { n: progress, total: tickers.length }) : t('rt.run', u)}
+        </Button>
+        {!tickers.length && <span className="text-sm text-text-muted">{t('rt.needScan')}</span>}
+      </div>
+      {result && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-left">
+              <tr>
+                {(['rt.col.settings', 'rt.col.trades', 'rt.col.win', 'rt.col.avgR', 'rt.col.totalR', 'rt.col.streak'] as const).map((k) => (
+                  <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal text-text-muted uppercase">
+                    {t(k)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {result.map(({ id, bt }) => (
+                <tr key={id} className={id === 'mood' ? 'bg-accent-soft/40' : undefined}>
+                  <td className="px-2 py-1.5">
+                    {t(`rt.v.${id}`)} {id === 'mood' && <Badge tone="paper">{t('rt.current')}</Badge>}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">{bt.trades.length}</td>
+                  <td className="px-2 py-1.5 font-mono">{bt.winRate === undefined ? '—' : `${num(bt.winRate)}%`}</td>
+                  <td className={`px-2 py-1.5 font-mono ${bt.avgR === undefined ? '' : bt.avgR > 0 ? 'text-up' : 'text-down'}`}>{signed(bt.avgR)}R</td>
+                  <td className="px-2 py-1.5 font-mono">{signed(bt.totalR, 1)}R</td>
+                  <td className="px-2 py-1.5 font-mono">{bt.worstStreak}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-3 text-xs text-text-muted">{t('rt.note')}</p>
+    </Card>
+  )
+}
+
+/** defensive = today's mood is Defensive; skip = was a past day Defensive (undefined until the scan has run). */
+interface MoodFilter {
+  defensive: boolean
+  skip?: (date: string) => boolean
 }
 
 /** Names used by the shared mood strings. */
@@ -275,7 +381,7 @@ function ErrorText({ m, error }: { m: Market; error: IdxError }) {
   )
 }
 
-function TickerCheck({ m, load, onCheck, mood }: { m: Market; load: Load; onCheck: (s: string) => Promise<void>; mood?: IdxMood }) {
+function TickerCheck({ m, load, onCheck, filter }: { m: Market; load: Load; onCheck: (s: string) => Promise<void>; filter: MoodFilter }) {
   const { t } = useI18n()
   const [symbol, setSymbol] = useState(load.status === 'done' ? load.symbol : m.example)
   const submit = (e: FormEvent) => {
@@ -300,12 +406,12 @@ function TickerCheck({ m, load, onCheck, mood }: { m: Market; load: Load; onChec
         </Button>
       </form>
       {load.status === 'error' && <ErrorText m={m} error={load.error} />}
-      {load.status === 'done' && <CheckResult m={m} r={load} mood={mood} />}
+      {load.status === 'done' && <CheckResult m={m} r={load} filter={filter} />}
     </Card>
   )
 }
 
-function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
+function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilter }) {
   const f = useI18n()
   const { t, num, day } = f
   const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
@@ -313,7 +419,7 @@ function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
   const last = r.bars[r.bars.length - 1].time
   const timeStop = new Date(`${last}T00:00:00Z`)
   timeStop.setUTCDate(timeStop.getUTCDate() + TIME_STOP_DAYS)
-  const bt = useMemo(() => backtest(r.bars, m.rules), [r.bars, m.rules])
+  const bt = useMemo(() => backtest(r.bars, m.rules, { skip: filter.skip }), [r.bars, m.rules, filter.skip])
   const detail: Record<Rule['id'], string> = {
     weeklyTrend: t('rule.weeklyTrend.d'),
     ma50over200: c.ma50 !== undefined && c.ma200 !== undefined ? `MA50 ${price(c.ma50)} · MA200 ${price(c.ma200)}` : t('rule.short'),
@@ -340,7 +446,7 @@ function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
         </div>
       </div>
 
-      {mood?.light === 'red' && c.zone !== 'none' && (
+      {filter.defensive && c.zone !== 'none' && (
         <p role="status" className="rounded-md border border-down px-3 py-2 text-sm text-down">
           {t('mood.idx.redWarning', moodVars(m))}
         </p>
@@ -382,10 +488,10 @@ function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
           )}
           <p className="text-xs text-text-muted">
             {bt.trades.length > 0 && bt.trades.length < MIN_TRADES && `${t('bt.small')} `}
-            {t('bt.rules')}
+            {t('bt.rules')} {t(filter.skip ? 'bt.moodSkip' : 'bt.moodPending')}
           </p>
         </div>
-        <PaperTrade m={m} r={r} />
+        <PaperTrade m={m} r={r} defensive={filter.defensive} />
       </div>
 
       <PriceChart bars={r.bars} check={c} label={t('scan.chartLabel', { s: r.symbol })} step={m.rules.step(c.close)} />
@@ -395,7 +501,7 @@ function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
 }
 
 /** Adds the setup to Portfolio → Trading as a paper trade, sized so a stop-out loses the per-trade risk limit. */
-function PaperTrade({ m, r }: { m: Market; r: Result }) {
+function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: boolean }) {
   const f = useI18n()
   const { t, num, qty } = f
   const { netWorth } = useSummary()
@@ -408,7 +514,7 @@ function PaperTrade({ m, r }: { m: Market; r: Result }) {
   // Net worth is in rupiah; crypto prices are in USDT (≈ USD), so convert the capital first.
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
-  const why = c.zone !== 'in' ? t('paper.notInZone') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
+  const why = c.zone !== 'in' ? t('paper.notInZone') : defensive ? t('paper.defensive') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
   const p = m.price(f, c.entry)
 
   const add = () => {
@@ -453,7 +559,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
   )
 }
 
-function ScanCard({ m, scan, onStart, onPick }: { m: Market; scan?: Scan; onStart: () => void; onPick: (s: string) => void }) {
+function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: Scan; defensive: boolean; onStart: () => void; onPick: (s: string) => void }) {
   const f = useI18n()
   const { t, day } = f
   const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
@@ -475,7 +581,7 @@ function ScanCard({ m, scan, onStart, onPick }: { m: Market; scan?: Scan; onStar
         <Button onClick={onStart} disabled={scan?.running} className={primary}>
           {scan?.running ? t('scan.loading') : t('scan.runAll', u)}
         </Button>
-        {scan && <span className="text-sm">{t('scan.passing', { n: passing })}</span>}
+        {scan && <span className="text-sm">{defensive ? t('scan.passingDefensive', { n: passing }) : t('scan.passing', { n: passing })}</span>}
       </div>
       {missing && 'error' in missing && <ErrorText m={m} error={missing.error} />}
       {changes && (
@@ -512,7 +618,7 @@ function ScanCard({ m, scan, onStart, onPick }: { m: Market; scan?: Scan; onStar
                     </button>
                   </td>
                   <td className="px-2 py-1.5 font-mono">
-                    {r.check.score}/{r.check.rules.length} {r.check.score === r.check.rules.length && <Badge tone="paper">{t('scan.pass')}</Badge>}
+                    {r.check.score}/{r.check.rules.length} {r.check.score === r.check.rules.length && !defensive && <Badge tone="paper">{t('scan.pass')}</Badge>}
                   </td>
                   <td className="px-2 py-1.5 font-mono">{price(r.check.close)}</td>
                   <td className="px-2 py-1.5 font-mono whitespace-nowrap">
