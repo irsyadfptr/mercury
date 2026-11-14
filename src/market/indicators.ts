@@ -124,7 +124,7 @@ export interface Check {
   low20?: number
   /** Bars since the last MACD bullish cross, if within the lookback. */
   crossAgo?: number
-  /** Average daily traded value, last 20 bars, in rupiah. */
+  /** Average daily traded value, last 20 bars, in the price currency (rupiah, or USDT for crypto). */
   avgValue: number
   /** Where to buy; undefined when the trend rules don't all pass. */
   buyZone?: { low: number; high: number }
@@ -140,8 +140,25 @@ export interface Check {
 
 /** A MACD bullish cross counts if it happened in the last 5 bars and MACD is still above its signal. */
 export const CROSS_LOOKBACK = 5
-/** Minimum average daily traded value (Rp5 bn) so a position can be exited. */
-export const MIN_VALUE = 5e9
+/** What differs between markets; the rules themselves are the same. */
+export interface MarketRules {
+  /** Minimum average daily traded value, in the price currency, so a position can be exited. */
+  minValue: number
+  /** Price step levels are rounded to, for a given price. */
+  step: (price: number) => number
+  /** Bars in the ~8-week time stop. */
+  timeStopBars: number
+}
+/** IDX: Rp5 bn a day, whole rupiah, 40 trading days. shortcut: whole rupiah, not IDX tick sizes (fraksi), add those to step when they're in config. */
+export const IDX_RULES: MarketRules = { minValue: 5e9, step: () => 1, timeStopBars: 40 }
+/** Crypto (USDT): $10M a day, 5 significant digits (BTC $0.1… XRP $0.0001), 56 days because it trades every day. */
+export const CRYPTO_RULES: MarketRules = { minValue: 10e6, step: (p) => 10 ** (Math.floor(Math.log10(p)) - 4), timeStopBars: 56 }
+
+/** Round to a step without float noise (0.1 + 0.2 style), down, up or to the nearest. */
+export function roundTo(x: number, step: number, how: 'floor' | 'ceil' | 'round'): number {
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)))
+  return Number((Math[how](x / step) * step).toFixed(decimals))
+}
 /** Stop never wider than this many ATRs. */
 export const MAX_ATR_STOP = 3
 /** Buy zone height above MA50, in ATRs. */
@@ -156,9 +173,17 @@ export function seriesFor(bars: readonly Bar[]) {
   return { closes, ma50: sma(closes, 50), ma200: sma(closes, 200), macd: macd(closes), atr: atr(bars), weekly: weeklyTrendSeries(bars) }
 }
 
-/** The checklist as of bar `last` (default: the latest). The backtest passes precomputed series to replay each day cheaply. */
-export function checkSetup(allBars: readonly Bar[], s = seriesFor(allBars), last = allBars.length - 1): Check | undefined {
+export interface CheckOptions {
+  rules?: MarketRules
+  /** Precomputed series and the bar to judge (default: the latest); the backtest uses these to replay each day cheaply. */
+  series?: ReturnType<typeof seriesFor>
+  last?: number
+}
+
+/** The checklist as of bar `last`. */
+export function checkSetup(allBars: readonly Bar[], { rules: market = IDX_RULES, series, last = allBars.length - 1 }: CheckOptions = {}): Check | undefined {
   if (last < 0) return undefined
+  const s = series ?? seriesFor(allBars)
   // The last 20 bars up to `last`, for the 20-bar low and average traded value.
   const recent = allBars.slice(Math.max(0, last - 19), last + 1)
   const close = s.closes[last]
@@ -183,21 +208,22 @@ export function checkSetup(allBars: readonly Bar[], s = seriesFor(allBars), last
     { id: 'ma50over200', pass: ma50 !== undefined && ma200 !== undefined ? ma50 > ma200 : undefined },
     { id: 'closeOverMa50', pass: ma50 !== undefined ? close > ma50 : undefined },
     { id: 'macdCross', pass: m.signal[last] !== undefined ? crossAgo !== undefined && above : undefined },
-    { id: 'liquidity', pass: avgValue >= MIN_VALUE },
+    { id: 'liquidity', pass: avgValue >= market.minValue },
   ]
 
   // Buy zone: MA50 (trend support) up to MA50 + 2× ATR, only while all three trend rules pass.
   const trendOk = rules.filter((r) => TREND_RULES.includes(r.id)).every((r) => r.pass)
-  const buyZone = trendOk && ma50 !== undefined && a !== undefined ? { low: Math.ceil(ma50), high: Math.floor(ma50 + ZONE_ATR * a) } : undefined
+  const step = market.step(close)
+  const buyZone = trendOk && ma50 !== undefined && a !== undefined ? { low: roundTo(ma50, step, 'ceil'), high: roundTo(ma50 + ZONE_ATR * a, step, 'floor') } : undefined
   const zone: Zone = !buyZone ? 'none' : close > buyZone.high ? 'extended' : 'in'
   // Risk is measured from what you'd pay: the close, or the top of the zone when the price must pull back first.
   const entry = buyZone ? Math.min(close, buyZone.high) : close
 
-  // Stop: below the 20-bar low, but never wider than 3× ATR. shortcut: not rounded to IDX tick sizes (fraksi), add when tick sizes are in config.
+  // Stop: one step below the 20-bar low, but never wider than 3× ATR.
   let stop: number | undefined
   // The 20-bar low only counts when it is below the entry (a strong rally can leave it above the buy zone).
-  if (low20 !== undefined && a !== undefined) stop = Math.floor(Math.max(low20 - 1 < entry ? low20 - 1 : -Infinity, entry - MAX_ATR_STOP * a))
-  const risk = stop !== undefined && stop < entry ? entry - stop : undefined
+  if (low20 !== undefined && a !== undefined) stop = roundTo(Math.max(low20 - step < entry ? low20 - step : -Infinity, entry - MAX_ATR_STOP * a), step, 'floor')
+  const risk = stop !== undefined && stop < entry ? roundTo(entry - stop, step, 'round') : undefined
   return {
     buyZone,
     zone,
@@ -213,7 +239,7 @@ export function checkSetup(allBars: readonly Bar[], s = seriesFor(allBars), last
     avgValue,
     stop: risk ? stop : undefined,
     risk,
-    target2: risk ? entry + 2 * risk : undefined,
-    target3: risk ? entry + 3 * risk : undefined,
+    target2: risk ? roundTo(entry + 2 * risk, step, 'round') : undefined,
+    target3: risk ? roundTo(entry + 3 * risk, step, 'round') : undefined,
   }
 }

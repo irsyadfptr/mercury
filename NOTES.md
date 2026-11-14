@@ -100,6 +100,16 @@ Source: IDX press release 2734 (https://www.idx.co.id/en/news/press-release/2734
 - **idx price adjustment (2026-11-13, from the idx docs, not yet seen on a real run):** history comes from Yahoo Finance `v8/finance/chart`. Each candle has `open/high/low/close` plus `adj_close` ("when the source supplies split/dividend adjusted closes"). Yahoo's chart `close` is normally split-adjusted but not dividend-adjusted; `adj_close` is both. The scanner uses the plain OHLC, so it matches what Stockbit shows; dividend drops are not smoothed out.
 - **UMA notices, tick sizes, ARA/ARB:** not in the idx docs. Hardcode them in config when needed.
 
+## Crypto scanner (2026-11-14)
+
+- Same rules, buy zone, stop, targets and backtest as IDX (src/market/indicators.ts); only `CRYPTO_RULES` differs: liquidity ≥ $10M a day, prices rounded to 5 significant digits, time stop 56 days (crypto trades every day).
+- Data: Binance public market data (`data-api.binance.vision/api/v3/klines`, COIN/USDT, 1d, 1,000 days). No key, CORS open, so it **works on the deployed site** too. Today's candle is dropped until it closes (00:00 UTC = 07:00 WIB).
+- CoinGecko is not used here: the free plan has only 365 days and its daily data has no daily high/low (needed for ATR).
+- Coin list: src/market/cryptoList.ts (30 coins by Binance volume, ≥ 1 year of history). HYPE left out: only 51 days on Binance.
+- Crypto mood: same formula as the IDX mood with BTC as the index. First reading, 2026-11-14: 20 Defensive (1 of 30 coins above MA50).
+- Paper trades size from net worth ÷ the USD/IDR rate in Settings; holdings are saved in USD.
+- First backtests (2.7 years) are weak: BTC 6 trades, 17% win, −0.50R; ETH 2 trades, 0%; BNB 5 trades, 40%, +0.20R. The swing rules may need different settings for crypto.
+
 ## idx CLI (step 3)
 
 - Rust binary, package `ihsg-cli`, command `idx`. Install: `npm install -g ihsg-cli` (downloads the prebuilt binary on first run), or the Windows zip `idx-<version>-x86_64-pc-windows-msvc.zip` from the GitHub releases page, or `cargo install --locked ihsg-cli`. Not installed on this laptop as of 2026-11-13.

@@ -4,15 +4,17 @@ import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { backtest } from '@/market/backtest'
+import { COIN, fetchCryptoHistory } from '@/market/binance'
+import { CRYPTO_COINS } from '@/market/cryptoList'
 import { fetchHistory, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
-import { checkSetup, CROSS_LOOKBACK, MIN_VALUE, type Bar, type Check, type Rule } from '@/market/indicators'
+import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
 import { idxMood, type IdxMood, type MoodLight } from '@/market/mood'
-import { loadScanLog, recordScan, saveScanLog, scanChanges } from '@/market/scanLog'
+import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
-import type { Key } from '@/types'
+import type { I18n, Key } from '@/types'
 import { useSummary } from '@/useSummary'
 import { PriceChart } from './PriceChart'
 
@@ -22,6 +24,57 @@ const SCAN_CONCURRENCY = 4
 const MIN_TRADES = 10
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const LIGHT_CLASS: Record<MoodLight, string> = { red: 'text-down', yellow: 'text-warn-text', green: 'text-up' }
+
+/** Everything that differs between the stock and crypto scanners; the rules themselves live in indicators.ts. */
+interface Market {
+  id: ScanMarket
+  rules: MarketRules
+  available: boolean
+  fetch: (symbol: string) => Promise<{ name?: string; bars: Bar[] }>
+  /** Index for the mood's trend and calm parts. */
+  index: string
+  indexName: string
+  list: readonly string[]
+  listName: string
+  symbol: RegExp
+  example: string
+  /** Price as text. */
+  price: (f: I18n, n: number) => string
+  /** Average daily traded value as text. */
+  value: (f: I18n, n: number) => string
+}
+
+const usd = (f: I18n, n: number) => `$${n.toLocaleString(f.locale, n >= 1e4 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 5 })}`
+const MARKETS: Record<ScanMarket, Market> = {
+  idx: {
+    id: 'idx',
+    rules: IDX_RULES,
+    available: IDX_AVAILABLE,
+    fetch: fetchHistory,
+    index: '^JKSE',
+    indexName: 'IHSG',
+    list: LQ45,
+    listName: 'LQ45',
+    symbol: /^[A-Z]{4}$/,
+    example: 'BBCA',
+    price: (f, n) => f.money(n),
+    value: (f, n) => `${f.money(n / 1e9)} bn`,
+  },
+  crypto: {
+    id: 'crypto',
+    rules: CRYPTO_RULES,
+    available: true,
+    fetch: fetchCryptoHistory,
+    index: 'BTC',
+    indexName: 'BTC',
+    list: CRYPTO_COINS,
+    listName: `Top ${CRYPTO_COINS.length}`,
+    symbol: COIN,
+    example: 'BTC',
+    price: usd,
+    value: (f, n) => `$${n.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })}`,
+  },
+}
 
 interface Result {
   symbol: string
@@ -34,89 +87,68 @@ type ScanRow = Result | { symbol: string; error: IdxError }
 interface Scan {
   rows: ScanRow[]
   running: boolean
-  ihsg?: Bar[]
+  index?: Bar[]
 }
 
-const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'idx-failed')
+const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'fetch-failed')
 const isResult = (r: ScanRow): r is Result => 'check' in r
 
-async function load(symbol: string): Promise<Result> {
-  const { name, bars } = await fetchHistory(symbol)
-  const check = checkSetup(bars)
+async function load(m: Market, symbol: string): Promise<Result> {
+  const { name, bars } = await m.fetch(symbol)
+  const check = checkSetup(bars, { rules: m.rules })
   if (!check) throw new IdxFetchError('not-found')
   return { symbol, name, bars, check }
 }
 
-// Kept outside React so the last check and scan survive page switches.
-let lastCheck: Load = { status: 'idle' }
-let lastScan: Scan | undefined
+// Kept outside React so the last check, scans and chosen market survive page switches.
+const lastCheck: Record<ScanMarket, Load> = { idx: { status: 'idle' }, crypto: { status: 'idle' } }
+const lastScan: Partial<Record<ScanMarket, Scan>> = {}
+const TAB_KEY = 'mercury.scanner.market'
+function initialMarket(): ScanMarket {
+  try {
+    if (localStorage.getItem(TAB_KEY) === 'crypto') return 'crypto'
+  } catch {
+    // Storage blocked: start on the default.
+  }
+  return IDX_AVAILABLE ? 'idx' : 'crypto'
+}
 
 export function Scanner() {
   const { t } = useI18n()
-  const [check, setCheckState] = useState(lastCheck)
-  const setCheck = (l: Load) => setCheckState((lastCheck = l))
-  const run = async (symbol: string) => {
-    setCheck({ status: 'loading' })
+  const [marketId, setMarketId] = useState(initialMarket)
+  const m = MARKETS[marketId]
+  const pick = (id: ScanMarket) => {
+    setMarketId(id)
     try {
-      setCheck({ status: 'done', ...(await load(symbol)) })
-    } catch (e) {
-      setCheck({ status: 'error', error: errorOf(e) })
-    }
-  }
-
-  const [scan, setScanState] = useState(lastScan)
-  const publish = (s: Scan) => setScanState((lastScan = s))
-  const startScan = async () => {
-    const rows: ScanRow[] = []
-    let ihsg: Bar[] | undefined
-    publish({ rows, running: true })
-    try {
-      ihsg = (await fetchHistory('^JKSE')).bars
+      localStorage.setItem(TAB_KEY, id)
     } catch {
-      // Mood falls back to breadth only.
-    }
-    let next = 0
-    // A few CLI calls at a time; the dev server caches each ticker until the close.
-    const worker = async () => {
-      while (next < LQ45.length) {
-        const symbol = LQ45[next++]
-        try {
-          rows.push(await load(symbol))
-        } catch (e) {
-          rows.push({ symbol, error: errorOf(e) })
-        }
-        publish({ rows: [...rows], running: true, ihsg })
-      }
-    }
-    await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
-    publish({ rows: [...rows], running: false, ihsg })
-    const ok = rows.filter(isResult)
-    if (ok.length) {
-      const date = ok.map((r) => r.bars[r.bars.length - 1].time).sort().at(-1)!
-      const pick = (f: (c: Check) => boolean) => ok.filter((r) => f(r.check)).map((r) => r.symbol).sort()
-      saveScanLog(recordScan(loadScanLog(), { date, passing: pick((c) => c.score === c.rules.length), inZone: pick((c) => c.zone === 'in') }))
+      // Storage blocked: the choice lasts this visit only.
     }
   }
-
-  // Opening the Scanner runs the LQ45 scan once per visit; after 16:30 WIB the dev server fetches the day's final bars.
-  useEffect(() => {
-    if (IDX_AVAILABLE && !lastScan) void startScan()
-  }, [])
-
-  const mood = useMemo(() => (scan && !scan.running ? idxMood(scan.ihsg ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined), [scan])
 
   return (
     <>
       <Card>
-        <h1 className="font-display text-5xl leading-none uppercase">{t('scan.title')}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-5xl leading-none uppercase">{t('scan.title')}</h1>
+          <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
+            {(['idx', 'crypto'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={id === marketId}
+                onClick={() => pick(id)}
+                className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${id === marketId ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
+              >
+                {t(`scan.market.${id}`)}
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="mt-2 text-sm text-text-muted">{t('scan.intro')}</p>
       </Card>
-      {IDX_AVAILABLE ? (
-        <>
-          <MoodCard mood={mood} running={!!scan?.running} />
-          <TickerCheck load={check} onCheck={run} mood={mood} />
-          <Lq45Scan scan={scan} onStart={() => void startScan()} onPick={(s) => void run(s)} />
-        </>
+      {m.available ? (
+        <MarketView key={m.id} m={m} />
       ) : (
         <Card>
           <p className="text-sm">{t('scan.localOnly')}</p>
@@ -126,16 +158,84 @@ export function Scanner() {
   )
 }
 
-function MoodCard({ mood, running }: { mood?: IdxMood; running: boolean }) {
+/** One market's mood, ticker check and scan. Keyed by market, so switching starts from that market's saved state. */
+function MarketView({ m }: { m: Market }) {
+  const [check, setCheckState] = useState(lastCheck[m.id])
+  const setCheck = (l: Load) => setCheckState((lastCheck[m.id] = l))
+  const run = async (symbol: string) => {
+    setCheck({ status: 'loading' })
+    try {
+      setCheck({ status: 'done', ...(await load(m, symbol)) })
+    } catch (e) {
+      setCheck({ status: 'error', error: errorOf(e) })
+    }
+  }
+
+  const [scan, setScanState] = useState(lastScan[m.id])
+  const publish = (s: Scan) => setScanState((lastScan[m.id] = s))
+  const startScan = async () => {
+    const rows: ScanRow[] = []
+    let index: Bar[] | undefined
+    publish({ rows, running: true })
+    try {
+      index = (await m.fetch(m.index)).bars
+    } catch {
+      // Mood falls back to breadth only.
+    }
+    let next = 0
+    // A few calls at a time; the dev server caches IDX tickers until the close.
+    const worker = async () => {
+      while (next < m.list.length) {
+        const symbol = m.list[next++]
+        try {
+          rows.push(await load(m, symbol))
+        } catch (e) {
+          rows.push({ symbol, error: errorOf(e) })
+        }
+        publish({ rows: [...rows], running: true, index })
+      }
+    }
+    await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
+    publish({ rows: [...rows], running: false, index })
+    const ok = rows.filter(isResult)
+    if (ok.length) {
+      const date = ok.map((r) => r.bars[r.bars.length - 1].time).sort().at(-1)!
+      const pick = (f: (c: Check) => boolean) => ok.filter((r) => f(r.check)).map((r) => r.symbol).sort()
+      saveScanLog(recordScan(loadScanLog(m.id), { date, passing: pick((c) => c.score === c.rules.length), inZone: pick((c) => c.zone === 'in') }), m.id)
+    }
+  }
+
+  // Opening a market runs its scan once per visit; after 16:30 WIB the dev server fetches the IDX day's final bars.
+  useEffect(() => {
+    if (!lastScan[m.id]) void startScan()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount; the component is keyed by market
+  }, [])
+
+  const mood = useMemo(() => (scan && !scan.running ? idxMood(scan.index ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined), [scan])
+
+  return (
+    <>
+      <MoodCard m={m} mood={mood} running={!!scan?.running} />
+      <TickerCheck m={m} load={check} onCheck={run} mood={mood} />
+      <ScanCard m={m} scan={scan} onStart={() => void startScan()} onPick={(s) => void run(s)} />
+    </>
+  )
+}
+
+/** Names used by the shared mood strings. */
+const moodVars = (m: Market) => ({ m: m.id === 'idx' ? 'IDX' : 'Crypto', u: m.listName, i: m.indexName })
+
+function MoodCard({ m, mood, running }: { m: Market; mood?: IdxMood; running: boolean }) {
   const { t, num } = useI18n()
-  const part = (v: number | undefined) => (v === undefined ? '—' : `${num(v)}/100`)
+  const v = moodVars(m)
+  const part = (x: number | undefined) => (x === undefined ? '—' : `${num(x)}/100`)
   return (
     <Card>
-      <CardTitle icon="heart" aside={t('mood.idx.source')}>
-        {t('mood.idx.title')}
+      <CardTitle icon="heart" aside={t('mood.idx.source', v)}>
+        {t('mood.idx.title', v)}
       </CardTitle>
       {!mood ? (
-        <p className="text-sm text-text-muted">{running ? t('mood.idx.waiting') : '—'}</p>
+        <p className="text-sm text-text-muted">{running ? t('mood.idx.waiting', v) : '—'}</p>
       ) : (
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
           <div>
@@ -144,17 +244,17 @@ function MoodCard({ mood, running }: { mood?: IdxMood; running: boolean }) {
           </div>
           <dl className="grid flex-1 grid-cols-1 gap-1 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.breadth')}</dt>
+              <dt className="text-xs text-text-muted">{t('mood.idx.breadth', v)}</dt>
               <dd className="font-mono">
                 {part(mood.breadth)} · {t('mood.idx.breadthNote', { n: mood.above, total: mood.counted })}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.trend')}</dt>
+              <dt className="text-xs text-text-muted">{t('mood.idx.trend', v)}</dt>
               <dd className="font-mono">{part(mood.trend)}</dd>
             </div>
             <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.calm')}</dt>
+              <dt className="text-xs text-text-muted">{t('mood.idx.calm', v)}</dt>
               <dd className="font-mono">{part(mood.calm)}</dd>
             </div>
           </dl>
@@ -165,19 +265,19 @@ function MoodCard({ mood, running }: { mood?: IdxMood; running: boolean }) {
   )
 }
 
-function ErrorText({ error }: { error: IdxError }) {
+function ErrorText({ m, error }: { m: Market; error: IdxError }) {
   const { t } = useI18n()
   return (
     <p role="alert" className="text-sm text-down">
-      {t(`scan.err.${error}` as Key)}
+      {error === 'bad-symbol' && m.id === 'crypto' ? t('scan.err.bad-coin') : t(`scan.err.${error}`)}
       {error === 'idx-missing' && <code className="ml-1 rounded bg-surface-2 px-1 font-mono text-text">npm install -g ihsg-cli</code>}
     </p>
   )
 }
 
-function TickerCheck({ load, onCheck, mood }: { load: Load; onCheck: (s: string) => Promise<void>; mood?: IdxMood }) {
+function TickerCheck({ m, load, onCheck, mood }: { m: Market; load: Load; onCheck: (s: string) => Promise<void>; mood?: IdxMood }) {
   const { t } = useI18n()
-  const [symbol, setSymbol] = useState(load.status === 'done' ? load.symbol : 'BBCA')
+  const [symbol, setSymbol] = useState(load.status === 'done' ? load.symbol : m.example)
   const submit = (e: FormEvent) => {
     e.preventDefault()
     void onCheck(symbol.trim().toUpperCase())
@@ -190,8 +290,8 @@ function TickerCheck({ load, onCheck, mood }: { load: Load; onCheck: (s: string)
           aria-label={t('scan.ticker')}
           value={symbol}
           onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          maxLength={4}
-          pattern="[A-Za-z]{4}"
+          maxLength={m.id === 'idx' ? 4 : 10}
+          pattern={m.symbol.source.slice(1, -1)}
           required
           className={`${fieldClass} max-w-32 font-mono uppercase`}
         />
@@ -199,25 +299,27 @@ function TickerCheck({ load, onCheck, mood }: { load: Load; onCheck: (s: string)
           {load.status === 'loading' ? t('scan.loading') : t('scan.run')}
         </Button>
       </form>
-      {load.status === 'error' && <ErrorText error={load.error} />}
-      {load.status === 'done' && <CheckResult r={load} mood={mood} />}
+      {load.status === 'error' && <ErrorText m={m} error={load.error} />}
+      {load.status === 'done' && <CheckResult m={m} r={load} mood={mood} />}
     </Card>
   )
 }
 
-function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
-  const { t, num, money, day } = useI18n()
+function CheckResult({ m, r, mood }: { m: Market; r: Result; mood?: IdxMood }) {
+  const f = useI18n()
+  const { t, num, day } = f
+  const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
   const c = r.check
   const last = r.bars[r.bars.length - 1].time
   const timeStop = new Date(`${last}T00:00:00Z`)
   timeStop.setUTCDate(timeStop.getUTCDate() + TIME_STOP_DAYS)
-  const bt = useMemo(() => backtest(r.bars), [r.bars])
+  const bt = useMemo(() => backtest(r.bars, m.rules), [r.bars, m.rules])
   const detail: Record<Rule['id'], string> = {
     weeklyTrend: t('rule.weeklyTrend.d'),
-    ma50over200: c.ma50 !== undefined && c.ma200 !== undefined ? `MA50 ${num(c.ma50)} · MA200 ${num(c.ma200)}` : t('rule.short'),
-    closeOverMa50: c.ma50 !== undefined ? `${num(c.close)} vs ${num(c.ma50)}` : t('rule.short'),
+    ma50over200: c.ma50 !== undefined && c.ma200 !== undefined ? `MA50 ${price(c.ma50)} · MA200 ${price(c.ma200)}` : t('rule.short'),
+    closeOverMa50: c.ma50 !== undefined ? `${price(c.close)} vs ${price(c.ma50)}` : t('rule.short'),
     macdCross: c.crossAgo !== undefined ? t('rule.macdCross.ago', { n: c.crossAgo }) : t('rule.macdCross.none', { n: CROSS_LOOKBACK }),
-    liquidity: t('rule.liquidity.d', { v: money(c.avgValue / 1e9) + ' bn', min: money(MIN_VALUE / 1e9) + ' bn' }),
+    liquidity: t('rule.liquidity.d', { v: m.value(f, c.avgValue), min: m.value(f, m.rules.minValue) }),
   }
   const years = Math.round((Date.parse(last) - Date.parse(r.bars[0].time)) / (365.25 * 864e5))
 
@@ -227,7 +329,7 @@ function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
         <div>
           <div className="font-display text-4xl leading-none">{r.symbol}</div>
           <div className="text-sm text-text-muted">
-            {r.name} · {money(c.close)} · {day(last)}
+            {r.name} · {price(c.close)} · {day(last)}
           </div>
         </div>
         <div className="text-right">
@@ -240,7 +342,7 @@ function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
 
       {mood?.light === 'red' && c.zone !== 'none' && (
         <p role="status" className="rounded-md border border-down px-3 py-2 text-sm text-down">
-          {t('mood.idx.redWarning')}
+          {t('mood.idx.redWarning', moodVars(m))}
         </p>
       )}
 
@@ -250,7 +352,7 @@ function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
             <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${rule.pass ? 'text-up' : rule.pass === false ? 'text-down' : 'text-text-muted'}`}>
               {rule.pass ? `✓ ${t('rule.pass')}` : rule.pass === false ? `✗ ${t('rule.fail')}` : `? ${t('rule.unknown')}`}
             </span>
-            <span className="flex-1">{t(`rule.${rule.id}` as Key)}</span>
+            <span className="flex-1">{t(`rule.${rule.id}`)}</span>
             <span className="w-full pl-[4.25rem] font-mono text-xs text-text-muted sm:w-auto sm:pl-0">{detail[rule.id]}</span>
           </li>
         ))}
@@ -259,12 +361,12 @@ function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <Stat
           label={t('scan.buyZone')}
-          value={c.buyZone ? `${money(c.buyZone.low)}–${num(c.buyZone.high)}` : '—'}
-          note={c.zone === 'extended' ? t('scan.zone.extended', { p: money(c.entry) }) : t(`scan.zone.${c.zone}`)}
+          value={c.buyZone ? `${price(c.buyZone.low)}–${price(c.buyZone.high)}` : '—'}
+          note={c.zone === 'extended' ? t('scan.zone.extended', { p: price(c.entry) }) : t(`scan.zone.${c.zone}`)}
         />
-        <Stat label={t('scan.stop')} value={c.stop !== undefined ? money(c.stop) : '—'} note={c.risk !== undefined ? `−${num((c.risk / c.entry) * 100, 1)}% · ${t('scan.stopRule')}` : undefined} />
-        <Stat label={t('scan.target2')} value={c.target2 !== undefined ? money(c.target2) : '—'} note={c.target2 !== undefined ? t('scan.fromEntry', { p: money(c.entry) }) : undefined} />
-        <Stat label={t('scan.target3')} value={c.target3 !== undefined ? money(c.target3) : '—'} />
+        <Stat label={t('scan.stop')} value={price(c.stop)} note={c.risk !== undefined ? `−${num((c.risk / c.entry) * 100, 1)}% · ${t('scan.stopRule')}` : undefined} />
+        <Stat label={t('scan.target2')} value={price(c.target2)} note={c.target2 !== undefined ? t('scan.fromEntry', { p: price(c.entry) }) : undefined} />
+        <Stat label={t('scan.target3')} value={price(c.target3)} />
         <Stat label={t('scan.timeStop')} value={day(timeStop.toISOString().slice(0, 10))} note={t('scan.timeStopNote')} />
       </div>
 
@@ -283,35 +385,41 @@ function CheckResult({ r, mood }: { r: Result; mood?: IdxMood }) {
             {t('bt.rules')}
           </p>
         </div>
-        <PaperTrade r={r} />
+        <PaperTrade m={m} r={r} />
       </div>
 
-      <PriceChart bars={r.bars} check={c} label={t('scan.chartLabel', { s: r.symbol })} />
-      <p className="text-xs text-text-muted">{t('scan.backtestLater')}</p>
+      <PriceChart bars={r.bars} check={c} label={t('scan.chartLabel', { s: r.symbol })} step={m.rules.step(c.close)} />
+      {m.id === 'idx' && <p className="text-xs text-text-muted">{t('scan.backtestLater')}</p>}
     </div>
   )
 }
 
 /** Adds the setup to Portfolio → Trading as a paper trade, sized so a stop-out loses the per-trade risk limit. */
-function PaperTrade({ r }: { r: Result }) {
-  const { t, money, num } = useI18n()
+function PaperTrade({ m, r }: { m: Market; r: Result }) {
+  const f = useI18n()
+  const { t, num, qty } = f
   const { netWorth } = useSummary()
   const tradeLimit = useSettings((s) => s.tradeLimit)
+  const usdIdr = useSettings((s) => s.usdIdr)
   const addHolding = useStore((s) => s.addHolding)
   const addTransaction = useStore((s) => s.addTransaction)
   const c = r.check
-  const units = c.stop !== undefined ? positionSize({ capital: netWorth, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: IDX_LOT }) : 0
-  const why = c.zone !== 'in' ? t('paper.notInZone') : units === 0 ? t('paper.tooSmall') : undefined
+  const crypto = m.id === 'crypto'
+  // Net worth is in rupiah; crypto prices are in USDT (≈ USD), so convert the capital first.
+  const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
+  const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
+  const why = c.zone !== 'in' ? t('paper.notInZone') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
+  const p = m.price(f, c.entry)
 
   const add = () => {
     const now = new Date().toISOString()
     const id = addHolding({
-      assetClass: 'idx_stock',
+      assetClass: crypto ? 'crypto' : 'idx_stock',
       group: 'trading',
       symbol: r.symbol,
       name: r.name,
       platform: 'Paper',
-      currency: 'IDR',
+      currency: crypto ? 'USD' : 'IDR',
       paper: true,
       stop: c.stop,
       target: c.target2,
@@ -328,7 +436,9 @@ function PaperTrade({ r }: { r: Result }) {
       <Button onClick={add} disabled={!!why} className={primary}>
         {t('paper.button')}
       </Button>
-      <span className="text-xs text-text-muted">{why ?? t('paper.size', { lots: num(units / IDX_LOT), p: money(c.entry), risk: tradeLimit })}</span>
+      <span className="text-xs text-text-muted">
+        {why ?? (crypto ? t('paper.sizeCoin', { q: qty(units), s: r.symbol, p, risk: tradeLimit }) : t('paper.size', { lots: num(units / IDX_LOT), p, risk: tradeLimit }))}
+      </span>
     </div>
   )
 }
@@ -343,27 +453,31 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
   )
 }
 
-function Lq45Scan({ scan, onStart, onPick }: { scan?: Scan; onStart: () => void; onPick: (s: string) => void }) {
-  const { t, money, num, day } = useI18n()
+function ScanCard({ m, scan, onStart, onPick }: { m: Market; scan?: Scan; onStart: () => void; onPick: (s: string) => void }) {
+  const f = useI18n()
+  const { t, day } = f
+  const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
   const ok = (scan?.rows.filter(isResult) ?? []).sort((a, b) => b.check.score - a.check.score || a.symbol.localeCompare(b.symbol))
   const failed = scan?.rows.filter((r) => !isResult(r)) ?? []
   const passing = ok.filter((r) => r.check.score === r.check.rules.length).length
   const missing = failed.find((r) => 'error' in r && r.error === 'idx-missing')
-  const changes = scan && !scan.running ? scanChanges(loadScanLog()) : undefined
+  const changes = scan && !scan.running ? scanChanges(loadScanLog(m.id)) : undefined
   const list = (xs: string[]) => (xs.length ? xs.join(', ') : '—')
+  const u = { u: m.listName }
+  const columns: Key[] = ['scan.ticker', 'scan.score', 'scan.close', 'scan.buyZone', 'scan.stop', 'scan.target2']
 
   return (
     <Card>
-      <CardTitle icon="star" aside={scan && t('scan.progress', { n: scan.rows.length, total: LQ45.length })}>
-        {t('scan.lq45')}
+      <CardTitle icon="star" aside={scan && t('scan.progress', { n: scan.rows.length, total: m.list.length })}>
+        {t('scan.lq45', u)}
       </CardTitle>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Button onClick={onStart} disabled={scan?.running} className={primary}>
-          {scan?.running ? t('scan.loading') : t('scan.runAll')}
+          {scan?.running ? t('scan.loading') : t('scan.runAll', u)}
         </Button>
         {scan && <span className="text-sm">{t('scan.passing', { n: passing })}</span>}
       </div>
-      {missing && 'error' in missing && <ErrorText error={missing.error} />}
+      {missing && 'error' in missing && <ErrorText m={m} error={missing.error} />}
       {changes && (
         <div className="mb-3 rounded-md bg-surface-2 px-3 py-2 text-sm">
           <Label>{t('scan.changes', { d: day(changes.since) })}</Label>
@@ -382,9 +496,9 @@ function Lq45Scan({ scan, onStart, onPick }: { scan?: Scan; onStart: () => void;
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left">
               <tr>
-                {['scan.ticker', 'scan.score', 'scan.close', 'scan.buyZone', 'scan.stop', 'scan.target2'].map((k) => (
+                {columns.map((k) => (
                   <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal text-text-muted uppercase">
-                    {t(k as Key)}
+                    {t(k)}
                   </th>
                 ))}
               </tr>
@@ -400,13 +514,13 @@ function Lq45Scan({ scan, onStart, onPick }: { scan?: Scan; onStart: () => void;
                   <td className="px-2 py-1.5 font-mono">
                     {r.check.score}/{r.check.rules.length} {r.check.score === r.check.rules.length && <Badge tone="paper">{t('scan.pass')}</Badge>}
                   </td>
-                  <td className="px-2 py-1.5 font-mono">{money(r.check.close)}</td>
+                  <td className="px-2 py-1.5 font-mono">{price(r.check.close)}</td>
                   <td className="px-2 py-1.5 font-mono whitespace-nowrap">
-                    {r.check.buyZone ? `${money(r.check.buyZone.low)}–${num(r.check.buyZone.high)} ` : '—'}
+                    {r.check.buyZone ? `${price(r.check.buyZone.low)}–${price(r.check.buyZone.high)} ` : '—'}
                     {r.check.zone !== 'none' && <Badge tone={r.check.zone === 'in' ? 'paper' : 'warn'}>{t(`scan.badge.${r.check.zone}`)}</Badge>}
                   </td>
-                  <td className="px-2 py-1.5 font-mono">{r.check.stop !== undefined ? money(r.check.stop) : '—'}</td>
-                  <td className="px-2 py-1.5 font-mono">{r.check.target2 !== undefined ? money(r.check.target2) : '—'}</td>
+                  <td className="px-2 py-1.5 font-mono">{price(r.check.stop)}</td>
+                  <td className="px-2 py-1.5 font-mono">{price(r.check.target2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -414,7 +528,7 @@ function Lq45Scan({ scan, onStart, onPick }: { scan?: Scan; onStart: () => void;
         </div>
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
-      <p className="mt-3 text-xs text-text-muted">{t('scan.listSource')}</p>
+      <p className="mt-3 text-xs text-text-muted">{m.id === 'idx' ? t('scan.listSource') : t('scan.listSource.crypto')}</p>
     </Card>
   )
 }

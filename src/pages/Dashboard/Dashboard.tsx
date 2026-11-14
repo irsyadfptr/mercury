@@ -379,15 +379,17 @@ function describeQuest(q: Quest, f: I18n): QuestView {
   }
 }
 
-/** New setups from the last LQ45 scan vs the one before (the Scanner records them). */
+/** New setups from each market's last scan vs the one before (the Scanner records them). */
 function scanAlerts(f: I18n): QuestView[] {
-  const c = scanChanges(loadScanLog())
-  if (!c) return []
-  const tag = f.day(c.date)
-  return [
-    ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: 'scanner' as const }] : []),
-    ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: 'scanner' as const }] : []),
-  ]
+  return (['idx', 'crypto'] as const).flatMap((m) => {
+    const c = scanChanges(loadScanLog(m))
+    if (!c) return []
+    const tag = f.day(c.date)
+    return [
+      ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: 'scanner' as const }] : []),
+      ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: 'scanner' as const }] : []),
+    ]
+  })
 }
 
 function Quests({ summary }: { summary: Summary }) {

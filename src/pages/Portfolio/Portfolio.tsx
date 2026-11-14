@@ -81,7 +81,7 @@ function HoldingRows({ rows, onEdit }: HoldingRowsProps) {
 }
 
 function HoldingRow({ row, onEdit }: HoldingRowProps) {
-  const { t, money, change } = useI18n()
+  const { t, money, change, qty } = useI18n()
   const { holding: h, v, risk, daysHeld } = row
   const r = rarity(daysHeld)
   const closed = v.quantity === 0
@@ -102,7 +102,7 @@ function HoldingRow({ row, onEdit }: HoldingRowProps) {
         <span className="flex flex-wrap items-center gap-1.5 font-label text-[11px] text-text-muted uppercase">
           <span style={{ color: RARITY_COLOR[r] }}>{t(`rarity.${r}`)}</span>· {t('pf.days', { d: daysHeld })}
           {h.platform && <>· {h.platform}</>}
-          {h.stop != null && <>· stop {money(h.stop)}</>}
+          {h.stop != null && <>· stop {h.currency === 'USD' ? `$${qty(h.stop)}` : money(h.stop)}</>}
           {h.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
           {risk.kind === 'noStop' && <Badge tone="warn">{t('badge.noStop')}</Badge>}
           {v.priceSource === 'cost' && !closed && <Badge tone="neutral">{t('pf.atCost')}</Badge>}

@@ -12,8 +12,8 @@ function tokenColor(name: string): string {
   return `rgb(${r}, ${g}, ${b})`
 }
 
-/** Daily candles (last year) with MA50/MA200 and the suggested stop and targets as dashed lines. */
-export function PriceChart({ bars, check, label }: { bars: Bar[]; check: Check; label: string }) {
+/** Daily candles (last year) with MA50/MA200, the buy zone, and the stop and targets as dashed lines. `step` = the price step, for the axis decimals. */
+export function PriceChart({ bars, check, label, step }: { bars: Bar[]; check: Check; label: string; step: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useSettings((s) => s.theme)
 
@@ -28,7 +28,7 @@ export function PriceChart({ bars, check, label }: { bars: Bar[]; check: Check; 
       rightPriceScale: { borderColor: border },
       timeScale: { borderColor: border },
     })
-    const candles = chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down, priceFormat: { type: 'price', precision: 0, minMove: 1 },
+    const candles = chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down, priceFormat: { type: 'price', precision: Math.max(0, -Math.floor(Math.log10(step))), minMove: step },
       // Stretch the price axis so the stop and 3R target lines are always in view.
       autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
         const r = base()
@@ -72,7 +72,7 @@ export function PriceChart({ bars, check, label }: { bars: Bar[]; check: Check; 
     // Show the last year; MA200 still uses the full two years behind it.
     if (bars.length > 250) chart.timeScale().setVisibleLogicalRange({ from: bars.length - 250, to: bars.length })
     return () => chart.remove()
-  }, [bars, check, theme])
+  }, [bars, check, theme, step])
 
   return <div ref={ref} role="img" aria-label={label} className="h-[320px] w-full" />
 }

@@ -35,17 +35,18 @@ export function scanChanges(log: ScanLog) {
   }
 }
 
-const KEY = 'mercury.scanLog'
-export function loadScanLog(): ScanLog {
+export type ScanMarket = 'idx' | 'crypto'
+const key = (m: ScanMarket) => (m === 'idx' ? 'mercury.scanLog' : 'mercury.scanLog.crypto')
+export function loadScanLog(market: ScanMarket = 'idx'): ScanLog {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as ScanLog
+    return JSON.parse(localStorage.getItem(key(market)) ?? '{}') as ScanLog
   } catch {
     return {}
   }
 }
-export function saveScanLog(log: ScanLog) {
+export function saveScanLog(log: ScanLog, market: ScanMarket = 'idx') {
   try {
-    localStorage.setItem(KEY, JSON.stringify(log))
+    localStorage.setItem(key(market), JSON.stringify(log))
   } catch {
     // Storage blocked: changes just won't show next time.
   }
