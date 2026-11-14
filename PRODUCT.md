@@ -32,7 +32,7 @@ Code calculates every number (prices, indicators, scores, risk). AI only reads, 
 
 - Pages: Dashboard, Portfolio (Investing / Trading groups), Scanner, Ticker check, Journal. See NOTES.md for build order.
 - UI text in English and Bahasa Indonesia, switchable, from day one.
-- Undecided: US stocks/ETF data source; whether idx prices are split/dividend-adjusted.
+- Undecided: US stocks/ETF data source.
 
 ## Evidence on Hand
 

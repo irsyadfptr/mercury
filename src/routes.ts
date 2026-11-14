@@ -1,8 +1,8 @@
 import type { Route } from '@/types'
 
-export const ROUTES = ['dashboard', 'portfolio', 'cashflow', 'settings', 'add'] as const
+export const ROUTES = ['dashboard', 'portfolio', 'scanner', 'cashflow', 'settings', 'add'] as const
 /** Shown in the top menu. Quick add is reached from Cashflow or the home-screen shortcut. */
-export const NAV_ROUTES: readonly Route[] = ['dashboard', 'portfolio', 'cashflow', 'settings']
+export const NAV_ROUTES: readonly Route[] = ['dashboard', 'portfolio', 'scanner', 'cashflow', 'settings']
 
 /** '#/portfolio' → 'portfolio'; anything unknown → 'dashboard'. */
 export function parseRoute(hash: string): Route {

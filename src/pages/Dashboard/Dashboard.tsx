@@ -3,6 +3,7 @@ import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
+import { loadScanLog, scanChanges } from '@/market/scanLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
@@ -378,12 +379,23 @@ function describeQuest(q: Quest, f: I18n): QuestView {
   }
 }
 
+/** New setups from the last LQ45 scan vs the one before (the Scanner records them). */
+function scanAlerts(f: I18n): QuestView[] {
+  const c = scanChanges(loadScanLog())
+  if (!c) return []
+  const tag = f.day(c.date)
+  return [
+    ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: 'scanner' as const }] : []),
+    ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: 'scanner' as const }] : []),
+  ]
+}
+
 function Quests({ summary }: { summary: Summary }) {
   const f = useI18n()
   const tradeLimit = useSettings((x) => x.tradeLimit)
   const lastExportAt = useSettings((x) => x.lastExportAt)
   const now = useNow()
-  const list = quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f))
+  const list = [...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f)]
 
   return (
     <Card aria-label={f.t('quests.title')}>

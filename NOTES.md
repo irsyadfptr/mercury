@@ -5,7 +5,7 @@ Personal AI-assisted app for investing and swing trading. Started 2026-11-09.
 ## Decisions so far
 
 - **Users:** personal use, laptop only, runs on localhost. Later: a public deploy without a backend, where each user brings their own API keys (BYOK).
-- **Trading style:** swing / position trades held **3–6 months**. Not day trading.
+- **Trading style:** swing / position trades held **3–6 months**, plus **daily trades** (decided 2026-11-14, paper first), and long-term investing checked by fundamentals. Astrology is display only, never part of a score.
 - **AI:** built into the app through the API (BYOK), not as Claude skills.
 - **Rule:** code calculates every number (prices, indicators, scores, risk). AI only reads, summarises and explains. No AI-made "buy %".
 - **Storage:** browser localStorage, with JSON export/import from day one. Each deployed user's data stays in their own browser.
@@ -97,9 +97,27 @@ Source: IDX press release 2734 (https://www.idx.co.id/en/news/press-release/2734
 
 - **CoinGecko from the browser:** works with the user's own Demo key (confirmed by the user's earlier crypto portfolio project).
 - **idx scope:** idx is used only for IDX stocks. US stocks/ETFs need another data source (TBD).
+- **idx price adjustment (2026-11-13, from the idx docs, not yet seen on a real run):** history comes from Yahoo Finance `v8/finance/chart`. Each candle has `open/high/low/close` plus `adj_close` ("when the source supplies split/dividend adjusted closes"). Yahoo's chart `close` is normally split-adjusted but not dividend-adjusted; `adj_close` is both. The scanner uses the plain OHLC, so it matches what Stockbit shows; dividend drops are not smoothed out.
+- **UMA notices, tick sizes, ARA/ARB:** not in the idx docs. Hardcode them in config when needed.
+
+## idx CLI (step 3)
+
+- Rust binary, package `ihsg-cli`, command `idx`. Install: `npm install -g ihsg-cli` (downloads the prebuilt binary on first run), or the Windows zip `idx-<version>-x86_64-pc-windows-msvc.zip` from the GitHub releases page, or `cargo install --locked ihsg-cli`. Not installed on this laptop as of 2026-11-13.
+- The dev server runs `idx` from PATH; set `IDX_BIN` to a full path (e.g. a downloaded `idx.exe`) to use another one.
+- Used command: `idx -q -o json stocks history BBCA --period 2y --interval 1d` → `idx.history.v1` JSON, `data.candles[]` oldest first, `time` like `2025-10-13T09:00:00+07:00`. Exit codes: 2 usage, 3 network, 4 not found, 5 offline cache miss.
+- Other useful commands for later: `stocks quote BBCA,BBRI`, `market indices LQ45` (index constituents, shape not checked), `stocks dividends`, `stocks actions`.
+- Endpoint: `GET /api/idx/history?symbol=BBCA` (idxPlugin.ts, dev server only). Cached in memory per WIB day.
+- Weekly trend is computed from the daily bars (weeks from Monday), so one CLI call per ticker.
+- Checklist (src/market/indicators.ts): weekly close above a rising 30-week MA; daily MA50 > MA200; close > MA50; MACD(12,26,9) bullish cross in the last 5 bars and still above signal; average traded value over 20 days ≥ Rp5 bn. Buy zone = MA50 to MA50 + 2× ATR, shown only when the three trend rules pass; above it the price is "extended" (wait for a pullback). Entry = the close, capped at the top of the buy zone. Stop = 20-bar low − Rp1 (only if below the entry), but never more than 3× ATR(14) below the entry. Targets 2R and 3R from the entry. Time stop 8 weeks.
+- History is fetched for 5 years (`--period 5y`) so the backtest has enough signals. IHSG is `^JKSE`. The dev-server cache is per WIB day, split at 16:30, so a fetch during market hours is redone once the day's final bar exists.
+- Backtest (src/market/backtest.ts): replays the checklist on every past day (signal = all 5 rules pass and the price is in the buy zone at the close; buy at the next day's open, skipped if that open is already at or below the stop). Exits at the first of stop, 2R target (from the actual fill) or 40 trading days. A gap through the stop or target sells at the open, so losses can be worse than −1R. One trade at a time, no fees; a bar touching both stop and target counts as a stop.
+- IDX mood (src/market/mood.ts): average of % of LQ45 above MA50, IHSG vs MA50/MA200 (0/50/100) and IHSG calm (20-day vs 250-day volatility). < 35 Defensive, < 65 Careful, else Healthy. Foreign flow is left out because idx.co.id often blocks it (Cloudflare). First real reading, 2026-11-13: 23 Defensive.
+- The Scanner runs the LQ45 scan by itself when opened, and remembers the last two price dates in localStorage to show what started or stopped passing. It only runs while the dev server and app are open; a run with the laptop idle would need Windows Task Scheduler.
+- **LQ45 membership can't come from idx:** `market indices` returns only the number of constituents, not the tickers. Keep src/market/lq45.ts by hand and check it against idx.co.id after each February and August review.
+- Not done yet: tick-size rounding, ARB warning, foreign flow in the mood, fundamental scanner (`idx stocks screen`), bandarmology (IPOT broker summary was down on 2026-11-14, a Saturday).
 
 ## Open questions
 
 - Data source for US stocks/ETFs.
-- Are idx's price histories adjusted for splits and dividends?
-- UMA notices and tick sizes (fraksi harga): does idx have them, or do we hardcode them like ARA/ARB?
+- Tick sizes (fraksi harga): hardcode them in config like ARA/ARB (idx doesn't provide them), then round stops to them.
+- Confirm on a real run that idx's `close` is split-adjusted (see "idx CLI" below).
