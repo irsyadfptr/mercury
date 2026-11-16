@@ -28,17 +28,19 @@ import type { QuestView, StatTile } from './Dashboard.types'
 
 export function Dashboard() {
   const summary = useSummary()
-  if (!summary.rows.length) return <EmptyDashboard />
+  // Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
+  const hasHoldings = summary.rows.length > 0
   return (
     <>
       <Hero summary={summary} />
       <MonthCard />
+      {!hasHoldings && <EmptyDashboard />}
       <div className="flex flex-wrap gap-4">
-        <HeatCard heat={summary.heat} />
-        <TradeRisk rows={summary.rows} />
+        {hasHoldings && <HeatCard heat={summary.heat} />}
+        {hasHoldings && <TradeRisk rows={summary.rows} />}
         <MoodCard />
       </div>
-      <Inventory summary={summary} />
+      {hasHoldings && <Inventory summary={summary} />}
       <Quests summary={summary} />
     </>
   )
@@ -47,9 +49,9 @@ export function Dashboard() {
 function EmptyDashboard() {
   const { t } = useI18n()
   return (
-    <Card className="flex flex-col items-center gap-3 py-16 text-center">
-      <PixelIcon name="chest" size={48} />
-      <h1 className="font-display text-4xl leading-none uppercase">{t('empty.title')}</h1>
+    <Card className="flex flex-col items-center gap-3 py-8 text-center">
+      <PixelIcon name="chest" size={40} />
+      <h2 className="font-display text-3xl leading-none uppercase">{t('empty.title')}</h2>
       <p className="text-text-muted">{t('empty.body')}</p>
       <a href={href('portfolio')} className="font-label text-xs text-accent-text uppercase underline underline-offset-4">
         {t('pf.add')}
