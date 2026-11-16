@@ -9,6 +9,7 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
     (set) => ({
       synced: [],
       pending: [],
+      deleted: [],
       skippedRows: 0,
       customCategories: [],
       accounts: [DEFAULT_ACCOUNT],
@@ -25,11 +26,19 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
         set((s) => ({ pending: [...s.pending, { ...e, id, createdAt: new Date().toISOString() }] }))
         return id
       },
-      removePending: (id) => set((s) => ({ pending: s.pending.filter((e) => e.id !== id) })),
+      // Unsynced: just drop it. Synced: hide it now and queue the Sheet row for deletion at the next sync.
+      removeEntry: (id) =>
+        set((s) =>
+          s.pending.some((e) => e.id === id)
+            ? { pending: s.pending.filter((e) => e.id !== id) }
+            : { synced: s.synced.filter((e) => e.id !== id), deleted: [...s.deleted, id] },
+        ),
       applySync: (r) =>
         set((s) => ({
           spreadsheetId: r.spreadsheetId,
-          synced: r.synced,
+          // A delete tapped while the sync ran is still queued: keep it hidden.
+          synced: r.synced.filter((e) => !s.deleted.includes(e.id)),
+          deleted: s.deleted.filter((id) => !r.deletedIds.includes(id)),
           // Merge again: an account edited while the sync ran is newer and wins.
           accounts: mergeAccounts(s.accounts, r.accounts),
           pending: s.pending.filter((e) => !r.sentIds.includes(e.id)),
@@ -40,18 +49,19 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
     }),
     {
       name: 'mercury.cashflow',
-      partialize: ({ spreadsheetId, synced, pending, lastSyncAt, skippedRows, customCategories, accounts }): CashflowData => ({
+      partialize: ({ spreadsheetId, synced, pending, deleted, lastSyncAt, skippedRows, customCategories, accounts }): CashflowData => ({
         spreadsheetId,
         synced,
         pending,
+        deleted,
         lastSyncAt,
         skippedRows,
         customCategories,
         accounts,
       }),
-      // v1 stores had no customCategories; v1–2 had no accounts.
-      migrate: (state) => ({ customCategories: [], accounts: [DEFAULT_ACCOUNT], ...(state as Partial<CashflowData>) }) as CashflowData,
-      version: 3,
+      // v1 stores had no customCategories; v1–2 no accounts; v1–3 no delete queue.
+      migrate: (state) => ({ customCategories: [], accounts: [DEFAULT_ACCOUNT], deleted: [], ...(state as Partial<CashflowData>) }) as CashflowData,
+      version: 4,
     },
   ),
 )

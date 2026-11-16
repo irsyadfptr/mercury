@@ -265,4 +265,6 @@ export interface VoiceDraft {
 export interface ParsedRows {
   entries: CashEntry[]
   skipped: number
+  /** Rows that were given a new id and/or createdAt; row = index in the rows passed in. */
+  filled: { row: number; id: string; createdAt: string }[]
 }

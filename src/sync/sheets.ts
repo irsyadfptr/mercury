@@ -100,6 +100,26 @@ export async function replaceTabs(token: string, spreadsheetId: string, data: Pa
   await call(token, `${API}/${spreadsheetId}/values:batchUpdate`, { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data: writes }) })
 }
 
+/** Writes single cells or ranges, e.g. ids filled into rows typed by hand. */
+export async function writeCells(token: string, spreadsheetId: string, data: { range: string; values: Cell[][] }[]): Promise<void> {
+  if (!data.length) return
+  await call(token, `${API}/${spreadsheetId}/values:batchUpdate`, { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data }) })
+}
+
+/**
+ * Deletes whole rows of a tab. rows = 0-based sheet row indexes (0 = header), found in the read just before.
+ * shortcut: a row inserted by hand in the Sheet between that read and this call shifts rows; lock by id with a Sheets developer-metadata filter if that ever bites.
+ */
+export async function deleteRows(token: string, spreadsheetId: string, tab: TabName, rows: readonly number[]): Promise<void> {
+  if (!rows.length) return
+  const meta = await call<{ sheets?: { properties: { sheetId: number; title: string } }[] }>(token, `${API}/${spreadsheetId}?fields=sheets.properties(sheetId,title)`)
+  const sheetId = meta.sheets?.find((s) => s.properties.title === tab)?.properties.sheetId
+  if (sheetId === undefined) return
+  // Bottom first, so earlier deletes do not move the rows still to delete.
+  const requests = [...rows].sort((a, b) => b - a).map((r) => ({ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: r, endIndex: r + 1 } } }))
+  await call(token, `${API}/${spreadsheetId}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests }) })
+}
+
 /** Meta tab as a key → value map. */
 export const metaFromRows = (rows: readonly unknown[][]): Record<string, string> => Object.fromEntries(rows.filter((r) => r[0]).map((r) => [String(r[0]), String(r[1] ?? '')]))
 

@@ -64,6 +64,31 @@ describe('sync helpers', () => {
   })
 })
 
+describe('rows typed by hand in the Sheet', () => {
+  it('fills a missing id and createdAt, reads Sheets date numbers, any case', () => {
+    const r = rowsToEntries(
+      [
+        ['', 46342, 'Expense', 25000, 'Food', 'lunch'], // 46342 = 2026-11-16 as Sheets stores a typed date
+        ['', '16/11/2026', 'income', '1.000.000', 'salary', '', '', 'BCA'],
+        ['keep', '2026-11-16', 'expense', 5000, 'otherincome', '', '2026-11-16T01:00:00.000Z'],
+      ],
+      { newId: () => 'new', now: '2026-11-16T10:00:00.000Z' },
+    )
+    expect(r.skipped).toBe(0)
+    expect(r.entries[0]).toEqual({ id: 'new', date: '2026-11-16', type: 'expense', amount: 25000, category: 'food', note: 'lunch', createdAt: '2026-11-16T10:00:00.000Z' })
+    expect(r.entries[1]).toMatchObject({ date: '2026-11-16', amount: 1_000_000, account: 'BCA' })
+    expect(r.entries[2].category).toBe('otherIncome')
+    expect(r.filled).toEqual([
+      { row: 0, id: 'new', createdAt: '2026-11-16T10:00:00.000Z' },
+      { row: 1, id: 'new', createdAt: '2026-11-16T10:00:00.000Z' },
+    ])
+  })
+
+  it('without fill, rows missing an id are skipped as before', () => {
+    expect(rowsToEntries([['', '2026-11-16', 'expense', 1, 'food']]).skipped).toBe(1)
+  })
+})
+
 describe('custom categories', () => {
   it('lists built-ins, then custom from this device and from entries, deduped', () => {
     const custom = [

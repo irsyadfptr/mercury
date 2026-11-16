@@ -9,7 +9,7 @@ import { entryToRow, rowsToEntries } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 import { useStore } from '@/store'
 import type { PortfolioData } from '@/types'
-import { appendRows, createSpreadsheet, ensureTabs, metaFromRows, readTabs, replaceTabs, SheetsError, TABS } from './sheets'
+import { appendRows, createSpreadsheet, deleteRows, ensureTabs, metaFromRows, readTabs, replaceTabs, SheetsError, TABS, writeCells } from './sheets'
 
 export const SHEET_TITLE = 'Mercury Cashflow'
 const PORTFOLIO_UPDATED_AT = 'portfolioUpdatedAt'
@@ -39,13 +39,25 @@ async function spreadsheet(token: string, linked: string | undefined): Promise<s
 async function run(token: string): Promise<void> {
   // Edits made while this pass runs are newer than startedAt, so they stay "unsynced" for the next pass.
   const startedAt = new Date().toISOString()
-  const { spreadsheetId: linked, pending, accounts: localAccounts } = useCashflow.getState()
+  const { spreadsheetId: linked, pending, accounts: localAccounts, deleted } = useCashflow.getState()
   const spreadsheetId = await spreadsheet(token, linked)
 
   await appendRows(token, spreadsheetId, TABS.entries, pending.map(entryToRow))
   const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.accounts, TABS.meta])
 
-  const cash = rowsToEntries(tabs.Entries)
+  // Rows typed by hand without id / createdAt get them now, written back so the id stays put. Data rows start at sheet row 2.
+  const cash = rowsToEntries(tabs.Entries, { newId: () => crypto.randomUUID(), now: startedAt })
+  await writeCells(
+    token,
+    spreadsheetId,
+    cash.filled.flatMap((f) => [
+      { range: `${TABS.entries}!A${f.row + 2}`, values: [[f.id]] },
+      { range: `${TABS.entries}!G${f.row + 2}`, values: [[f.createdAt]] },
+    ]),
+  )
+  // Entries deleted in the app: remove their rows (0-based sheet index = data index + 1 for the header).
+  const gone = new Set(deleted)
+  await deleteRows(token, spreadsheetId, TABS.entries, tabs.Entries.flatMap((r, i) => (gone.has(String(r[0] ?? '').trim()) ? [i + 1] : [])))
   // Accounts: union by id, newest edit wins; write back only when the Sheet differs.
   const remoteAccounts = accountsFromSheet(tabs.Accounts)
   const accounts = mergeAccounts(localAccounts, remoteAccounts.items)
@@ -59,7 +71,8 @@ async function run(token: string): Promise<void> {
 
   useCashflow.getState().applySync({
     spreadsheetId,
-    synced: cash.entries,
+    synced: cash.entries.filter((e) => !gone.has(e.id)),
+    deletedIds: deleted,
     accounts,
     sentIds: pending.map((e) => e.id),
     skippedRows: cash.skipped + remote.skipped + remoteAccounts.skipped,

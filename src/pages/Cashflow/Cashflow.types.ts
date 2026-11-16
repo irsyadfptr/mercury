@@ -20,7 +20,8 @@ export interface EntryListProps {
   entries: readonly CashEntry[]
   accounts: readonly Account[]
   pendingIds: ReadonlySet<string>
-  onRemovePending: (id: string) => void
+  /** Deletes the entry (from the Sheet too, at the next sync). */
+  onRemove: (id: string) => void
 }
 
 /** Entries of one calendar day, for the grouped list. */

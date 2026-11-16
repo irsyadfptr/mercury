@@ -74,6 +74,8 @@ export interface CashflowData {
   synced: CashEntry[]
   /** Added on this device and not yet in the Sheet (the offline queue). */
   pending: CashEntry[]
+  /** Ids of synced entries deleted on this device; their Sheet rows are removed at the next sync. */
+  deleted: string[]
   lastSyncAt?: string
   /** Rows in the Sheet that failed validation at the last sync. */
   skippedRows: number
@@ -86,8 +88,8 @@ export interface CashflowData {
 export interface CashflowActions {
   /** Queues an entry locally; returns its id. */
   addEntry: (e: NewCashEntry) => string
-  /** Only unsynced entries can be removed in the app; synced ones are edited in the Sheet. */
-  removePending: (id: string) => void
+  /** Deletes an entry: unsynced ones at once, synced ones from the Sheet at the next sync. */
+  removeEntry: (id: string) => void
   applySync: (r: SyncApplied) => void
   /** Forget the linked sheet (data stays in Google Drive). */
   unlinkSheet: () => void
@@ -104,6 +106,8 @@ export interface SyncApplied {
   synced: CashEntry[]
   /** Accounts after merging this device's with the Sheet's. */
   accounts: Account[]
+  /** Deleted ids whose Sheet rows this sync removed (or that were already gone). */
+  deletedIds: string[]
   /** Pending ids now stored in the Sheet; entries added during the sync stay queued. */
   sentIds: string[]
   skippedRows: number

@@ -22,6 +22,8 @@ export function daysInMonth(month: MonthKey): number {
 }
 
 const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])
+/** "Food" typed in the Sheet means the built-in "food", not a new category. */
+const BUILT_IN_BY_LOWER = new Map([...BUILT_IN].map((c) => [c.toLowerCase(), c]))
 
 /** Built-in categories are stored as ids (translated in the UI); custom ones are stored as the name the user typed. */
 export const isBuiltIn = (c: string): boolean => BUILT_IN.has(c)
@@ -123,28 +125,48 @@ export const SHEET_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note'
 
 export const entryToRow = (e: CashEntry): (string | number)[] => [e.id, e.date, e.type, e.amount, e.category, e.note ?? '', e.createdAt, e.account ?? '', e.toAccount ?? '']
 
-/** Rows come from a sheet the user can edit by hand: validate each one and skip what does not fit. */
-export function rowsToEntries(rows: readonly unknown[][]): ParsedRows {
+const SHEETS_EPOCH_MS = Date.UTC(1899, 11, 30)
+const DAY_MS = 86_400_000
+
+/** A date typed in the Sheet: Sheets turns "2026-11-16" or "16/11/2026" into a day number; text "16/11/2026" is read day-first. */
+function sheetDate(cell: string): string {
+  if (/^\d{5}(\.\d+)?$/.test(cell)) return new Date(SHEETS_EPOCH_MS + Math.floor(Number(cell)) * DAY_MS).toISOString().slice(0, 10)
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(cell)
+  return dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : cell
+}
+
+/** createdAt typed or reformatted as a Sheets date-time number. */
+const sheetDateTime = (cell: string): string => (/^\d{5}(\.\d+)?$/.test(cell) ? new Date(SHEETS_EPOCH_MS + Number(cell) * DAY_MS).toISOString() : cell)
+
+/**
+ * Rows come from a sheet the user can edit by hand: validate each one and skip what does not fit.
+ * Typed rows may leave id and createdAt blank: with `fill`, they get new ones, listed in `filled` (row = index in rows)
+ * so the sync can write them back and the id stays the same next time.
+ */
+export function rowsToEntries(rows: readonly unknown[][], fill?: { newId: () => string; now: string }): ParsedRows {
   const entries: CashEntry[] = []
+  const filled: ParsedRows['filled'] = []
   let skipped = 0
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     const cells = SHEET_COLUMNS.map((_, i) => String(row[i] ?? '').trim())
-    if (!cells.some(Boolean)) continue // blank line
+    if (!cells.some(Boolean)) return // blank line
     const [id, date, type, amount, category, note, createdAt, account, toAccount] = cells
+    const builtIn = BUILT_IN_BY_LOWER.get(category.toLowerCase())
     const parsed = CashEntrySchema.safeParse({
-      id,
-      date,
-      type,
-      // Tolerate "Rp25,000" typed in the sheet.
-      amount: Number(amount.replace(/[^\d.-]/g, '')),
-      category,
+      id: id || fill?.newId(),
+      date: sheetDate(date),
+      type: type.toLowerCase(),
+      // A number cell as is; typed text like "Rp25,000" or "1.000.000" keeps its digits (amounts are whole rupiah).
+      amount: Number(/^\d+(\.\d+)?$/.test(amount) ? amount : amount.replace(/\D/g, '')),
+      category: builtIn ?? category,
       note: note || undefined,
-      createdAt,
+      createdAt: createdAt ? sheetDateTime(createdAt) : fill?.now,
       account: account || undefined,
       toAccount: toAccount || undefined,
     })
-    if (parsed.success) entries.push(parsed.data)
-    else skipped++
-  }
-  return { entries, skipped }
+    if (!parsed.success) return void skipped++
+    entries.push(parsed.data)
+    if (!id || !createdAt) filled.push({ row: index, id: parsed.data.id, createdAt: parsed.data.createdAt })
+  })
+  return { entries, skipped, filled }
 }

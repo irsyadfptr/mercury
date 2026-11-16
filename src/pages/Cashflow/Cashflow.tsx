@@ -24,7 +24,7 @@ export function Cashflow() {
   const { t, month: monthName } = useI18n()
   const sync = useSheetSync()
   const { entries, pendingIds } = useCashEntries()
-  const removePending = useCashflow((s) => s.removePending)
+  const removeEntry = useCashflow((s) => s.removeEntry)
   const accounts = useCashflow((s) => s.accounts)
   const budget = useSettings((s) => s.monthlyBudget)
   const today = localDate(useNow())
@@ -58,7 +58,7 @@ export function Cashflow() {
 
       <div className="flex flex-wrap gap-4">
         <div className="flex min-w-0 flex-[3_1_520px] flex-col gap-4">
-          <EntryList entries={inMonth} accounts={accounts} pendingIds={pendingIds} onRemovePending={removePending} />
+          <EntryList entries={inMonth} accounts={accounts} pendingIds={pendingIds} onRemove={removeEntry} />
         </div>
         <div className="flex min-w-0 flex-[2_1_320px] flex-col gap-4">
           <Accounts entries={entries} />
@@ -193,7 +193,7 @@ function groupByDay(entries: readonly CashEntry[]): DayGroup[] {
   return groups
 }
 
-function EntryList({ entries, accounts, pendingIds, onRemovePending }: EntryListProps) {
+function EntryList({ entries, accounts, pendingIds, onRemove }: EntryListProps) {
   const { t, money, day, category } = useI18n()
   const accountName = (ref: string | undefined) => accounts.find((a) => a.id === resolveAccount(ref, accounts))?.name ?? ''
   return (
@@ -230,16 +230,14 @@ function EntryList({ entries, accounts, pendingIds, onRemovePending }: EntryList
                     {transfer ? '' : e.type === 'income' ? '+' : '−'}
                     {money(e.amount)}
                   </span>
-                  {pendingIds.has(e.id) && (
-                    <button
-                      type="button"
-                      aria-label={t('cf.remove')}
-                      onClick={() => onRemovePending(e.id)}
-                      className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    >
-                      ×
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    aria-label={t('cf.remove')}
+                    onClick={() => confirm(t('cf.deleteConfirm', { amount: money(e.amount), label: e.note || label })) && onRemove(e.id)}
+                    className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    ×
+                  </button>
                 </li>
               )
             })}
