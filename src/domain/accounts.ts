@@ -1,7 +1,6 @@
 // Pure money-account math: balances, name checks, and the Accounts tab of the Sheet. No clock, storage or network.
 import type { Account, AccountNameError, CashEntry, ColumnSpec } from '@/types'
-import { sheetDate } from './cashflow'
-import { parseTable } from './portfolioSheet'
+import { mergeNewest, parseTable } from './portfolioSheet'
 import { Account as AccountSchema, DEFAULT_ACCOUNT_ID, MAX_ACCOUNT_NAME, TRANSFER } from './schema'
 
 /** The account every store starts with. The epoch timestamp lets any real edit (rename, balance) win a sync. */
@@ -50,12 +49,7 @@ export function validateAccountName(raw: string, others: readonly Account[]): { 
 
 /** Union by id; the newer updatedAt wins (this device on a tie). The default account is always there. Active first, then by name. */
 export function mergeAccounts(local: readonly Account[], remote: readonly Account[]): Account[] {
-  const by = new Map<string, Account>([[DEFAULT_ACCOUNT_ID, DEFAULT_ACCOUNT]])
-  for (const a of [...remote, ...local]) {
-    const had = by.get(a.id)
-    if (!had || a.updatedAt >= had.updatedAt) by.set(a.id, a)
-  }
-  return [...by.values()].sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name))
+  return mergeNewest([DEFAULT_ACCOUNT, ...local], remote).sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name))
 }
 
 // ---- Google Sheet: Accounts tab ----
@@ -66,15 +60,7 @@ export const ACCOUNT_COLUMNS: readonly ColumnSpec[] = [
   ['startingBalance', 'number'],
   ['archived', 'boolean'],
   ['updatedAt', 'string'],
-  ['balanceDate', 'string'],
+  ['balanceDate', 'date'],
 ]
 
-const BALANCE_DATE_COLUMN = ACCOUNT_COLUMNS.findIndex(([name]) => name === 'balanceDate')
-
-/** A date typed in the Sheet comes back as a day number; read it as yyyy-mm-dd like the Entries tab. */
-export const accountsFromSheet = (rows: readonly unknown[][]) =>
-  parseTable(
-    ACCOUNT_COLUMNS,
-    rows.map((r) => r.map((c, i) => (i === BALANCE_DATE_COLUMN && c !== '' && c !== undefined ? sheetDate(String(c).trim()) : c))),
-    AccountSchema,
-  )
+export const accountsFromSheet = (rows: readonly unknown[][]) => parseTable(ACCOUNT_COLUMNS, rows, AccountSchema)

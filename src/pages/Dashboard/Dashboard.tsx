@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
+import { useCashflow } from '@/cashflowStore'
 import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
+import { billsDue, dueTag } from '@/domain/bills'
+import { localDate } from '@/domain/cashflow'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
 import { loadScanLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
-import type { AllocationItem, I18n, Quest, RiskStatus, Row, Summary } from '@/types'
+import type { AllocationItem, Bill, I18n, Quest, RiskStatus, Row, Summary } from '@/types'
 import { WATCHLIST } from '@/market/coingecko'
 import { useCryptoMarket } from '@/useCryptoMarket'
 import { useNow } from '@/useNow'
@@ -404,6 +407,15 @@ function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
   })
 }
 
+/** Bills due within a few days or overdue (entered on the Cashflow page). */
+function billAlerts(f: I18n, bills: readonly Bill[], today: string): QuestView[] {
+  return billsDue(bills, today).map(({ bill, days }) => ({
+    label: bill.amount ? f.t('quest.payBillAmount', { s: bill.name, amount: f.money(bill.amount) }) : f.t('quest.payBill', { s: bill.name }),
+    tag: dueTag(days, f.t),
+    route: 'cashflow' as const,
+  }))
+}
+
 function Quests({ summary }: { summary: Summary }) {
   const f = useI18n()
   const tradeLimit = useSettings((x) => x.tradeLimit)
@@ -411,7 +423,8 @@ function Quests({ summary }: { summary: Summary }) {
   const now = useNow()
   const held = longTermSymbols(summary.rows)
   const scores = useScoreLog(held)
-  const list = [...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
+  const bills = useCashflow((s) => s.bills)
+  const list = [...billAlerts(f, bills, localDate(now)), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')}>

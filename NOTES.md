@@ -208,6 +208,13 @@ Page **Long-term** (`#/longterm`, src/pages/LongTerm). Scoring is pure code in s
   - Don't rename the sheet: devices find it by name. A renamed or trashed sheet means a new one is made, and each device copies its cached entries into it.
 - There is still no edit in the app; edit in the Sheet, or delete and add again.
 
+**Bills (2026-11-16)** (src/domain/bills.ts, Cashflow → Bills card):
+- Entered by hand: name, next due date, optional amount, monthly or one-time, account to pay from. Stored in `mercury.cashflow` and synced through a **Bills** tab (id, name, amount, dueDate, monthly, account, archived, updatedAt), merged by id with the newest edit winning, like Accounts (`mergeNewest` in portfolioSheet.ts). A due date typed in the Sheet is read from Sheets' day number.
+- **Quest:** a bill shows on the Dashboard quest list from 3 days before its due date (`BILL_REMIND_DAYS`) and stays while overdue ("Pay Wifi · Rp350,000 — 1 days late"); the quest links to Cashflow.
+- **Pay:** a monthly bill's due date moves one month on from its due date (so a missed month is still due), a one-time bill is archived. With an amount, Pay also logs an expense (category Bills, note = bill name, today, from the bill's account). Without an amount nothing is logged: add the expense yourself (e.g. electricity that changes).
+- Delete archives the bill (never removed, so another device's sync can't bring it back). Edit changes any field, including the next due date.
+- Limits: a bill due on the 29th–31st drifts to the shorter month's last day and stays there. The Dashboard shows quests only once the portfolio has a holding (empty portfolio = the "Inventory empty" screen).
+
 **Voice Quick add** (src/domain/voice.ts, no AI):
 - Mic button only where the browser has `SpeechRecognition` / `webkitSpeechRecognition`; `lang` = `id-ID` or `en-US` from the app language. The UI says Chrome sends the audio to Google. The transcript only fills the form; the user taps Save.
 - Amounts: digits (`25`, `25.000` / `1,500` = thousands, `1,5` / `1.5` = decimal, `Rp25.000`), suffixes `rb`, `ribu`, `k`, `thousand`, `jt`, `juta`, `million`, `miliar`, `billion`; Indonesian words (`dua puluh lima ribu`, `seratus ribu`, `seribu`, `lima belas`, `dua ratus lima puluh`, `satu setengah juta`) and English words (`twenty five thousand`, `one hundred fifty`). The first number run wins.

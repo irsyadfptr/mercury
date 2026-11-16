@@ -1,6 +1,7 @@
 // Pure mapping between the portfolio and its Sheet tabs, and the rule for which side wins a sync.
 import type { z } from 'zod'
 import type { ColumnSpec, Holding, ParsedTable, PortfolioData, PortfolioLocalState, PortfolioRemoteState, PortfolioSyncAction, Transaction } from '@/types'
+import { sheetDate } from './cashflow'
 import { Holding as HoldingSchema, Transaction as TransactionSchema } from './schema'
 
 export const HOLDING_COLUMNS: readonly ColumnSpec[] = [
@@ -51,6 +52,7 @@ export function fromRow(cols: readonly ColumnSpec[], row: readonly unknown[]): R
     if (text === '') return
     if (kind === 'number') out[name] = typeof cell === 'number' ? cell : Number(text.replace(/[^\d.eE-]/g, ''))
     else if (kind === 'boolean') out[name] = cell === true || text.toLowerCase() === 'true'
+    else if (kind === 'date') out[name] = sheetDate(text)
     else out[name] = text
   })
   return out
@@ -67,6 +69,16 @@ export function parseTable<S extends z.ZodType>(cols: readonly ColumnSpec[], row
     else skipped++
   }
   return { items, skipped }
+}
+
+/** Union by id; the newer updatedAt wins (local on a tie). For small tables every device edits (accounts, bills). */
+export function mergeNewest<T extends { id: string; updatedAt: string }>(local: readonly T[], remote: readonly T[]): T[] {
+  const by = new Map<string, T>()
+  for (const x of [...remote, ...local]) {
+    const had = by.get(x.id)
+    if (!had || x.updatedAt >= had.updatedAt) by.set(x.id, x)
+  }
+  return [...by.values()]
 }
 
 /** Both tabs → portfolio. Transactions whose holding is missing are dropped (counted as skipped). */

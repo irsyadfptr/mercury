@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { CashflowActions, CashflowData } from '@/types'
 import { DEFAULT_ACCOUNT, mergeAccounts } from './domain/accounts'
+import { mergeNewest } from './domain/portfolioSheet'
 
 /** Local cache of the Sheet plus the offline queue. The Sheet is the source of truth for synced entries. */
 export const useCashflow = create<CashflowData & CashflowActions>()(
@@ -20,6 +21,13 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
       },
       updateAccount: (id, patch) =>
         set((s) => ({ accounts: s.accounts.map((a) => (a.id === id ? { ...a, ...patch, updatedAt: new Date().toISOString() } : a)) })),
+      bills: [],
+      saveBill: (b) => {
+        const id = b.id ?? crypto.randomUUID()
+        const bill = { archived: false, ...b, id, updatedAt: new Date().toISOString() }
+        set((s) => ({ bills: s.bills.some((x) => x.id === id) ? s.bills.map((x) => (x.id === id ? bill : x)) : [...s.bills, bill] }))
+        return id
+      },
       addCategory: (c) => set((s) => ({ customCategories: [...s.customCategories, c] })),
       addEntry: (e) => {
         const id = crypto.randomUUID()
@@ -41,6 +49,7 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
           deleted: s.deleted.filter((id) => !r.deletedIds.includes(id)),
           // Merge again: an account edited while the sync ran is newer and wins.
           accounts: mergeAccounts(s.accounts, r.accounts),
+          bills: mergeNewest(s.bills, r.bills),
           pending: s.pending.filter((e) => !r.sentIds.includes(e.id)),
           skippedRows: r.skippedRows,
           lastSyncAt: r.at,
@@ -49,7 +58,7 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
     }),
     {
       name: 'mercury.cashflow',
-      partialize: ({ spreadsheetId, synced, pending, deleted, lastSyncAt, skippedRows, customCategories, accounts }): CashflowData => ({
+      partialize: ({ spreadsheetId, synced, pending, deleted, lastSyncAt, skippedRows, customCategories, accounts, bills }): CashflowData => ({
         spreadsheetId,
         synced,
         pending,
@@ -58,10 +67,11 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
         skippedRows,
         customCategories,
         accounts,
+        bills,
       }),
-      // v1 stores had no customCategories; v1–2 no accounts; v1–3 no delete queue.
-      migrate: (state) => ({ customCategories: [], accounts: [DEFAULT_ACCOUNT], deleted: [], ...(state as Partial<CashflowData>) }) as CashflowData,
-      version: 4,
+      // v1 stores had no customCategories; v1–2 no accounts; v1–3 no delete queue; v1–4 no bills.
+      migrate: (state) => ({ customCategories: [], accounts: [DEFAULT_ACCOUNT], deleted: [], bills: [], ...(state as Partial<CashflowData>) }) as CashflowData,
+      version: 5,
     },
   ),
 )

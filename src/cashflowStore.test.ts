@@ -16,7 +16,7 @@ describe('deleting entries', () => {
   it('a sync clears the ids it deleted, but keeps hiding one deleted while it ran', () => {
     useCashflow.getState().removeEntry('s1')
     useCashflow.getState().removeEntry('s2') // tapped after the sync read its state
-    useCashflow.getState().applySync({ spreadsheetId: 'x', synced: [entry('s2')], accounts: [], deletedIds: ['s1'], sentIds: [], skippedRows: 0, at: '2026-11-16T00:00:00.000Z' })
+    useCashflow.getState().applySync({ spreadsheetId: 'x', synced: [entry('s2')], accounts: [], bills: [], deletedIds: ['s1'], sentIds: [], skippedRows: 0, at: '2026-11-16T00:00:00.000Z' })
     expect(useCashflow.getState()).toMatchObject({ synced: [], deleted: ['s2'] })
   })
 })

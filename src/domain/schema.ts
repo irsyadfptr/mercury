@@ -123,6 +123,25 @@ export const Account = z.object({
   updatedAt: isoDate,
 })
 
+export const MAX_BILL_NAME = 40
+
+/** A bill to remember: entered by hand, shown as a Dashboard quest when due. Archived, never deleted, so a sync can't bring it back. */
+export const Bill = z.object({
+  id,
+  name: z.string().trim().min(1).max(MAX_BILL_NAME),
+  /** Whole rupiah; when set, paying logs it as a "bills" expense. Empty for bills that change (e.g. electricity). */
+  amount: z.number().int().positive().optional(),
+  /** Next due date, yyyy-mm-dd. */
+  dueDate: yyyyMmDd,
+  /** Monthly bills move to the next month when paid; one-time ones are archived. */
+  monthly: z.boolean().default(true),
+  /** Account the payment comes from (id); none = the default account. */
+  account: z.string().trim().min(1).optional(),
+  archived: z.boolean().default(false),
+  /** Last edit, ISO; the newer copy wins in a sync. */
+  updatedAt: isoDate,
+})
+
 /** How fast an asset turns into cash. Derived, never stored. */
 export const LIQUIDITY: Record<AssetClassType, Liquidity> = {
   crypto: 'instant',

@@ -170,7 +170,8 @@ export type TransactionResult = { ok: true; tx: NewTransaction } | { ok: false; 
 
 // ---- Portfolio in the Sheet ----
 
-export type ColumnKind = 'string' | 'number' | 'boolean'
+/** 'date' = yyyy-mm-dd, also read from a Sheets day number when typed by hand. */
+export type ColumnKind = 'string' | 'number' | 'boolean' | 'date'
 /** [field name, how to read the cell] */
 export type ColumnSpec = readonly [string, ColumnKind]
 
@@ -203,6 +204,13 @@ export type CashType = z.infer<typeof schema.CashType>
 export type CashEntry = z.infer<typeof schema.CashEntry>
 export type NewCashEntry = Omit<CashEntry, 'id' | 'createdAt'>
 export type Account = z.infer<typeof schema.Account>
+export type Bill = z.infer<typeof schema.Bill>
+
+/** A bill that needs paying soon; days until due (negative = overdue). */
+export interface BillDue {
+  bill: Bill
+  days: number
+}
 export type ExpenseCategory = (typeof schema.EXPENSE_CATEGORIES)[number]
 export type IncomeCategory = (typeof schema.INCOME_CATEGORIES)[number]
 export type CashCategory = ExpenseCategory | IncomeCategory

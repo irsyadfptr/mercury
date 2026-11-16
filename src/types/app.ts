@@ -1,6 +1,6 @@
 import type { en } from '@/i18n'
 import type { ROUTES } from '@/routes'
-import type { Account, Backup, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
+import type { Account, Backup, Bill, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
 
 // ---- Routes ----
 
@@ -83,6 +83,8 @@ export interface CashflowData {
   customCategories: CustomCategory[]
   /** Money accounts (BCA, Cash, ...); synced through the Accounts tab. Starts with the default "Cash". */
   accounts: Account[]
+  /** Bills to pay; synced through the Bills tab. */
+  bills: Bill[]
 }
 
 export interface CashflowActions {
@@ -97,6 +99,8 @@ export interface CashflowActions {
   addCategory: (c: CustomCategory) => void
   /** Call with a name already checked by validateAccountName; returns the new id. */
   addAccount: (name: string, startingBalance: number, balanceDate?: string) => string
+  /** Adds a bill (no id) or replaces one (with id); stamps updatedAt. Delete = save with archived: true. */
+  saveBill: (b: Omit<Bill, 'id' | 'updatedAt' | 'archived'> & { id?: string; archived?: boolean }) => string
   /** Rename, archive or change the starting balance; stamps updatedAt. */
   updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'balanceDate' | 'archived'>>) => void
 }
@@ -106,6 +110,7 @@ export interface SyncApplied {
   synced: CashEntry[]
   /** Accounts after merging this device's with the Sheet's. */
   accounts: Account[]
+  bills: Bill[]
   /** Deleted ids whose Sheet rows this sync removed (or that were already gone). */
   deletedIds: string[]
   /** Pending ids now stored in the Sheet; entries added during the sync stay queued. */

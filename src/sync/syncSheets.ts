@@ -5,10 +5,12 @@
 // 4. cashflow: take the Sheet's entries; portfolio: push, pull or merge by portfolioSyncAction.
 import { useCashflow } from '@/cashflowStore'
 import { ACCOUNT_COLUMNS, accountsFromSheet, mergeAccounts } from '@/domain/accounts'
+import { BILL_COLUMNS, billsFromSheet } from '@/domain/bills'
 import { entryToRow, missingFromRows, rowsToEntries } from '@/domain/cashflow'
-import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
+import { HOLDING_COLUMNS, mergeNewest, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 import { useStore } from '@/store'
-import type { PortfolioData } from '@/types'
+import type { ColumnSpec, ParsedTable, PortfolioData } from '@/types'
+import type { TabName } from './sheets'
 import { appendRows, createSpreadsheet, deleteRows, ensureTabs, findSpreadsheets, metaFromRows, readTabs, replaceTabs, TABS, writeCells } from './sheets'
 
 export const SHEET_TITLE = 'Mercury Cashflow'
@@ -39,7 +41,7 @@ async function spreadsheet(token: string): Promise<string> {
 async function run(token: string): Promise<void> {
   // Edits made while this pass runs are newer than startedAt, so they stay "unsynced" for the next pass.
   const startedAt = new Date().toISOString()
-  const { spreadsheetId: linked, pending, synced: localSynced, accounts: localAccounts, deleted } = useCashflow.getState()
+  const { spreadsheetId: linked, pending, synced: localSynced, accounts: localAccounts, bills: localBills, deleted } = useCashflow.getState()
   const spreadsheetId = await spreadsheet(token)
 
   // Moving to another device's sheet (each device used to make its own): bring this device's entries along,
@@ -50,7 +52,7 @@ async function run(token: string): Promise<void> {
     useStore.setState({ syncedAt: undefined })
   }
   await appendRows(token, spreadsheetId, TABS.entries, [...pending, ...carried].map(entryToRow))
-  const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.accounts, TABS.meta])
+  const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.accounts, TABS.bills, TABS.meta])
 
   // Rows typed by hand without id / createdAt get them now, written back so the id stays put. Data rows start at sheet row 2.
   const cash = rowsToEntries(tabs.Entries, { newId: () => crypto.randomUUID(), now: startedAt })
@@ -65,14 +67,10 @@ async function run(token: string): Promise<void> {
   // Entries deleted in the app: remove their rows (0-based sheet index = data index + 1 for the header).
   const gone = new Set(deleted)
   await deleteRows(token, spreadsheetId, TABS.entries, tabs.Entries.flatMap((r, i) => (gone.has(String(r[0] ?? '').trim()) ? [i + 1] : [])))
-  // Accounts: union by id, newest edit wins; write back only when the Sheet differs.
   const remoteAccounts = accountsFromSheet(tabs.Accounts)
-  const accounts = mergeAccounts(localAccounts, remoteAccounts.items)
-  const rows = (list: typeof accounts) => list.map((a) => toRow(ACCOUNT_COLUMNS, a))
-  const accountRows = rows(accounts)
-  // Like the portfolio push, a rewrite drops hand-typed rows that failed validation (they are counted as skipped).
-  if (JSON.stringify(accountRows) !== JSON.stringify(rows(mergeAccounts([], remoteAccounts.items))))
-    await replaceTabs(token, spreadsheetId, { [TABS.accounts]: accountRows })
+  const accounts = await syncTable(token, spreadsheetId, TABS.accounts, ACCOUNT_COLUMNS, remoteAccounts, (remote) => mergeAccounts(localAccounts, remote), mergeAccounts([], remoteAccounts.items))
+  const remoteBills = billsFromSheet(tabs.Bills)
+  const bills = await syncTable(token, spreadsheetId, TABS.bills, BILL_COLUMNS, remoteBills, (remote) => mergeNewest(localBills, remote), remoteBills.items)
   const remote = portfolioFromSheet(tabs.Holdings, tabs.Transactions)
   await syncPortfolio(token, spreadsheetId, remote, metaFromRows(tabs.Meta)[PORTFOLIO_UPDATED_AT] || undefined, startedAt)
 
@@ -81,10 +79,31 @@ async function run(token: string): Promise<void> {
     synced: cash.entries.filter((e) => !gone.has(e.id)),
     deletedIds: deleted,
     accounts,
+    bills,
     sentIds: pending.map((e) => e.id),
-    skippedRows: cash.skipped + remote.skipped + remoteAccounts.skipped,
+    skippedRows: cash.skipped + remote.skipped + remoteAccounts.skipped + remoteBills.skipped,
     at: new Date().toISOString(),
   })
+}
+
+/**
+ * Small tables every device edits (accounts, bills): union by id, newest edit wins; the tab is rewritten only when it
+ * differs from what was read (asRead = the Sheet's rows in merge order). Like the portfolio push, a rewrite drops
+ * hand-typed rows that failed validation (they are counted as skipped).
+ */
+async function syncTable<T extends object>(
+  token: string,
+  spreadsheetId: string,
+  tab: TabName,
+  cols: readonly ColumnSpec[],
+  remote: ParsedTable<T>,
+  merge: (remote: T[]) => T[],
+  asRead: readonly T[],
+): Promise<T[]> {
+  const merged = merge(remote.items)
+  const rows = (list: readonly T[]) => list.map((x) => toRow(cols, x))
+  if (JSON.stringify(rows(merged)) !== JSON.stringify(rows(asRead))) await replaceTabs(token, spreadsheetId, { [tab]: rows(merged) })
+  return merged
 }
 
 async function syncPortfolio(token: string, spreadsheetId: string, remote: PortfolioData, remoteUpdatedAt: string | undefined, startedAt: string) {

@@ -1,5 +1,6 @@
 // Thin Google Sheets REST client for Mercury's one spreadsheet. Every call takes the token explicitly.
 import { ACCOUNT_COLUMNS } from '@/domain/accounts'
+import { BILL_COLUMNS } from '@/domain/bills'
 import { SHEET_COLUMNS } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, headerRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 
@@ -10,6 +11,7 @@ export const TABS = {
   holdings: 'Holdings',
   transactions: 'Transactions',
   accounts: 'Accounts',
+  bills: 'Bills',
   /** Key/value cells for sync bookkeeping (A: key, B: value). */
   meta: 'Meta',
 } as const
@@ -21,6 +23,7 @@ const HEADERS: Record<TabName, readonly string[]> = {
   Holdings: headerRow(HOLDING_COLUMNS),
   Transactions: headerRow(TRANSACTION_COLUMNS),
   Accounts: headerRow(ACCOUNT_COLUMNS),
+  Bills: headerRow(BILL_COLUMNS),
   Meta: ['key', 'value'],
 }
 
