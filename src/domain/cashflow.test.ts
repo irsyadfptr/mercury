@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CashEntry } from '@/types'
-import { addMonths, categoriesFor, entryToRow, lastMonths, mergeEntries, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
+import { addMonths, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
 
 let n = 0
 const e = (date: string, type: CashEntry['type'], amount: number, category: string): CashEntry => ({
@@ -82,6 +82,10 @@ describe('rows typed by hand in the Sheet', () => {
       { row: 0, id: 'new', createdAt: '2026-11-16T10:00:00.000Z' },
       { row: 1, id: 'new', createdAt: '2026-11-16T10:00:00.000Z' },
     ])
+  })
+
+  it('finds the entries another sheet lacks (carried over when a device switches sheets)', () => {
+    expect(missingFromRows(entries.slice(0, 3), [entryToRow(entries[1]), [], [` ${entries[2].id} `]])).toEqual([entries[0]])
   })
 
   it('without fill, rows missing an id are skipped as before', () => {

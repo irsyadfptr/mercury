@@ -52,6 +52,16 @@ const sheetWithHeader = (tab: TabName) => ({
   data: [{ startRow: 0, startColumn: 0, rowData: [{ values: HEADERS[tab].map((c) => ({ userEnteredValue: { stringValue: c }, userEnteredFormat: { textFormat: { bold: true } } })) }] }],
 })
 
+/**
+ * Spreadsheets with this title that this app made for the user, on any device, oldest first (Drive API).
+ * drive.file only lists files this app created, so it never sees the rest of the user's Drive.
+ */
+export async function findSpreadsheets(token: string, title: string): Promise<string[]> {
+  const q = `name = '${title.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`
+  const res = await call<{ files?: { id: string }[] }>(token, `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=createdTime&fields=files(id)&spaces=drive`)
+  return (res.files ?? []).map((f) => f.id)
+}
+
 /** Creates the spreadsheet with every tab and its header row. Returns its id. */
 export async function createSpreadsheet(token: string, title: string): Promise<string> {
   const body = { properties: { title }, sheets: Object.values(TABS).map(sheetWithHeader) }

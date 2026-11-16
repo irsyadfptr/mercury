@@ -1,15 +1,15 @@
 // One sync pass for everything in the Sheet:
-// 1. make sure the spreadsheet and its tabs exist,
+// 1. find the one spreadsheet every device shares and make sure its tabs exist,
 // 2. append the cashflow offline queue,
 // 3. read all tabs once,
 // 4. cashflow: take the Sheet's entries; portfolio: push, pull or merge by portfolioSyncAction.
 import { useCashflow } from '@/cashflowStore'
 import { ACCOUNT_COLUMNS, accountsFromSheet, mergeAccounts } from '@/domain/accounts'
-import { entryToRow, rowsToEntries } from '@/domain/cashflow'
+import { entryToRow, missingFromRows, rowsToEntries } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 import { useStore } from '@/store'
 import type { PortfolioData } from '@/types'
-import { appendRows, createSpreadsheet, deleteRows, ensureTabs, metaFromRows, readTabs, replaceTabs, SheetsError, TABS, writeCells } from './sheets'
+import { appendRows, createSpreadsheet, deleteRows, ensureTabs, findSpreadsheets, metaFromRows, readTabs, replaceTabs, SheetsError, TABS, writeCells } from './sheets'
 
 export const SHEET_TITLE = 'Mercury Cashflow'
 const PORTFOLIO_UPDATED_AT = 'portfolioUpdatedAt'
@@ -24,12 +24,17 @@ export function syncSheets(token: string): Promise<void> {
   return running
 }
 
-/** The linked spreadsheet, upgraded with any missing tabs; a new one if it was deleted or never made. */
+/**
+ * The sheet every device with this Google account shares: the oldest "Mercury Cashflow" this app made in their Drive,
+ * else the linked one (e.g. renamed), else a new one. Upgraded with any missing tabs.
+ */
 async function spreadsheet(token: string, linked: string | undefined): Promise<string> {
-  if (!linked) return createSpreadsheet(token, SHEET_TITLE)
+  const [oldest] = await findSpreadsheets(token, SHEET_TITLE)
+  const id = oldest ?? linked
+  if (!id) return createSpreadsheet(token, SHEET_TITLE)
   try {
-    await ensureTabs(token, linked)
-    return linked
+    await ensureTabs(token, id)
+    return id
   } catch (e) {
     if (e instanceof SheetsError && e.status === 404) return createSpreadsheet(token, SHEET_TITLE)
     throw e
@@ -39,10 +44,17 @@ async function spreadsheet(token: string, linked: string | undefined): Promise<s
 async function run(token: string): Promise<void> {
   // Edits made while this pass runs are newer than startedAt, so they stay "unsynced" for the next pass.
   const startedAt = new Date().toISOString()
-  const { spreadsheetId: linked, pending, accounts: localAccounts, deleted } = useCashflow.getState()
+  const { spreadsheetId: linked, pending, synced: localSynced, accounts: localAccounts, deleted } = useCashflow.getState()
   const spreadsheetId = await spreadsheet(token, linked)
 
-  await appendRows(token, spreadsheetId, TABS.entries, pending.map(entryToRow))
+  // Moving to another device's sheet (each device used to make its own): bring this device's entries along,
+  // and merge the portfolio as on a first sync. The old sheet stays in Drive untouched.
+  let carried: typeof localSynced = []
+  if (linked && linked !== spreadsheetId) {
+    carried = missingFromRows(localSynced, (await readTabs(token, spreadsheetId, [TABS.entries])).Entries)
+    useStore.setState({ syncedAt: undefined })
+  }
+  await appendRows(token, spreadsheetId, TABS.entries, [...pending, ...carried].map(entryToRow))
   const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.accounts, TABS.meta])
 
   // Rows typed by hand without id / createdAt get them now, written back so the id stays put. Data rows start at sheet row 2.

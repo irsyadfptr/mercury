@@ -125,6 +125,12 @@ export const SHEET_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note'
 
 export const entryToRow = (e: CashEntry): (string | number)[] => [e.id, e.date, e.type, e.amount, e.category, e.note ?? '', e.createdAt, e.account ?? '', e.toAccount ?? '']
 
+/** This device's synced entries that a sheet's rows lack: carried over when the device moves to another sheet. */
+export function missingFromRows(entries: readonly CashEntry[], rows: readonly unknown[][]): CashEntry[] {
+  const there = new Set(rows.map((r) => String(r[0] ?? '').trim()))
+  return entries.filter((e) => !there.has(e.id))
+}
+
 const SHEETS_EPOCH_MS = Date.UTC(1899, 11, 30)
 const DAY_MS = 86_400_000
 

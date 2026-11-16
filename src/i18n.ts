@@ -306,7 +306,7 @@ export const en = {
   'sync.openSheet': 'Open sheet',
   'sync.disconnect': 'Disconnect',
   'sync.explain':
-    'Cashflow and portfolio are saved on this device first, then synced to a "Mercury Cashflow" Google Sheet in your Drive (tabs: Entries, Accounts, Holdings, Transactions). Mercury can only see that one sheet. Edit synced cashflow entries in the Sheet (rows typed there get an id at the next sync); delete them here or there; portfolio edits from any device are synced, newest change wins.',
+    'Cashflow and portfolio are saved on this device first, then synced to a "Mercury Cashflow" Google Sheet in your Drive (tabs: Entries, Accounts, Holdings, Transactions). Every device signed in with the same Google account uses that one sheet, and Mercury can only see it. Edit synced cashflow entries in the Sheet (rows typed there get an id at the next sync); delete them here or there; portfolio edits from any device are synced, newest change wins.',
   'add.title': 'New entry',
   'add.expense': 'Expense',
   'add.income': 'Income',
@@ -751,7 +751,7 @@ const id: Record<Key, string> = {
   'sync.openSheet': 'Buka sheet',
   'sync.disconnect': 'Putuskan',
   'sync.explain':
-    'Arus kas dan portofolio disimpan di perangkat ini dulu, lalu disinkronkan ke Google Sheet "Mercury Cashflow" di Drive-mu (tab: Entries, Accounts, Holdings, Transactions). Mercury hanya bisa melihat sheet itu. Ubah catatan arus kas yang sudah tersinkron di Sheet (baris yang diketik di sana diberi id saat sinkron berikutnya); hapus di sini atau di sana; perubahan portofolio dari perangkat mana pun ikut tersinkron, perubahan terbaru yang menang.',
+    'Arus kas dan portofolio disimpan di perangkat ini dulu, lalu disinkronkan ke Google Sheet "Mercury Cashflow" di Drive-mu (tab: Entries, Accounts, Holdings, Transactions). Semua perangkat dengan akun Google yang sama memakai sheet itu, dan Mercury hanya bisa melihat sheet itu. Ubah catatan arus kas yang sudah tersinkron di Sheet (baris yang diketik di sana diberi id saat sinkron berikutnya); hapus di sini atau di sana; perubahan portofolio dari perangkat mana pun ikut tersinkron, perubahan terbaru yang menang.',
   'add.title': 'Catatan baru',
   'add.expense': 'Keluar',
   'add.income': 'Masuk',
