@@ -13,9 +13,9 @@ export const useCashflow = create<CashflowData & CashflowActions>()(
       skippedRows: 0,
       customCategories: [],
       accounts: [DEFAULT_ACCOUNT],
-      addAccount: (name, startingBalance) => {
+      addAccount: (name, startingBalance, balanceDate) => {
         const id = crypto.randomUUID()
-        set((s) => ({ accounts: [...s.accounts, { id, name, startingBalance, archived: false, updatedAt: new Date().toISOString() }] }))
+        set((s) => ({ accounts: [...s.accounts, { id, name, startingBalance, balanceDate, archived: false, updatedAt: new Date().toISOString() }] }))
         return id
       },
       updateAccount: (id, patch) =>

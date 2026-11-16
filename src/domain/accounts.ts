@@ -1,5 +1,6 @@
 // Pure money-account math: balances, name checks, and the Accounts tab of the Sheet. No clock, storage or network.
 import type { Account, AccountNameError, CashEntry, ColumnSpec } from '@/types'
+import { sheetDate } from './cashflow'
 import { parseTable } from './portfolioSheet'
 import { Account as AccountSchema, DEFAULT_ACCOUNT_ID, MAX_ACCOUNT_NAME, TRANSFER } from './schema'
 
@@ -16,15 +17,24 @@ export function resolveAccount(ref: string | undefined, accounts: readonly Accou
   return accounts.find((a) => a.name.toLowerCase() === ref.toLowerCase())?.id ?? DEFAULT_ACCOUNT_ID
 }
 
-/** Current balance per account id: starting balance + income − expenses − transfers out + transfers in. */
+/**
+ * Current balance per account id: starting balance + income − expenses − transfers out + transfers in.
+ * Entries dated before an account's balanceDate are already inside its starting balance, so they are skipped for that
+ * account (each side of a transfer is checked against its own account). They still count in the monthly totals.
+ */
 export function accountBalances(accounts: readonly Account[], entries: readonly CashEntry[]): Record<string, number> {
   const out: Record<string, number> = { [DEFAULT_ACCOUNT_ID]: 0 }
-  for (const a of accounts) out[a.id] = a.startingBalance
+  const since: Record<string, string> = {}
+  for (const a of accounts) {
+    out[a.id] = a.startingBalance
+    if (a.balanceDate) since[a.id] = a.balanceDate
+  }
+  const add = (id: string, date: string, amount: number) => {
+    if (!since[id] || date >= since[id]) out[id] += amount
+  }
   for (const e of entries) {
-    const from = resolveAccount(e.account, accounts)
-    if (e.type === 'income') out[from] += e.amount
-    else out[from] -= e.amount
-    if (e.type === TRANSFER) out[resolveAccount(e.toAccount, accounts)] += e.amount
+    add(resolveAccount(e.account, accounts), e.date, e.type === 'income' ? e.amount : -e.amount)
+    if (e.type === TRANSFER) add(resolveAccount(e.toAccount, accounts), e.date, e.amount)
   }
   return out
 }
@@ -56,6 +66,15 @@ export const ACCOUNT_COLUMNS: readonly ColumnSpec[] = [
   ['startingBalance', 'number'],
   ['archived', 'boolean'],
   ['updatedAt', 'string'],
+  ['balanceDate', 'string'],
 ]
 
-export const accountsFromSheet = (rows: readonly unknown[][]) => parseTable(ACCOUNT_COLUMNS, rows, AccountSchema)
+const BALANCE_DATE_COLUMN = ACCOUNT_COLUMNS.findIndex(([name]) => name === 'balanceDate')
+
+/** A date typed in the Sheet comes back as a day number; read it as yyyy-mm-dd like the Entries tab. */
+export const accountsFromSheet = (rows: readonly unknown[][]) =>
+  parseTable(
+    ACCOUNT_COLUMNS,
+    rows.map((r) => r.map((c, i) => (i === BALANCE_DATE_COLUMN && c !== '' && c !== undefined ? sheetDate(String(c).trim()) : c))),
+    AccountSchema,
+  )

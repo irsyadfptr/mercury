@@ -258,6 +258,7 @@ function Accounts({ entries }: AccountsProps) {
   const [editing, setEditing] = useState<string>()
   const [name, setName] = useState('')
   const [start, setStart] = useState('')
+  const [since, setSince] = useState('')
   const [error, setError] = useState<AccountNameError>()
   const balances = accountBalances(accounts, entries)
   const shown = [...accounts].sort((a, b) => Number(a.archived) - Number(b.archived))
@@ -269,6 +270,8 @@ function Accounts({ entries }: AccountsProps) {
     setEditing(id)
     setName(a?.name ?? '')
     setStart(a ? String(a.startingBalance) : '')
+    // New accounts: "what I hold today". Existing ones without a date keep counting every entry until one is set.
+    setSince(a ? (a.balanceDate ?? '') : localDate(Date.now()))
     setError(undefined)
   }
 
@@ -276,8 +279,9 @@ function Accounts({ entries }: AccountsProps) {
     const result = validateAccountName(name, accounts.filter((a) => a.id !== editing))
     if (!result.ok) return setError(result.error)
     const startingBalance = Math.round(Number(start)) || 0
-    if (editing === 'new') addAccount(result.name, startingBalance)
-    else if (editing) updateAccount(editing, { name: result.name, startingBalance })
+    const balanceDate = since || undefined
+    if (editing === 'new') addAccount(result.name, startingBalance, balanceDate)
+    else if (editing) updateAccount(editing, { name: result.name, startingBalance, balanceDate })
     setEditing(undefined)
   }
 
@@ -305,6 +309,9 @@ function Accounts({ entries }: AccountsProps) {
         </Field>
         <Field label={t('cf.startingBalance')} className="min-w-[10ch] flex-[1_1_0]">
           <input className={`${fieldClass} font-mono`} type="number" inputMode="numeric" step={1} value={start} onChange={(e) => setStart(e.target.value)} />
+        </Field>
+        <Field label={t('cf.balanceDate')} hint={t('cf.balanceDateHint')} className="min-w-[14ch] flex-[1_1_100%]">
+          <input className={`${fieldClass} font-mono`} type="date" value={since} onChange={(e) => setSince(e.target.value)} />
         </Field>
       </div>
       <div className="flex gap-1.5">

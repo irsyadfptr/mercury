@@ -96,9 +96,9 @@ export interface CashflowActions {
   /** Call with a name already checked by validateCategoryName. */
   addCategory: (c: CustomCategory) => void
   /** Call with a name already checked by validateAccountName; returns the new id. */
-  addAccount: (name: string, startingBalance: number) => string
+  addAccount: (name: string, startingBalance: number, balanceDate?: string) => string
   /** Rename, archive or change the starting balance; stamps updatedAt. */
-  updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'archived'>>) => void
+  updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'balanceDate' | 'archived'>>) => void
 }
 
 export interface SyncApplied {

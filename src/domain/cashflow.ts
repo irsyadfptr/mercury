@@ -135,7 +135,7 @@ const SHEETS_EPOCH_MS = Date.UTC(1899, 11, 30)
 const DAY_MS = 86_400_000
 
 /** A date typed in the Sheet: Sheets turns "2026-11-16" or "16/11/2026" into a day number; text "16/11/2026" is read day-first. */
-function sheetDate(cell: string): string {
+export function sheetDate(cell: string): string {
   if (/^\d{5}(\.\d+)?$/.test(cell)) return new Date(SHEETS_EPOCH_MS + Math.floor(Number(cell)) * DAY_MS).toISOString().slice(0, 10)
   const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(cell)
   return dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : cell

@@ -30,6 +30,19 @@ describe('account balances', () => {
     expect(accountBalances(accounts, entries)).toEqual({ cash: 50_000 - 25_000 + 500_000, bca: 1_000_000 + 10_000_000 - 100_000 - 500_000 })
   })
 
+  it('entries dated before the balance date are already in the starting balance', () => {
+    const dated = [{ ...bca, startingBalance: 1_000, balanceDate: '2026-11-16' }, cash]
+    const entries = [
+      e('expense', 200, { account: 'bca', date: '2026-11-10' }), // backdated: already in the 1,000
+      e('income', 500, { account: 'bca', date: '2026-11-01' }), // backdated
+      e('expense', 100, { account: 'bca', date: '2026-11-16' }), // on the day: counts
+      e('transfer', 300, { account: 'bca', toAccount: 'cash', date: '2026-11-15' }), // BCA side skipped, Cash (no date) side counts
+    ]
+    expect(accountBalances(dated, entries)).toEqual({ bca: 900, cash: 50_300 })
+    // Monthly totals still see every entry.
+    expect(monthSummary(entries, '2026-11', '2026-11-16')).toMatchObject({ income: 500, expense: 300 })
+  })
+
   it('transfers are never spending or income', () => {
     const s = monthSummary([e('expense', 25_000), e('transfer', 500_000, { account: 'bca', toAccount: 'cash' })], '2026-11', '2026-11-15')
     expect(s).toMatchObject({ income: 0, expense: 25_000 })
@@ -72,6 +85,10 @@ describe('Sheet rows', () => {
   it('rejects a transfer to the same account', () => {
     expect(CashEntrySchema.safeParse(e('transfer', 1, { account: 'cash', toAccount: 'cash' })).success).toBe(false)
     expect(CashEntrySchema.safeParse(e('transfer', 1, { toAccount: 'cash' })).success).toBe(false)
+  })
+
+  it('reads a balance date typed in the Sheet (a day number)', () => {
+    expect(accountsFromSheet([['bca', 'BCA', 1000, false, '2026-11-01T00:00:00.000Z', 46342]]).items[0].balanceDate).toBe('2026-11-16')
   })
 
   it('reads the Accounts tab', () => {

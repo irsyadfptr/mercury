@@ -116,6 +116,8 @@ export const Account = z.object({
   name: z.string().trim().min(1).max(MAX_ACCOUNT_NAME),
   /** Whole rupiah when tracking started; may be negative (e.g. a card). */
   startingBalance: z.number().int().default(0),
+  /** yyyy-mm-dd the starting balance is from. Entries dated before it already happened in that balance, so they don't move it. None = every entry counts. */
+  balanceDate: yyyyMmDd.optional(),
   archived: z.boolean().default(false),
   /** Last edit, ISO; the newer copy wins in a sync. */
   updatedAt: isoDate,
