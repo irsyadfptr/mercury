@@ -17,10 +17,11 @@ import type {
   Summary,
   TradeRisk,
   Transaction,
+  TypeGroup,
   Valuation,
 } from '@/types'
 import { position } from './positions'
-import { LIQUIDITY } from './schema'
+import { ASSET_CLASSES, LIQUIDITY } from './schema'
 
 const DAY_MS = 86_400_000
 
@@ -105,6 +106,24 @@ export function summarize(holdings: readonly Holding[], txns: readonly Transacti
 }
 
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
+
+/**
+ * A group's rows split by asset type, in ASSET_CLASSES order, types held only: value and P/L in IDR, and share of the
+ * group's value (%). Rows without an IDR value (USD with no rate) are listed but left out of the totals.
+ */
+export function byType(rows: readonly Row[]): TypeGroup[] {
+  return ASSET_CLASSES.flatMap((assetClass) => {
+    const own = rows.filter((r) => r.holding.assetClass === assetClass)
+    if (!own.length) return []
+    const priced = own.filter((r) => Number.isFinite(r.v.valueIdr))
+    const value = sum(priced.map((r) => r.v.valueIdr))
+    const cost = sum(priced.map((r) => r.v.costIdr))
+    return [{ assetClass, rows: own, value, pnl: value - cost, pnlPct: cost ? ((value - cost) / cost) * 100 : 0 }]
+  }).map((g, _, all) => {
+    const total = sum(all.map((x) => x.value))
+    return { ...g, share: total ? (g.value / total) * 100 : 0 }
+  })
+}
 
 // ---- Game layer (DESIGN.md: every game element is a number calculated here) ----
 

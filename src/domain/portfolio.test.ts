@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysHeld, heatTier, level, positionSize, quests, rarity, sizeQuote, summarize } from './portfolio'
+import { byType, daysHeld, heatTier, level, positionSize, quests, rarity, sizeQuote, summarize } from './portfolio'
 import type { Holding, Transaction } from '@/types'
 
 const NOW = Date.parse('2026-11-13T00:00:00Z')
@@ -98,5 +98,26 @@ describe('game math', () => {
 
   it('days held from the first transaction', () => {
     expect(daysHeld([], NOW)).toBe(0)
+  })
+})
+
+describe('by type', () => {
+  it('splits a group by asset type in fixed order with totals, P/L and share', () => {
+    const holdings = [
+      h({ id: 'gold', assetClass: 'gold', group: 'investing', manualPrice: 1_500_000 }),
+      h({ id: 'rdpu', assetClass: 'money_market', group: 'investing', manualPrice: 1.1 }),
+      h({ id: 'bbca', group: 'investing', manualPrice: 9_000 }),
+      h({ id: 'spy', assetClass: 'us_stock', group: 'investing', currency: 'USD', manualPrice: 600 }), // no rate: listed, not totalled
+    ]
+    const txns = [buy('gold', 2, 1_000_000), buy('rdpu', 1_000_000, 1), buy('bbca', 100, 10_000), buy('spy', 1, 500)]
+    const groups = byType(summarize(holdings, txns, undefined, NOW).rows)
+    expect(groups.map((g) => [g.assetClass, g.value, g.pnl, g.rows.length])).toEqual([
+      ['idx_stock', 900_000, -100_000, 1],
+      ['us_stock', 0, 0, 1],
+      ['money_market', 1_100_000, 100_000, 1],
+      ['gold', 3_000_000, 1_000_000, 1],
+    ])
+    expect(groups[3].pnlPct).toBe(50)
+    expect(groups[3].share).toBeCloseTo((3_000_000 / 5_000_000) * 100)
   })
 })

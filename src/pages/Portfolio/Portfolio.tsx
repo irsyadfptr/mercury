@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { HoldingDialog } from '@/components/HoldingDialog'
 import { SyncBar } from '@/components/SyncBar'
 import { Badge, Card, CardTitle, Field, Label, fieldClass } from '@/components/ui-bits'
-import { IDX_LOT, RARITIES, RARITY_MIN_DAYS, rarity, sizeQuote } from '@/domain/portfolio'
+import { byType, IDX_LOT, RARITIES, RARITY_MIN_DAYS, rarity, sizeQuote } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { scoreAlert } from '@/market/scoreLog'
 import { useSettings } from '@/settings'
@@ -69,17 +69,32 @@ function RarityKey() {
   )
 }
 
+/** A group's holdings under one header per asset type: type total, P/L and share of the group. */
 function HoldingRows({ rows, onEdit, scores }: HoldingRowsProps) {
-  const { t } = useI18n()
+  const { t, money, change, num } = useI18n()
   if (!rows.length) return <p className="py-3 text-sm text-text-muted">{t('pf.noHoldings')}</p>
   return (
-    <ul>
-      {rows.map((row) => (
-        <li key={row.holding.id}>
-          <HoldingRow row={row} onEdit={() => onEdit(row.holding.id)} scores={scores} />
-        </li>
+    <div className="flex flex-col gap-3">
+      {byType(rows).map((g) => (
+        <section key={g.assetClass} aria-label={t(`class.${g.assetClass}`)}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b-2 border-text pt-1 pb-1">
+            <span className="font-label text-[11px] uppercase">{t(`class.${g.assetClass}`)}</span>
+            <span className="flex flex-wrap items-baseline gap-x-2 font-mono text-[13px]">
+              <span className="font-medium">{money(g.value)}</span>
+              <span style={{ color: signColor(g.pnl) }}>{change(g.pnlPct)}</span>
+              <span className="text-text-muted">{t('pf.share', { n: num(g.share, 0) })}</span>
+            </span>
+          </div>
+          <ul>
+            {g.rows.map((row) => (
+              <li key={row.holding.id}>
+                <HoldingRow row={row} onEdit={() => onEdit(row.holding.id)} scores={scores} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
   )
 }
 

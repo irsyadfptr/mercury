@@ -70,6 +70,19 @@ export interface Row {
   yieldOnCost: number | null
 }
 
+/** One asset type inside a Portfolio group (Investing or Trading). */
+export interface TypeGroup {
+  assetClass: AssetClass
+  rows: Row[]
+  /** IDR value of the type's priced holdings. */
+  value: number
+  /** value − cost, IDR. */
+  pnl: number
+  pnlPct: number
+  /** Share of the group's value, %. */
+  share: number
+}
+
 export interface Summary {
   rows: Row[]
   netWorth: number
