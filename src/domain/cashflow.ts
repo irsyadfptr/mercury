@@ -1,6 +1,6 @@
 // Pure cashflow math and Sheet row mapping. No clock, storage or network: every input is a parameter.
 import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows, Shortcut } from '@/types'
-import { ADJUSTMENT, CashEntry as CashEntrySchema, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
+import { ADJUSTMENT, CashEntry as CashEntrySchema, INVEST, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
 
 export const monthOf = (yyyyMmDd: string): MonthKey => yyyyMmDd.slice(0, 7)
 
@@ -21,7 +21,7 @@ export function daysInMonth(month: MonthKey): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate()
 }
 
-const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES, ADJUSTMENT])
+const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES, ADJUSTMENT, INVEST])
 /** "Food" typed in the Sheet means the built-in "food", not a new category. */
 const BUILT_IN_BY_LOWER = new Map([...BUILT_IN].map((c) => [c.toLowerCase(), c]))
 
@@ -57,8 +57,8 @@ export function validateCategoryName(raw: string, labels: readonly string[]): { 
   return { ok: true, name }
 }
 
-/** Real spending or income: transfers and balance adjustments only move account balances. */
-export const isCashflow = (e: CashEntry, type?: CashType): boolean => (type ? e.type === type : e.type !== 'transfer') && e.category !== ADJUSTMENT
+/** Real spending or income: transfers, balance adjustments and money moved to / from holdings only move account balances. */
+export const isCashflow = (e: CashEntry, type?: CashType): boolean => (type ? e.type === type : e.type !== 'transfer') && e.category !== ADJUSTMENT && e.category !== INVEST
 
 const sumOf = (entries: readonly CashEntry[], type: CashType) => entries.reduce((a, e) => (isCashflow(e, type) ? a + e.amount : a), 0)
 

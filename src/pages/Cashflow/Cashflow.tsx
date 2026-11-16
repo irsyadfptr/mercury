@@ -18,6 +18,7 @@ import { budgetBar } from '@/view/bars'
 import { categoryColor, categoryIcon, COLOR, signColor } from '@/view/tokens'
 import { Bills } from './Bills'
 import { Goals, MonthQuest } from './CashGame'
+import { Invest } from './Invest'
 import type { AccountsProps, CategoryBarsProps, DayGroup, EntryListProps, MonthHeroProps, SixMonthsProps } from './Cashflow.types'
 
 const MONTHS_SHOWN = 6
@@ -90,6 +91,7 @@ export function Cashflow() {
         <div className="flex min-w-0 flex-[2_1_320px] flex-col gap-4">
           <Accounts entries={entries} onPick={(account) => setFilter({ text: '', account })} />
           <Goals entries={entries} />
+          <Invest />
           <Bills />
           <CategoryBars title={t('cf.where')} totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
           {summary.incomeByCategory.length > 0 && <CategoryBars title={t('cf.incomeFrom')} totals={summary.incomeByCategory} />}

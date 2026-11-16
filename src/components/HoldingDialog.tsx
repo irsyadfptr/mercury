@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useCashflow } from '@/cashflowStore'
 import { Button } from '@/components/ui/button'
 import {
+  cashOf,
+  formByAmount,
   CLASS_DEFAULTS,
   entersLots,
   formToFirstBuy,
@@ -11,7 +13,7 @@ import {
   parseTransaction,
   validateHoldingForm,
 } from '@/domain/holdingForm'
-import { ASSET_CLASSES } from '@/domain/schema'
+import { ASSET_CLASSES, INVEST } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import type {
@@ -55,19 +57,25 @@ export function HoldingDialog({ target, onClose }: HoldingDialogProps) {
       }}
       className="m-auto w-[min(640px,calc(100vw-32px))] rounded-[10px] border border-border bg-surface p-0 text-text backdrop:bg-black/50"
     >
-      {target.mode !== 'closed' && <HoldingForm key={target.mode === 'edit' ? target.holdingId : 'new'} holdingId={target.mode === 'edit' ? target.holdingId : undefined} onDone={onClose} />}
+      {target.mode !== 'closed' && (
+        <HoldingForm key={target.mode === 'edit' ? target.holdingId : 'new'} holdingId={target.mode === 'edit' ? target.holdingId : undefined} account={target.account} onDone={onClose} />
+      )}
     </dialog>
   )
 }
 
-function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
+function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingFormProps) {
   const { t } = useI18n()
   const { holdings, transactions, addHolding, updateHolding, removeHolding, addTransaction } = useStore()
+  const addEntry = useCashflow((s) => s.addEntry)
   const existing = holdingId ? holdings.find((h) => h.id === holdingId) : undefined
   const isNew = !existing
+  const own = existing ? transactions.filter((x) => x.holdingId === existing.id) : []
 
   const [today] = useState(todayIso)
-  const [values, setValues] = useState<HoldingFormValues>(() => holdingToForm(existing, today))
+  const [values, setValues] = useState<HoldingFormValues>(() => holdingToForm(existing, today, own))
+  const [account, setAccount] = useState(initialAccount ?? '')
+  const amountMode = formByAmount(existing, values.assetClass)
   const [errors, setErrors] = useState<HoldingFormErrors>({})
   const set = <K extends keyof HoldingFormValues>(key: K, value: HoldingFormValues[K]) => setValues((v) => ({ ...v, [key]: value }))
   const errorText = (key: keyof HoldingFormValues) => (errors[key] ? t(ERROR_KEY[errors[key]]) : undefined)
@@ -82,9 +90,16 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
     const found = validateHoldingForm(values, isNew)
     setErrors(found)
     if (Object.keys(found).length) return
-    const fields = formToHolding(values, existing, new Date().toISOString())
+    const fields = formToHolding(values, existing, new Date().toISOString(), own)
     if (existing) updateHolding(existing.id, fields)
-    else addTransaction(formToFirstBuy(values, addHolding(fields)))
+    else {
+      const tx = formToFirstBuy(values, addHolding(fields))
+      // Paid from an account: that money leaves the account (category Investing, never counted as spending).
+      const entryId = account
+        ? addEntry({ type: 'expense', amount: cashOf(tx), category: INVEST, date: values.date, note: t('tx.note.buy', { s: fields.symbol }), account })
+        : undefined
+      addTransaction({ ...tx, entryId })
+    }
     onDone()
   }
 
@@ -159,7 +174,7 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
           </div>
         )}
 
-        <Field label={t('form.price')} hint={t('form.priceHint')} error={errorText('price')}>
+        <Field label={t(amountMode ? 'form.currentValue' : 'form.price')} hint={t(amountMode ? 'form.currentValueHint' : 'form.priceHint')} error={errorText('price')}>
           {numberInput('price')}
         </Field>
 
@@ -167,10 +182,12 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
           <fieldset className="grid grid-cols-2 gap-3 rounded-lg bg-surface-2 p-3">
             <legend className="sr-only">{t('form.firstBuy')}</legend>
             <Label className="col-span-2">{t('form.firstBuy')}</Label>
-            <Field label={entersLots(values.assetClass) ? t('form.lots') : t('form.qty')} error={errorText('qty')}>
-              {numberInput('qty')}
-            </Field>
-            <Field label={t('form.txPrice')} error={errorText('buyPrice')}>
+            {!amountMode && (
+              <Field label={entersLots(values.assetClass) ? t('form.lots') : t('form.qty')} error={errorText('qty')}>
+                {numberInput('qty')}
+              </Field>
+            )}
+            <Field label={t(amountMode ? 'form.amountInvested' : 'form.txPrice')} error={errorText('buyPrice')}>
               {numberInput('buyPrice')}
             </Field>
             <Field label={t('form.fee')} error={errorText('fee')}>
@@ -179,10 +196,11 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
             <Field label={t('form.date')}>
               <input className={fieldClass} type="date" value={values.date} max={today} onChange={(e) => set('date', e.target.value)} />
             </Field>
+            <AccountPicker label={t('form.paidFrom')} value={account} onChange={setAccount} />
           </fieldset>
         )}
 
-        {existing && <Transactions holding={existing} txns={transactions.filter((x) => x.holdingId === existing.id)} />}
+        {existing && <Transactions holding={existing} txns={own} account={initialAccount} />}
         {existing && <Dividends holding={existing} />}
       </div>
 
@@ -207,27 +225,55 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
 
 const emptyRow = (today: string): TransactionFormValues => ({ type: 'sell', qty: '', price: '', fee: '', date: today })
 
-function Transactions({ holding, txns }: TransactionsProps) {
+/** Which account the money of a buy came from (or a sell goes to); none = the trade only touches the portfolio. */
+function AccountPicker({ label, value, onChange }: { label: string; value: string; onChange: (id: string) => void }) {
+  const { t } = useI18n()
+  const accounts = useCashflow((s) => s.accounts).filter((a) => !a.archived)
+  return (
+    <Field label={label}>
+      <select className={fieldClass} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{t('form.noAccount')}</option>
+        {accounts.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
+        ))}
+      </select>
+    </Field>
+  )
+}
+
+function Transactions({ holding, txns, account: initialAccount }: TransactionsProps) {
   const { t, money, num, qty } = useI18n()
   const { addTransaction, removeTransaction } = useStore()
+  const addEntry = useCashflow((s) => s.addEntry)
+  const removeEntry = useCashflow((s) => s.removeEntry)
   const [today] = useState(todayIso)
-  const [row, setRow] = useState<TransactionFormValues>(() => emptyRow(today))
+  // From Cashflow → Invest the row starts as a buy paid from that account.
+  const [row, setRow] = useState<TransactionFormValues>(() => ({ ...emptyRow(today), type: initialAccount ? 'buy' : 'sell' }))
+  const [account, setAccount] = useState(initialAccount ?? '')
   const [error, setError] = useState<FormError>()
   const lots = entersLots(holding.assetClass)
+  const amountMode = !!holding.byAmount
   const newestFirst = [...txns].sort((a, b) => b.date.localeCompare(a.date))
   const setField = <K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) => setRow((r) => ({ ...r, [key]: value }))
 
   function add() {
     const result = parseTransaction(row, holding, txns)
     if (!result.ok) return setError(result.error)
-    addTransaction(result.tx)
+    const buy = result.tx.type === 'buy'
+    const entryId = account
+      ? addEntry({ type: buy ? 'expense' : 'income', amount: cashOf(result.tx), category: INVEST, date: row.date, note: t(buy ? 'tx.note.buy' : 'tx.note.sell', { s: holding.symbol }), account })
+      : undefined
+    addTransaction({ ...result.tx, entryId })
     setRow((r) => ({ ...emptyRow(today), type: r.type, date: r.date }))
     setError(undefined)
   }
 
   const amount = (x: Transaction) => {
+    if (amountMode) return money(cashOf(x))
     const n = inputFromUnits(x.quantity, holding.assetClass)
-    return lots ? `${num(n)} lot` : qty(n)
+    return `${lots ? `${num(n)} lot` : qty(n)} × ${money(x.price)}`
   }
 
   return (
@@ -238,13 +284,14 @@ function Transactions({ holding, txns }: TransactionsProps) {
           <li key={x.id} className="flex items-center gap-3 border-b border-border py-1.5 text-sm">
             <span className={`w-10 font-label text-[11px] uppercase ${x.type === 'buy' ? 'text-up' : 'text-down'}`}>{t(x.type === 'buy' ? 'tx.buy' : 'tx.sell')}</span>
             <span className="text-text-muted">{x.date.slice(0, 10)}</span>
-            <span className="ml-auto font-mono">
-              {amount(x)} × {money(x.price)}
-            </span>
+            <span className="ml-auto font-mono">{amount(x)}</span>
             <button
               type="button"
               aria-label={t('tx.remove')}
-              onClick={() => removeTransaction(x.id)}
+              onClick={() => {
+                removeTransaction(x.id)
+                if (x.entryId) removeEntry(x.entryId)
+              }}
               className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               ×
@@ -257,13 +304,22 @@ function Transactions({ holding, txns }: TransactionsProps) {
           <option value="buy">{t('tx.buy')}</option>
           <option value="sell">{t('tx.sell')}</option>
         </select>
-        <input className={fieldClass} type="number" step="any" min="0" placeholder={lots ? 'Lot' : t('form.qty')} aria-label={lots ? t('form.lots') : t('form.qty')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
-        <input className={fieldClass} type="number" step="any" min="0" placeholder={t('form.txPrice')} aria-label={t('form.txPrice')} value={row.price} onChange={(e) => setField('price', e.target.value)} />
+        {amountMode ? (
+          <input className={`${fieldClass} sm:col-span-2`} type="number" step="any" min="0" placeholder={t('form.amount')} aria-label={t('form.amount')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
+        ) : (
+          <>
+            <input className={fieldClass} type="number" step="any" min="0" placeholder={lots ? 'Lot' : t('form.qty')} aria-label={lots ? t('form.lots') : t('form.qty')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
+            <input className={fieldClass} type="number" step="any" min="0" placeholder={t('form.txPrice')} aria-label={t('form.txPrice')} value={row.price} onChange={(e) => setField('price', e.target.value)} />
+          </>
+        )}
         <input className={fieldClass} type="date" value={row.date} max={today} aria-label={t('form.date')} onChange={(e) => setField('date', e.target.value)} />
         <Button type="button" variant="outline" onClick={add}>
           {t('tx.add')}
         </Button>
         <input className={`${fieldClass} col-span-2 sm:col-span-1`} type="number" step="any" min="0" placeholder={t('form.fee')} aria-label={t('form.fee')} value={row.fee} onChange={(e) => setField('fee', e.target.value)} />
+        <div className="col-span-2 sm:col-span-4">
+          <AccountPicker label={t(row.type === 'buy' ? 'form.paidFrom' : 'form.paidTo')} value={account} onChange={setAccount} />
+        </div>
       </div>
       {error && (
         <p role="alert" className="text-sm text-down">

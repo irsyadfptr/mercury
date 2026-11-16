@@ -28,6 +28,11 @@ export const Holding = z.object({
   currency: Currency,
   /** Simulated trade. Shown with a PAPER badge everywhere. */
   paper: z.boolean().default(false),
+  /**
+   * A fund tracked by amount (new money market / bond funds): the form asks for rupiah and the current value, not units.
+   * Units start at Rp1 each; later buys and sells convert rupiah at the price per unit of that moment.
+   */
+  byAmount: z.boolean().optional(),
   /** Trading group only. Price levels in the holding's currency. */
   stop: amount.optional(),
   target: amount.optional(),
@@ -49,6 +54,8 @@ export const Transaction = z.object({
   price: amount,
   fee: amount.default(0),
   note: z.string().optional(),
+  /** The Cashflow entry that moved the money (account → holding, or back), so deleting the trade removes it too. */
+  entryId: id.optional(),
 })
 
 /** Trading journal: a dated note, optionally about one holding. */
@@ -92,6 +99,12 @@ export const MAX_ACCOUNT_NAME = 24
  * balance but is never counted as spending or income. Not offered in Quick add.
  */
 export const ADJUSTMENT = 'adjustment'
+
+/**
+ * Category of money moved between an account and a holding (a buy paid from, or a sell paid into, an account).
+ * It moves the account balance but is never spending or income: the money is still yours, now in the portfolio.
+ */
+export const INVEST = 'invest'
 
 /** A transfer moves money between two accounts; it is never spending or income. */
 export const TRANSFER = 'transfer'

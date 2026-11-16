@@ -19,6 +19,7 @@ export const HOLDING_COLUMNS: readonly ColumnSpec[] = [
   ['manualPriceAt', 'string'],
   ['createdAt', 'string'],
   ['note', 'string'],
+  ['byAmount', 'boolean'],
 ]
 
 export const TRANSACTION_COLUMNS: readonly ColumnSpec[] = [
@@ -30,6 +31,7 @@ export const TRANSACTION_COLUMNS: readonly ColumnSpec[] = [
   ['price', 'number'],
   ['fee', 'number'],
   ['note', 'string'],
+  ['entryId', 'string'],
 ]
 
 export const DIVIDEND_COLUMNS: readonly ColumnSpec[] = [

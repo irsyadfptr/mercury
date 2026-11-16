@@ -24,6 +24,15 @@ export const CLASS_DEFAULTS: Record<AssetClass, Pick<HoldingFormValues, 'group' 
   gold: { group: 'investing', currency: 'IDR' },
 }
 
+/**
+ * Funds bought by amount (Bibit-style money market and bond funds): the form asks for rupiah, not units.
+ * Stored with 1 unit = Rp1 of cost, so cost = amount invested, and the current value sets the price per unit.
+ */
+export const entersAmount = (c: AssetClass): boolean => c === 'money_market' || c === 'bond_fund'
+
+/** Whether the form works in rupiah: an existing holding by its flag (older funds stay in units), a new one by its class. */
+export const formByAmount = (h: Holding | undefined, c: AssetClass): boolean => (h ? !!h.byAmount : entersAmount(c))
+
 /** IDX stocks are typed in lots and stored as shares. */
 export const entersLots = (c: AssetClass): boolean => c === 'idx_stock'
 export const unitsFromInput = (amount: number, c: AssetClass): number => (entersLots(c) ? amount * IDX_LOT : amount)
@@ -36,8 +45,10 @@ const isPositive = (n: number | undefined): n is number => isNonNegative(n) && n
 /** yyyy-mm-dd → ISO at UTC midnight. */
 export const dateToIso = (yyyyMmDd: string): string => new Date(`${yyyyMmDd}T00:00:00.000Z`).toISOString()
 
-export function holdingToForm(h: Holding | undefined, today: string): HoldingFormValues {
+/** txns: the holding's transactions, so a fund handled by amount shows its current value in the price field. */
+export function holdingToForm(h: Holding | undefined, today: string, txns: readonly Transaction[] = []): HoldingFormValues {
   const assetClass = h?.assetClass ?? 'idx_stock'
+  const price = h?.manualPrice == null ? '' : h.byAmount ? String(Math.round(h.manualPrice * position(txns).quantity)) : h.manualPrice.toString()
   return {
     assetClass,
     group: h?.group ?? CLASS_DEFAULTS[assetClass].group,
@@ -48,7 +59,7 @@ export function holdingToForm(h: Holding | undefined, today: string): HoldingFor
     paper: h?.paper ?? false,
     stop: h?.stop?.toString() ?? '',
     target: h?.target?.toString() ?? '',
-    price: h?.manualPrice?.toString() ?? '',
+    price,
     qty: '',
     buyPrice: '',
     fee: '',
@@ -63,7 +74,9 @@ export function validateHoldingForm(v: HoldingFormValues, isNew: boolean): Holdi
     const n = parseOptional(v[key])
     if (n !== undefined && !isNonNegative(n)) errors[key] = 'positive'
   }
-  if (isNew) {
+  if (isNew && entersAmount(v.assetClass)) {
+    if (!isPositive(parseOptional(v.buyPrice))) errors.buyPrice = 'positive'
+  } else if (isNew) {
     if (!isPositive(parseOptional(v.qty))) errors.qty = 'positive'
     if (!isNonNegative(parseOptional(v.buyPrice))) errors.buyPrice = 'required'
     const fee = parseOptional(v.fee)
@@ -72,9 +85,15 @@ export function validateHoldingForm(v: HoldingFormValues, isNew: boolean): Holdi
   return errors
 }
 
-/** Holding fields from valid form values. The price timestamp moves only when the price changes. */
-export function formToHolding(v: HoldingFormValues, existing: Holding | undefined, nowIso: string): NewHolding {
-  const manualPrice = parseOptional(v.price)
+/**
+ * Holding fields from valid form values. The price timestamp moves only when the price changes.
+ * txns: the holding's transactions; for a fund handled by amount, current value ÷ units held = price per unit.
+ */
+export function formToHolding(v: HoldingFormValues, existing: Holding | undefined, nowIso: string, txns: readonly Transaction[] = []): NewHolding {
+  const typed = parseOptional(v.price)
+  const amount = formByAmount(existing, v.assetClass)
+  const units = existing ? position(txns).quantity : Number(v.buyPrice)
+  const manualPrice = typed !== undefined && amount ? (units > 0 ? typed / units : undefined) : typed
   const priceChanged = manualPrice !== existing?.manualPrice
   return {
     assetClass: v.assetClass,
@@ -84,6 +103,7 @@ export function formToHolding(v: HoldingFormValues, existing: Holding | undefine
     platform: v.platform.trim() || undefined,
     currency: v.currency,
     paper: v.paper,
+    byAmount: amount || undefined,
     // Stop and target only mean something for trades.
     stop: v.group === 'trading' ? parseOptional(v.stop) : undefined,
     target: v.group === 'trading' ? parseOptional(v.target) : undefined,
@@ -94,27 +114,35 @@ export function formToHolding(v: HoldingFormValues, existing: Holding | undefine
 
 /** The first buy recorded with a new holding (call only after validation passed). */
 export function formToFirstBuy(v: HoldingFormValues, holdingId: string): NewTransaction {
+  const amount = entersAmount(v.assetClass)
   return {
     holdingId,
     type: 'buy',
     date: dateToIso(v.date),
-    quantity: unitsFromInput(Number(v.qty), v.assetClass),
-    price: Number(v.buyPrice),
+    quantity: amount ? Number(v.buyPrice) : unitsFromInput(Number(v.qty), v.assetClass),
+    price: amount ? 1 : Number(v.buyPrice),
     fee: parseOptional(v.fee) ?? 0,
   }
 }
 
+/** Rupiah moved by a transaction: what a buy cost, or what a sell brought back, fees included. */
+export const cashOf = (t: Pick<NewTransaction, 'type' | 'quantity' | 'price' | 'fee'>): number => Math.round(t.quantity * t.price + (t.type === 'buy' ? t.fee : -t.fee))
+
 /** Validates the row and rejects a sell larger than what is held on that date order. */
 export function parseTransaction(v: TransactionFormValues, holding: Holding, existing: readonly Transaction[]): TransactionResult {
   const qty = parseOptional(v.qty)
-  const price = parseOptional(v.price)
   const fee = parseOptional(v.fee)
+  // A fund tracked by amount: qty is rupiah, converted to units at today's price per unit (buy or sell), so a top-up
+  // adds exactly its amount to both cost and value.
+  const amount = holding.byAmount
+  const unitPrice = holding.manualPrice ?? 1
+  const price = amount ? unitPrice : parseOptional(v.price)
   if (!isPositive(qty) || !isNonNegative(price) || (fee !== undefined && !isNonNegative(fee))) return { ok: false, error: 'positive' }
   const tx: NewTransaction = {
     holdingId: holding.id,
     type: v.type,
     date: dateToIso(v.date),
-    quantity: unitsFromInput(qty, holding.assetClass),
+    quantity: amount ? qty / unitPrice : unitsFromInput(qty, holding.assetClass),
     price,
     fee: fee ?? 0,
   }

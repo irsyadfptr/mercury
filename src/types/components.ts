@@ -70,7 +70,8 @@ export interface ShellProps {
 // ---- HoldingDialog ----
 
 /** What the dialog is doing: closed, creating a holding, or editing one by id. */
-export type HoldingDialogTarget = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; holdingId: string }
+/** account: preselected "Paid from" account (opened from Cashflow → Invest). */
+export type HoldingDialogTarget = { mode: 'closed' } | { mode: 'create'; account?: string } | { mode: 'edit'; holdingId: string; account?: string }
 
 export interface HoldingDialogProps {
   target: HoldingDialogTarget
@@ -81,9 +82,12 @@ export interface HoldingFormProps {
   /** undefined = create a new holding. */
   holdingId?: string
   onDone: () => void
+  /** Preselected account for the money of a buy or sell. */
+  account?: string
 }
 
 export interface TransactionsProps {
   holding: Holding
   txns: readonly Transaction[]
+  account?: string
 }
