@@ -118,10 +118,10 @@ export function padInput(digits: string, key: string): string {
 
 // ---- Google Sheet rows ----
 
-/** Column order of the Entries tab. The header row is written once when the sheet is created. */
-export const SHEET_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'createdAt'] as const
+/** Column order of the Entries tab. New columns go at the end, so older sheets and rows keep working (blank = none). */
+export const SHEET_COLUMNS = ['id', 'date', 'type', 'amount', 'category', 'note', 'createdAt', 'account', 'toAccount'] as const
 
-export const entryToRow = (e: CashEntry): (string | number)[] => [e.id, e.date, e.type, e.amount, e.category, e.note ?? '', e.createdAt]
+export const entryToRow = (e: CashEntry): (string | number)[] => [e.id, e.date, e.type, e.amount, e.category, e.note ?? '', e.createdAt, e.account ?? '', e.toAccount ?? '']
 
 /** Rows come from a sheet the user can edit by hand: validate each one and skip what does not fit. */
 export function rowsToEntries(rows: readonly unknown[][]): ParsedRows {
@@ -130,7 +130,7 @@ export function rowsToEntries(rows: readonly unknown[][]): ParsedRows {
   for (const row of rows) {
     const cells = SHEET_COLUMNS.map((_, i) => String(row[i] ?? '').trim())
     if (!cells.some(Boolean)) continue // blank line
-    const [id, date, type, amount, category, note, createdAt] = cells
+    const [id, date, type, amount, category, note, createdAt, account, toAccount] = cells
     const parsed = CashEntrySchema.safeParse({
       id,
       date,
@@ -140,6 +140,8 @@ export function rowsToEntries(rows: readonly unknown[][]): ParsedRows {
       category,
       note: note || undefined,
       createdAt,
+      account: account || undefined,
+      toAccount: toAccount || undefined,
     })
     if (parsed.success) entries.push(parsed.data)
     else skipped++

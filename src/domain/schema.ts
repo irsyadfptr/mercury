@@ -81,17 +81,44 @@ export const INCOME_CATEGORIES = ['salary', 'bonus', 'freelance', 'investment', 
 export const CashType = z.enum(['expense', 'income'])
 const yyyyMmDd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
-export const CashEntry = z.object({
+/** Entries with no account belong here. It always exists and cannot be archived. */
+export const DEFAULT_ACCOUNT_ID = 'cash'
+export const MAX_ACCOUNT_NAME = 24
+
+/** A transfer moves money between two accounts; it is never spending or income. */
+export const TRANSFER = 'transfer'
+
+export const CashEntry = z
+  .object({
+    id,
+    /** Local calendar date the money moved, yyyy-mm-dd. */
+    date: yyyyMmDd,
+    type: z.enum(['expense', 'income', TRANSFER]),
+    /** Whole rupiah, always positive; type says the direction. */
+    amount: z.number().int().positive(),
+    /** One of the category ids above; unknown ids (typed in the Sheet) show as "other". Transfers use "transfer". */
+    category: z.string().min(1),
+    note: z.string().optional(),
+    createdAt: isoDate,
+    /** Account id (or name, if typed in the Sheet). Missing = the default account; older entries have none. For a transfer: from. */
+    account: z.string().trim().min(1).optional(),
+    /** Transfers only: the account the money goes to. */
+    toAccount: z.string().trim().min(1).optional(),
+  })
+  .refine((e) => e.type !== TRANSFER || (e.toAccount !== undefined && e.toAccount !== (e.account ?? DEFAULT_ACCOUNT_ID)), {
+    message: 'A transfer needs two different accounts.',
+    path: ['toAccount'],
+  })
+
+/** A money account (BCA, Cash, GoPay). Kept, never deleted, so old entries always resolve. */
+export const Account = z.object({
   id,
-  /** Local calendar date the money moved, yyyy-mm-dd. */
-  date: yyyyMmDd,
-  type: CashType,
-  /** Whole rupiah, always positive; type says the direction. */
-  amount: z.number().int().positive(),
-  /** One of the category ids above; unknown ids (typed in the Sheet) show as "other". */
-  category: z.string().min(1),
-  note: z.string().optional(),
-  createdAt: isoDate,
+  name: z.string().trim().min(1).max(MAX_ACCOUNT_NAME),
+  /** Whole rupiah when tracking started; may be negative (e.g. a card). */
+  startingBalance: z.number().int().default(0),
+  archived: z.boolean().default(false),
+  /** Last edit, ISO; the newer copy wins in a sync. */
+  updatedAt: isoDate,
 })
 
 /** How fast an asset turns into cash. Derived, never stored. */

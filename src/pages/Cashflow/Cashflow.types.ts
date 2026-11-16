@@ -1,4 +1,4 @@
-import type { CashEntry, CategoryTotal, MonthSummary, MonthTotal } from '@/types'
+import type { Account, CashEntry, CategoryTotal, MonthSummary, MonthTotal } from '@/types'
 
 export interface MonthHeroProps {
   summary: MonthSummary
@@ -18,6 +18,7 @@ export interface SixMonthsProps {
 
 export interface EntryListProps {
   entries: readonly CashEntry[]
+  accounts: readonly Account[]
   pendingIds: ReadonlySet<string>
   onRemovePending: (id: string) => void
 }
@@ -26,6 +27,11 @@ export interface EntryListProps {
 export interface DayGroup {
   date: string
   entries: CashEntry[]
-  /** income − expense for the day */
+  /** income − expense for the day; transfers left out */
   net: number
+}
+
+export interface AccountsProps {
+  /** Every entry, all months: balances are all time. */
+  entries: readonly CashEntry[]
 }

@@ -4,6 +4,7 @@
 // 3. read all tabs once,
 // 4. cashflow: take the Sheet's entries; portfolio: push, pull or merge by portfolioSyncAction.
 import { useCashflow } from '@/cashflowStore'
+import { ACCOUNT_COLUMNS, accountsFromSheet, mergeAccounts } from '@/domain/accounts'
 import { entryToRow, rowsToEntries } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 import { useStore } from '@/store'
@@ -38,21 +39,30 @@ async function spreadsheet(token: string, linked: string | undefined): Promise<s
 async function run(token: string): Promise<void> {
   // Edits made while this pass runs are newer than startedAt, so they stay "unsynced" for the next pass.
   const startedAt = new Date().toISOString()
-  const { spreadsheetId: linked, pending } = useCashflow.getState()
+  const { spreadsheetId: linked, pending, accounts: localAccounts } = useCashflow.getState()
   const spreadsheetId = await spreadsheet(token, linked)
 
   await appendRows(token, spreadsheetId, TABS.entries, pending.map(entryToRow))
-  const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.meta])
+  const tabs = await readTabs(token, spreadsheetId, [TABS.entries, TABS.holdings, TABS.transactions, TABS.accounts, TABS.meta])
 
   const cash = rowsToEntries(tabs.Entries)
+  // Accounts: union by id, newest edit wins; write back only when the Sheet differs.
+  const remoteAccounts = accountsFromSheet(tabs.Accounts)
+  const accounts = mergeAccounts(localAccounts, remoteAccounts.items)
+  const rows = (list: typeof accounts) => list.map((a) => toRow(ACCOUNT_COLUMNS, a))
+  const accountRows = rows(accounts)
+  // Like the portfolio push, a rewrite drops hand-typed rows that failed validation (they are counted as skipped).
+  if (JSON.stringify(accountRows) !== JSON.stringify(rows(mergeAccounts([], remoteAccounts.items))))
+    await replaceTabs(token, spreadsheetId, { [TABS.accounts]: accountRows })
   const remote = portfolioFromSheet(tabs.Holdings, tabs.Transactions)
   await syncPortfolio(token, spreadsheetId, remote, metaFromRows(tabs.Meta)[PORTFOLIO_UPDATED_AT] || undefined, startedAt)
 
   useCashflow.getState().applySync({
     spreadsheetId,
     synced: cash.entries,
+    accounts,
     sentIds: pending.map((e) => e.id),
-    skippedRows: cash.skipped + remote.skipped,
+    skippedRows: cash.skipped + remote.skipped + remoteAccounts.skipped,
     at: new Date().toISOString(),
   })
 }

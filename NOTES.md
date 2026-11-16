@@ -186,6 +186,36 @@ Page **Long-term** (`#/longterm`, src/pages/LongTerm). Scoring is pure code in s
 - Stored with the portfolio (localStorage `mercury.data`) and in the JSON backup as `journal` (older backups import with none). Not in the Google Sheet sync yet. Deleting a holding keeps its notes, unlinked.
 - Later (user, 2026-11-14): add the journal to the Google Sheet sync (a Journal tab), and show the journal streak on the Dashboard.
 
+## Cashflow accounts and voice Quick add (2026-11-16)
+
+**Accounts** (src/domain/accounts.ts, Cashflow → Accounts card):
+- Create, rename, set a starting balance, archive / restore. Never deleted, so old entries always resolve. Every store starts with **Cash** (id `cash`), which can be renamed but not archived. Names are unique (any case, archived included), max 24 characters.
+- Balance = starting balance + income − expenses − transfers out + transfers in, over all entries (all months). The card total adds active accounts only.
+- Each expense/income entry stores `account` (an id). **Entries with no account (everything before this change) count as Cash**; so does an id or name that matches no account. A name typed by hand in the Sheet (any case) is matched to that account.
+- **Transfers** are entries with `type: transfer`, `category: transfer`, `account` = from, `toAccount` = to (must differ). They move balance only: never counted in spending, income, categories, the six-month chart, or the day's net.
+- Sheet: Entries gets two new columns at the end, `account` and `toAccount` (blank = none), so old 7-column rows still parse. A new **Accounts** tab (id, name, startingBalance, archived, updatedAt). Each sync merges accounts by id, newest `updatedAt` wins (Cash's seed is dated 1970 so any edit wins), and rewrites the tab only when it differs. Every sync also rewrites the header rows so older sheets get the new column names. Cashflow is not in the JSON backup (unchanged).
+
+**Voice Quick add** (src/domain/voice.ts, no AI):
+- Mic button only where the browser has `SpeechRecognition` / `webkitSpeechRecognition`; `lang` = `id-ID` or `en-US` from the app language. The UI says Chrome sends the audio to Google. The transcript only fills the form; the user taps Save.
+- Amounts: digits (`25`, `25.000` / `1,500` = thousands, `1,5` / `1.5` = decimal, `Rp25.000`), suffixes `rb`, `ribu`, `k`, `thousand`, `jt`, `juta`, `million`, `miliar`, `billion`; Indonesian words (`dua puluh lima ribu`, `seratus ribu`, `seribu`, `lima belas`, `dua ratus lima puluh`, `satu setengah juta`) and English words (`twenty five thousand`, `one hundred fifty`). The first number run wins.
+- Categories (first match): makan, kopi, jajan, lunch, dinner, coffee → food; sayur, indomaret, alfamart, groceries → groceries; bensin, parkir, ojek, gojek, grab, tol, kereta, fuel, parking, taxi → transport; listrik, pln, pdam, internet, wifi, pulsa, tagihan, electricity, bill → bills; sewa, kos, kontrakan, rent → housing; obat, dokter, apotek → health; belanja, baju, shopee, tokopedia → shopping; nonton, film, netflix, movie → fun; keluarga, anak, ortu → family; gaji, salary → salary; bonus, thr → bonus; freelance, proyek → freelance; dividen, bunga, interest → investment. One-word custom category names match too. The category decides expense vs income; otherwise beli/bayar/spent/paid → expense, terima/dapat/masuk/received → income.
+- Accounts by the user's account names (multi-word names too, e.g. "Bank Jago"). "ke" / "to" before a name = destination; pakai / pake / dari / lewat / via / with / from / using = source. "cash" / "tunai" = the Cash account. `transfer` / `tf` / `pindah` / `tarik` / `withdraw` make a transfer: "transfer dari BCA ke Cash 500 ribu"; "tarik tunai 1 juta dari BCA" = BCA → Cash.
+- Words not understood go to the note ("makan siang 25 ribu pakai BCA" → food, 25,000, BCA, note "siang"); missing fields stay empty for the user.
+- Limits: a number right after an amount joins it ("25 ribu 2 porsi" = 25,002); English "gas" means fuel.
+
+## Backlog (recap 2026-11-14)
+
+Suggested order: commit → tick sizes + ARB warning → achievements → scheduled after-close run → AI layer.
+
+- **AI layer (step 5): provider undecided.** The user wants a free option and is looking at DeepSeek instead of a paid Claude API key (Claude Pro does not include API access). Before choosing, check the current free tier/pricing and whether the API allows browser calls (CORS), since the deployed site has no backend. Idea: one OpenAI-compatible client with base URL, key and model in Settings, so the provider can change later. Rule unchanged: code calculates every number; AI only explains, in a block labelled "AI summary".
+- Risk: tick-size rounding, ARB warning on stops, fees in the backtest, pre-entry checks (ex-dividend, earnings, rights issues).
+- Rules: no setting has an edge after fees yet; crypto may need its own settings; "longer MA buy zone" untested.
+- Data: foreign flow in the IDX mood, bandarmology, LQ45 review each Feb/Aug, confirm idx `close` is split-adjusted, US stocks/ETF source (step 6), Antam gold price, imports from Bibit/Stockbit/Binance.
+- Automation: alerts + scheduled after-close run (step 7).
+- Long-term score: forward test from the score log after 6–12 months; screen scores are partial (10 of 15) and cover the 100 largest only.
+- Journal: Sheet sync, streak on the Dashboard.
+- Game layer: achievements not built; check the rest of DESIGN.md (e.g. Seasons) against the code; regenerate DESIGN.md from the code (`/impeccable document`).
+
 ## Open questions
 
 - Data source for US stocks/ETFs.

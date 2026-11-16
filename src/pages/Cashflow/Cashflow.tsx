@@ -3,18 +3,20 @@ import { useCashflow } from '@/cashflowStore'
 import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
-import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Field, fieldClass, Label, Segments } from '@/components/ui-bits'
+import { accountBalances, resolveAccount, validateAccountName } from '@/domain/accounts'
 import { addMonths, lastMonths, localDate, monthOf, monthSummary } from '@/domain/cashflow'
+import { DEFAULT_ACCOUNT_ID, MAX_ACCOUNT_NAME, TRANSFER } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
-import type { CashEntry } from '@/types'
+import type { AccountNameError, CashEntry, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { useSheetSync } from '@/useSheetSync'
 import { useNow } from '@/useNow'
 import { budgetBar } from '@/view/bars'
 import { categoryColor, categoryIcon, COLOR, signColor } from '@/view/tokens'
-import type { CategoryBarsProps, DayGroup, EntryListProps, MonthHeroProps, SixMonthsProps } from './Cashflow.types'
+import type { AccountsProps, CategoryBarsProps, DayGroup, EntryListProps, MonthHeroProps, SixMonthsProps } from './Cashflow.types'
 
 const MONTHS_SHOWN = 6
 
@@ -23,6 +25,7 @@ export function Cashflow() {
   const sync = useSheetSync()
   const { entries, pendingIds } = useCashEntries()
   const removePending = useCashflow((s) => s.removePending)
+  const accounts = useCashflow((s) => s.accounts)
   const budget = useSettings((s) => s.monthlyBudget)
   const today = localDate(useNow())
   const [month, setMonth] = useState(() => monthOf(today))
@@ -55,9 +58,10 @@ export function Cashflow() {
 
       <div className="flex flex-wrap gap-4">
         <div className="flex min-w-0 flex-[3_1_520px] flex-col gap-4">
-          <EntryList entries={inMonth} pendingIds={pendingIds} onRemovePending={removePending} />
+          <EntryList entries={inMonth} accounts={accounts} pendingIds={pendingIds} onRemovePending={removePending} />
         </div>
         <div className="flex min-w-0 flex-[2_1_320px] flex-col gap-4">
+          <Accounts entries={entries} />
           <CategoryBars title={t('cf.where')} totals={summary.expenseByCategory} />
           {summary.incomeByCategory.length > 0 && <CategoryBars title={t('cf.incomeFrom')} totals={summary.incomeByCategory} />}
           <SixMonths months={lastMonths(entries, month, MONTHS_SHOWN)} current={month} />
@@ -183,13 +187,15 @@ function groupByDay(entries: readonly CashEntry[]): DayGroup[] {
     let g = groups.at(-1)
     if (g?.date !== e.date) groups.push((g = { date: e.date, entries: [], net: 0 }))
     g.entries.push(e)
-    g.net += e.type === 'income' ? e.amount : -e.amount
+    // Transfers only move money between accounts.
+    if (e.type !== TRANSFER) g.net += e.type === 'income' ? e.amount : -e.amount
   }
   return groups
 }
 
-function EntryList({ entries, pendingIds, onRemovePending }: EntryListProps) {
+function EntryList({ entries, accounts, pendingIds, onRemovePending }: EntryListProps) {
   const { t, money, day, category } = useI18n()
+  const accountName = (ref: string | undefined) => accounts.find((a) => a.id === resolveAccount(ref, accounts))?.name ?? ''
   return (
     <Card aria-label={t('cf.entries')}>
       <CardTitle icon="coin">{t('cf.entries')}</CardTitle>
@@ -204,37 +210,156 @@ function EntryList({ entries, pendingIds, onRemovePending }: EntryListProps) {
             </span>
           </div>
           <ul>
-            {g.entries.map((e) => (
-              <li key={e.id} className="flex items-center gap-3 border-b border-border py-2">
-                <PixelIcon name={categoryIcon(e.category)} color={categoryColor(e.category)} size={18} className="shrink-0" />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{e.note || category(e.category)}</span>
-                  <span className="flex gap-1.5 font-label text-[11px] text-text-muted uppercase">
-                    {/* The category is already the title when there is no note. */}
-                    {e.note && category(e.category)}
-                    {pendingIds.has(e.id) && <span className="text-warn-text">{e.note && '· '}{t('cf.notSynced')}</span>}
+            {g.entries.map((e) => {
+              const transfer = e.type === TRANSFER
+              const label = transfer ? `${accountName(e.account)} → ${accountName(e.toAccount)}` : category(e.category)
+              return (
+                <li key={e.id} className="flex items-center gap-3 border-b border-border py-2">
+                  <PixelIcon name={transfer ? 'coin' : categoryIcon(e.category)} color={transfer ? undefined : categoryColor(e.category)} size={18} className="shrink-0" />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{e.note || label}</span>
+                    <span className="flex flex-wrap gap-1.5 font-label text-[11px] text-text-muted uppercase">
+                      {/* The label is already the title when there is no note. */}
+                      {e.note ? `${label} · ` : ''}
+                      {transfer ? t('cf.transfer') : accountName(e.account)}
+                      {pendingIds.has(e.id) && <span className="text-warn-text">· {t('cf.notSynced')}</span>}
+                    </span>
                   </span>
-                </span>
-                <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
-                <span className="font-mono font-medium" style={{ color: e.type === 'income' ? COLOR.up : COLOR.text }}>
-                  {e.type === 'income' ? '+' : '−'}
-                  {money(e.amount)}
-                </span>
-                {pendingIds.has(e.id) && (
-                  <button
-                    type="button"
-                    aria-label={t('cf.remove')}
-                    onClick={() => onRemovePending(e.id)}
-                    className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  >
-                    ×
-                  </button>
-                )}
-              </li>
-            ))}
+                  <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
+                  <span className="font-mono font-medium" style={{ color: transfer ? COLOR.muted : e.type === 'income' ? COLOR.up : COLOR.text }}>
+                    {transfer ? '' : e.type === 'income' ? '+' : '−'}
+                    {money(e.amount)}
+                  </span>
+                  {pendingIds.has(e.id) && (
+                    <button
+                      type="button"
+                      aria-label={t('cf.remove')}
+                      onClick={() => onRemovePending(e.id)}
+                      className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       ))}
+    </Card>
+  )
+}
+
+/** Money accounts with live balances (all time, not just this month), plus add / edit / archive. */
+function Accounts({ entries }: AccountsProps) {
+  const { t, money } = useI18n()
+  const accounts = useCashflow((s) => s.accounts)
+  const addAccount = useCashflow((s) => s.addAccount)
+  const updateAccount = useCashflow((s) => s.updateAccount)
+  // undefined = no form; 'new' = adding; otherwise the id being edited.
+  const [editing, setEditing] = useState<string>()
+  const [name, setName] = useState('')
+  const [start, setStart] = useState('')
+  const [error, setError] = useState<AccountNameError>()
+  const balances = accountBalances(accounts, entries)
+  const shown = [...accounts].sort((a, b) => Number(a.archived) - Number(b.archived))
+  const total = accounts.reduce((sum, a) => (a.archived ? sum : sum + balances[a.id]), 0)
+  const signed = (v: number) => `${v < 0 ? '−' : ''}${money(Math.abs(v))}`
+
+  function open(id: string) {
+    const a = accounts.find((x) => x.id === id)
+    setEditing(id)
+    setName(a?.name ?? '')
+    setStart(a ? String(a.startingBalance) : '')
+    setError(undefined)
+  }
+
+  function submit() {
+    const result = validateAccountName(name, accounts.filter((a) => a.id !== editing))
+    if (!result.ok) return setError(result.error)
+    const startingBalance = Math.round(Number(start)) || 0
+    if (editing === 'new') addAccount(result.name, startingBalance)
+    else if (editing) updateAccount(editing, { name: result.name, startingBalance })
+    setEditing(undefined)
+  }
+
+  const form = (
+    <form
+      className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+    >
+      <div className="flex flex-wrap gap-2">
+        <Field label={t('cf.accountName')} error={error && t((error === 'duplicate' ? 'acctErr.duplicate' : `catErr.${error}`) as Key)} className="min-w-[10ch] flex-[2_1_0]">
+          <input
+            className={fieldClass}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value)
+              setError(undefined)
+            }}
+            maxLength={MAX_ACCOUNT_NAME + 10}
+            aria-invalid={!!error}
+            autoFocus
+          />
+        </Field>
+        <Field label={t('cf.startingBalance')} className="min-w-[10ch] flex-[1_1_0]">
+          <input className={`${fieldClass} font-mono`} type="number" inputMode="numeric" step={1} value={start} onChange={(e) => setStart(e.target.value)} />
+        </Field>
+      </div>
+      <div className="flex gap-1.5">
+        <Button type="submit" variant="outline">
+          {t('cf.saveAccount')}
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => setEditing(undefined)}>
+          {t('add.cancel')}
+        </Button>
+      </div>
+    </form>
+  )
+
+  return (
+    <Card aria-label={t('cf.accounts')}>
+      <CardTitle icon="chest" aside={<span className="font-mono normal-case">{t('cf.accountsTotal', { amount: signed(total) })}</span>}>
+        {t('cf.accounts')}
+      </CardTitle>
+      <ul className="flex flex-col">
+        {shown.map((a) =>
+          editing === a.id ? (
+            <li key={a.id}>{form}</li>
+          ) : (
+            <li key={a.id} className={`flex flex-wrap items-center gap-2 border-b border-border py-1.5 ${a.archived ? 'text-text-muted' : ''}`}>
+              <span className="truncate">{a.name}</span>
+              {a.archived && <Badge tone="neutral">{t('cf.archived')}</Badge>}
+              <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
+              <span className="font-mono font-medium" style={{ color: balances[a.id] < 0 ? COLOR.down : undefined }}>
+                {signed(balances[a.id])}
+              </span>
+              <span className="flex">
+                <Button size="sm" variant="ghost" onClick={() => open(a.id)}>
+                  {t('cf.editAccount')}
+                </Button>
+                {a.id !== DEFAULT_ACCOUNT_ID && (
+                  <Button size="sm" variant="ghost" onClick={() => updateAccount(a.id, { archived: !a.archived })}>
+                    {t(a.archived ? 'cf.restore' : 'cf.archive')}
+                  </Button>
+                )}
+              </span>
+            </li>
+          ),
+        )}
+      </ul>
+      <div className="pt-3">
+        {editing === 'new' ? (
+          form
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => open('new')} className="font-label text-[11px] uppercase">
+            {t('cf.addAccount')}
+          </Button>
+        )}
+      </div>
     </Card>
   )
 }

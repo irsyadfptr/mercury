@@ -202,6 +202,7 @@ export interface PortfolioRemoteState {
 export type CashType = z.infer<typeof schema.CashType>
 export type CashEntry = z.infer<typeof schema.CashEntry>
 export type NewCashEntry = Omit<CashEntry, 'id' | 'createdAt'>
+export type Account = z.infer<typeof schema.Account>
 export type ExpenseCategory = (typeof schema.EXPENSE_CATEGORIES)[number]
 export type IncomeCategory = (typeof schema.INCOME_CATEGORIES)[number]
 export type CashCategory = ExpenseCategory | IncomeCategory
@@ -244,6 +245,20 @@ export interface MonthTotal {
   month: MonthKey
   income: number
   expense: number
+}
+
+export type AccountNameError = 'required' | 'tooLong' | 'duplicate'
+
+/** What the voice parser could read from a transcript; missing fields are left for the user. */
+export interface VoiceDraft {
+  type?: CashEntry['type']
+  amount?: number
+  category?: string
+  /** Account id; for a transfer, the source. */
+  account?: string
+  toAccount?: string
+  /** Words not understood, kept so nothing is lost. */
+  note: string
 }
 
 /** Result of reading Sheet rows: valid entries plus how many rows were skipped. */

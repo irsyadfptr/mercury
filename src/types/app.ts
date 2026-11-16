@@ -1,6 +1,6 @@
 import type { en } from '@/i18n'
 import type { ROUTES } from '@/routes'
-import type { Backup, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
+import type { Account, Backup, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
 
 // ---- Routes ----
 
@@ -79,6 +79,8 @@ export interface CashflowData {
   skippedRows: number
   /** Categories created on this device; ones used in entries also arrive from the Sheet. */
   customCategories: CustomCategory[]
+  /** Money accounts (BCA, Cash, ...); synced through the Accounts tab. Starts with the default "Cash". */
+  accounts: Account[]
 }
 
 export interface CashflowActions {
@@ -91,11 +93,17 @@ export interface CashflowActions {
   unlinkSheet: () => void
   /** Call with a name already checked by validateCategoryName. */
   addCategory: (c: CustomCategory) => void
+  /** Call with a name already checked by validateAccountName; returns the new id. */
+  addAccount: (name: string, startingBalance: number) => string
+  /** Rename, archive or change the starting balance; stamps updatedAt. */
+  updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'archived'>>) => void
 }
 
 export interface SyncApplied {
   spreadsheetId: string
   synced: CashEntry[]
+  /** Accounts after merging this device's with the Sheet's. */
+  accounts: Account[]
   /** Pending ids now stored in the Sheet; entries added during the sync stay queued. */
   sentIds: string[]
   skippedRows: number

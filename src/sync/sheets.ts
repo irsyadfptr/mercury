@@ -1,4 +1,5 @@
 // Thin Google Sheets REST client for Mercury's one spreadsheet. Every call takes the token explicitly.
+import { ACCOUNT_COLUMNS } from '@/domain/accounts'
 import { SHEET_COLUMNS } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, headerRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 
@@ -8,6 +9,7 @@ export const TABS = {
   entries: 'Entries',
   holdings: 'Holdings',
   transactions: 'Transactions',
+  accounts: 'Accounts',
   /** Key/value cells for sync bookkeeping (A: key, B: value). */
   meta: 'Meta',
 } as const
@@ -18,6 +20,7 @@ const HEADERS: Record<TabName, readonly string[]> = {
   Entries: SHEET_COLUMNS,
   Holdings: headerRow(HOLDING_COLUMNS),
   Transactions: headerRow(TRANSACTION_COLUMNS),
+  Accounts: headerRow(ACCOUNT_COLUMNS),
   Meta: ['key', 'value'],
 }
 
@@ -56,19 +59,19 @@ export async function createSpreadsheet(token: string, title: string): Promise<s
   return res.spreadsheetId
 }
 
-/** Adds tabs a sheet made by an older version is missing (e.g. Holdings), with their header rows. */
+/** Adds tabs a sheet made by an older version is missing (e.g. Accounts), and rewrites every header row so new columns get names. */
 export async function ensureTabs(token: string, spreadsheetId: string): Promise<void> {
   const meta = await call<{ sheets?: { properties: { title: string } }[] }>(token, `${API}/${spreadsheetId}?fields=sheets.properties.title`)
   const have = new Set((meta.sheets ?? []).map((s) => s.properties.title))
   const missing = Object.values(TABS).filter((t) => !have.has(t))
-  if (!missing.length) return
-  await call(token, `${API}/${spreadsheetId}:batchUpdate`, {
-    method: 'POST',
-    body: JSON.stringify({ requests: missing.map((tab) => ({ addSheet: { properties: sheetWithHeader(tab).properties } })) }),
-  })
+  if (missing.length)
+    await call(token, `${API}/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests: missing.map((tab) => ({ addSheet: { properties: sheetWithHeader(tab).properties } })) }),
+    })
   await call(token, `${API}/${spreadsheetId}/values:batchUpdate`, {
     method: 'POST',
-    body: JSON.stringify({ valueInputOption: 'RAW', data: missing.map((tab) => ({ range: `${tab}!A1`, values: [HEADERS[tab]] })) }),
+    body: JSON.stringify({ valueInputOption: 'RAW', data: Object.values(TABS).map((tab) => ({ range: `${tab}!A1`, values: [HEADERS[tab]] })) }),
   })
 }
 

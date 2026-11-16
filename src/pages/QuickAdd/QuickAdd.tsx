@@ -4,29 +4,36 @@ import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { fieldClass } from '@/components/ui-bits'
-import { categoriesFor, localDate, MAX_CATEGORY_LENGTH, padInput, validateCategoryName } from '@/domain/cashflow'
+import { categoriesFor, isBuiltIn, localDate, MAX_CATEGORY_LENGTH, padInput, validateCategoryName } from '@/domain/cashflow'
+import { DEFAULT_ACCOUNT_ID, TRANSFER } from '@/domain/schema'
+import { parseVoice } from '@/domain/voice'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { href } from '@/routes'
-import type { CashType, CategoryNameError, Key } from '@/types'
+import type { CategoryNameError, CustomCategory, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { useSheetSync } from '@/useSheetSync'
 import { categoryColor, categoryIcon } from '@/view/tokens'
-import type { PadKey, QuickAddDraft } from './QuickAdd.types'
+import type { EntryType, PadKey, QuickAddDraft, SpeechRecognitionLike } from './QuickAdd.types'
 
 const PAD: readonly PadKey[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'back']
 const DAY_MS = 86_400_000
 const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 
-const freshDraft = (type: CashType, today: string): QuickAddDraft => ({ type, digits: '', category: undefined, date: today, note: '' })
+const freshDraft = (type: EntryType, today: string, account = DEFAULT_ACCOUNT_ID): QuickAddDraft => ({ type, digits: '', category: undefined, date: today, note: '', account })
+
+// Chrome and Safari still prefix it; Firefox has none, so the mic button is hidden there.
+const Recognition = (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition ??
+  (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition
 
 /** Phone-first entry screen: type, amount on a number pad, category tile, day, save. Works offline. */
 export function QuickAdd() {
-  const { t, num, money, category } = useI18n()
+  const { t, num, money, category, lang } = useI18n()
   const sync = useSheetSync()
   const addEntry = useCashflow((s) => s.addEntry)
   const addCategory = useCashflow((s) => s.addCategory)
   const customCategories = useCashflow((s) => s.customCategories)
+  const accounts = useCashflow((s) => s.accounts)
   const { entries } = useCashEntries()
   // undefined = form closed; '' or text = typing a new category name.
   const [newName, setNewName] = useState<string>()
@@ -36,21 +43,72 @@ export function QuickAdd() {
   const [yesterday] = useState(() => localDate(Date.now() - DAY_MS))
   const [draft, setDraft] = useState<QuickAddDraft>(() => freshDraft('expense', today))
   const [saved, setSaved] = useState<string>()
+  const [listening, setListening] = useState(false)
+  const [heard, setHeard] = useState<string>()
+  const [voiceError, setVoiceError] = useState(false)
 
   const amount = Number(draft.digits || 0)
-  const categories = categoriesFor(draft.type, customCategories, entries)
-  const canSave = amount > 0 && draft.category !== undefined
+  const transfer = draft.type === TRANSFER
+  const categories = draft.type === TRANSFER ? [] : categoriesFor(draft.type, customCategories, entries)
+  const active = accounts.filter((a) => !a.archived)
+  const nameOf = (id?: string) => accounts.find((a) => a.id === id)?.name ?? ''
+  const canSave = amount > 0 && (transfer ? !!draft.toAccount && draft.toAccount !== draft.account : draft.category !== undefined)
   const update = (patch: Partial<QuickAddDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const press = (key: PadKey) => setDraft((d) => ({ ...d, digits: padInput(d.digits, key) }))
 
   function save() {
-    if (!canSave || !draft.category) return
-    addEntry({ type: draft.type, amount, category: draft.category, date: draft.date, note: draft.note.trim() || undefined })
-    setSaved(t('add.saved', { amount: money(amount), category: category(draft.category) }))
-    setDraft(freshDraft(draft.type, today))
+    if (!canSave) return
+    const note = draft.note.trim() || undefined
+    if (transfer) {
+      addEntry({ type: TRANSFER, amount, category: TRANSFER, date: draft.date, note, account: draft.account, toAccount: draft.toAccount })
+      setSaved(t('add.savedTransfer', { amount: money(amount), from: nameOf(draft.account), to: nameOf(draft.toAccount) }))
+    } else if (draft.category) {
+      addEntry({ type: draft.type, amount, category: draft.category, date: draft.date, note, account: draft.account })
+      setSaved(t('add.saved', { amount: money(amount), category: category(draft.category) }))
+    }
+    setDraft(freshDraft(draft.type, today, draft.account))
+    setHeard(undefined)
+  }
+
+  /** Fills the form from what was heard; the user still checks it and taps Save. */
+  function applyTranscript(text: string) {
+    const custom: CustomCategory[] = (['expense', 'income'] as const).flatMap((type) =>
+      categoriesFor(type, customCategories, entries)
+        .filter((name) => !isBuiltIn(name))
+        .map((name) => ({ type, name })),
+    )
+    const v = parseVoice(text, active, custom)
+    setHeard(text)
+    setDraft((d) => {
+      const type = v.type ?? d.type
+      return {
+        ...d,
+        type,
+        digits: v.amount ? String(Math.min(v.amount, 99_999_999_999)) : d.digits,
+        category: v.category ?? (type === d.type ? d.category : undefined),
+        account: v.account ?? d.account,
+        toAccount: v.toAccount ?? (type === d.type ? d.toAccount : undefined),
+        note: v.note || d.note,
+      }
+    })
+  }
+
+  function listen() {
+    if (!Recognition) return
+    const r = new Recognition()
+    r.lang = lang === 'id' ? 'id-ID' : 'en-US'
+    r.interimResults = false
+    r.maxAlternatives = 1
+    r.onresult = (e) => applyTranscript(e.results[0][0].transcript)
+    r.onerror = () => setVoiceError(true)
+    r.onend = () => setListening(false)
+    setVoiceError(false)
+    setListening(true)
+    r.start()
   }
 
   function createCategory() {
+    if (draft.type === TRANSFER) return
     const result = validateCategoryName(newName ?? '', categories.map(category))
     if (!result.ok) return setNameError(result.error)
     addCategory({ type: draft.type, name: result.name })
@@ -83,31 +141,71 @@ export function QuickAdd() {
       </header>
       <SyncBar sync={sync} compact />
 
-      <div role="radiogroup" aria-label={t('add.title')} className="grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1">
-        {(['expense', 'income'] as const).map((type) => (
+      {Recognition && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={listen} disabled={listening} aria-pressed={listening} className="font-label text-xs uppercase">
+              <span aria-hidden="true" className={cn('size-2 rounded-full bg-down', listening && 'animate-pulse')} />
+              {listening ? t('add.listening') : t('add.voice')}
+            </Button>
+            {heard && <span className="min-w-0 truncate text-xs text-text-muted">{t('add.heard', { text: heard })}</span>}
+          </div>
+          {voiceError && (
+            <p role="alert" className="text-xs text-down">
+              {t('add.voiceError')}
+            </p>
+          )}
+          <p className="text-[11px] text-text-muted">{t('add.voiceHint')}</p>
+        </div>
+      )}
+
+      <div role="radiogroup" aria-label={t('add.title')} className="grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1">
+        {(['expense', 'income', TRANSFER] as const).map((type) => (
           <button
             key={type}
             type="button"
             role="radio"
             aria-checked={draft.type === type}
             onClick={() => {
-              update({ type, category: undefined })
+              update({ type, category: undefined, toAccount: undefined })
               setNewName(undefined)
             }}
             className={cn('h-10 rounded-md font-label text-xs uppercase', focusRing, draft.type === type ? 'bg-surface text-text shadow-sm' : 'text-text-muted')}
           >
             <span className="flex items-center justify-center gap-2">
-              <PixelIcon name={type === 'expense' ? 'arrowDown' : 'arrowUp'} size={12} />
-              {t(type === 'expense' ? 'add.expense' : 'add.income')}
+              <PixelIcon name={type === 'expense' ? 'arrowDown' : type === 'income' ? 'arrowUp' : 'coin'} size={12} />
+              {t(`add.${type}`)}
             </span>
           </button>
         ))}
       </div>
 
       <output aria-label={t('add.amount')} aria-live="polite" className="flex items-baseline justify-end gap-1.5 border-b-2 border-text pb-2 leading-[0.85]">
-        <span className="font-display text-3xl text-text-muted">{draft.type === 'expense' ? '−' : '+'}Rp</span>
+        <span className="font-display text-3xl text-text-muted">{transfer ? '' : draft.type === 'expense' ? '−' : '+'}Rp</span>
         <span className={cn('font-display text-[64px]', !amount && 'text-text-muted')}>{num(amount)}</span>
       </output>
+
+      {(transfer ? (['account', 'toAccount'] as const) : (['account'] as const)).map((field) => (
+        <div key={field} role="radiogroup" aria-label={t(transfer ? (field === 'account' ? 'add.from' : 'add.to') : 'add.account')} className="flex flex-wrap items-center gap-1.5">
+          <span className="min-w-12 pr-1 font-label text-[11px] text-text-muted uppercase">{t(transfer ? (field === 'account' ? 'add.from' : 'add.to') : 'add.account')}</span>
+          {active.map((a) => {
+            const on = (draft[field] ?? (field === 'account' ? DEFAULT_ACCOUNT_ID : undefined)) === a.id
+            return (
+              <button
+                key={a.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                disabled={field === 'toAccount' && a.id === draft.account}
+                onClick={() => update({ [field]: a.id })}
+                className={cn('h-9 rounded-md px-3 text-xs disabled:opacity-40', focusRing, on ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-text-muted')}
+              >
+                {a.name}
+              </button>
+            )
+          })}
+        </div>
+      ))}
 
       {/* minmax(0,1fr): long names ("Investment") wrap inside the tile instead of pushing the screen wider. */}
       <div role="radiogroup" aria-label={t('add.category')} className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-1.5">
@@ -127,7 +225,7 @@ export function QuickAdd() {
             </button>
           )
         })}
-        {newName === undefined && (
+        {newName === undefined && !transfer && (
           <button
             type="button"
             onClick={() => setNewName('')}
