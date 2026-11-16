@@ -128,6 +128,11 @@ export interface Check {
   avgValue: number
   /** Where to buy; undefined when the trend rules don't all pass. */
   buyZone?: { low: number; high: number }
+  /**
+   * The same MA50 to MA50 + 2× ATR range whenever there's data, trend or not. Reference only: when it differs from
+   * buyZone (trend rules fail) it is shown as "not ideal" and never used for entries, alerts, paper trades or backtests.
+   */
+  refZone?: { low: number; high: number }
   zone: Zone
   /** Price the stop and targets are measured from: the close, capped at the top of the buy zone. */
   entry: number
@@ -216,7 +221,8 @@ export function checkSetup(allBars: readonly Bar[], { rules: market = IDX_RULES,
   // Buy zone: MA50 (trend support) up to MA50 + 2× ATR, only while all three trend rules pass.
   const trendOk = rules.filter((r) => TREND_RULES.includes(r.id)).every((r) => r.pass)
   const step = market.step(close)
-  const buyZone = trendOk && ma50 !== undefined && a !== undefined ? { low: roundTo(ma50, step, 'ceil'), high: roundTo(ma50 + ZONE_ATR * a, step, 'floor') } : undefined
+  const refZone = ma50 !== undefined && a !== undefined ? { low: roundTo(ma50, step, 'ceil'), high: roundTo(ma50 + ZONE_ATR * a, step, 'floor') } : undefined
+  const buyZone = trendOk ? refZone : undefined
   const zone: Zone = !buyZone ? 'none' : close > buyZone.high ? 'extended' : 'in'
   // Risk is measured from what you'd pay: the close, or the top of the zone when the price must pull back first.
   const entry = buyZone ? Math.min(close, buyZone.high) : close
@@ -228,6 +234,7 @@ export function checkSetup(allBars: readonly Bar[], { rules: market = IDX_RULES,
   const risk = stop !== undefined && stop < entry ? roundTo(entry - stop, step, 'round') : undefined
   return {
     buyZone,
+    refZone,
     zone,
     entry,
     rules,

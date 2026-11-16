@@ -101,6 +101,8 @@ describe('checkSetup', () => {
     const c = checkSetup(series(300, (i) => 3000 - i * 5, 100))!
     expect(c.zone).toBe('none')
     expect(c.buyZone).toBeUndefined()
+    // Still shown for reference ("not ideal"), but never the entry.
+    expect(c.refZone).toEqual({ low: Math.ceil(c.ma50!), high: Math.floor(c.ma50! + 2 * c.atr!) })
     expect(c.entry).toBe(c.close)
     expect(c.rules.find((r) => r.id === 'ma50over200')!.pass).toBe(false)
     expect(c.rules.find((r) => r.id === 'closeOverMa50')!.pass).toBe(false)

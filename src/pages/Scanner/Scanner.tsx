@@ -467,8 +467,8 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <Stat
           label={t('scan.buyZone')}
-          value={c.buyZone ? `${price(c.buyZone.low)}–${price(c.buyZone.high)}` : '—'}
-          note={c.zone === 'extended' ? t('scan.zone.extended', { p: price(c.entry) }) : t(`scan.zone.${c.zone}`)}
+          value={c.refZone ? `${price(c.refZone.low)}–${price(c.refZone.high)}` : '—'}
+          note={c.zone === 'extended' ? t('scan.zone.extended', { p: price(c.entry) }) : t(c.zone === 'none' && c.refZone ? 'scan.zone.notIdeal' : `scan.zone.${c.zone}`)}
         />
         <Stat label={t('scan.stop')} value={price(c.stop)} note={c.risk !== undefined ? `−${num((c.risk / c.entry) * 100, 1)}% · ${t('scan.stopRule')}` : undefined} />
         <Stat label={t('scan.target2')} value={price(c.target2)} note={c.target2 !== undefined ? t('scan.fromEntry', { p: price(c.entry) }) : undefined} />
@@ -622,8 +622,12 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
                   </td>
                   <td className="px-2 py-1.5 font-mono">{price(r.check.close)}</td>
                   <td className="px-2 py-1.5 font-mono whitespace-nowrap">
-                    {r.check.buyZone ? `${price(r.check.buyZone.low)}–${price(r.check.buyZone.high)} ` : '—'}
-                    {r.check.zone !== 'none' && <Badge tone={r.check.zone === 'in' ? 'paper' : 'warn'}>{t(`scan.badge.${r.check.zone}`)}</Badge>}
+                    {r.check.refZone ? `${price(r.check.refZone.low)}–${price(r.check.refZone.high)} ` : '—'}
+                    {r.check.zone !== 'none' ? (
+                      <Badge tone={r.check.zone === 'in' ? 'paper' : 'warn'}>{t(`scan.badge.${r.check.zone}`)}</Badge>
+                    ) : (
+                      r.check.refZone && <Badge tone="neutral">{t('scan.badge.notIdeal')}</Badge>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 font-mono">{price(r.check.stop)}</td>
                   <td className="px-2 py-1.5 font-mono">{price(r.check.target2)}</td>
