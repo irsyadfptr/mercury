@@ -4,7 +4,7 @@ import { billsDue, billsFromSheet, nextMonthly, payBill } from './bills'
 import { mergeNewest } from './portfolioSheet'
 
 const at = '2026-11-01T00:00:00.000Z'
-const bill = (id: string, dueDate: string, extra: Partial<Bill> = {}): Bill => ({ id, name: id, dueDate, monthly: true, archived: false, updatedAt: at, ...extra })
+const bill = (id: string, dueDate: string, extra: Partial<Bill> = {}): Bill => ({ id, name: id, dueDate, monthly: true, income: false, archived: false, updatedAt: at, ...extra })
 
 describe('bills due', () => {
   it('lists overdue and due within 3 days, soonest first; skips later and archived', () => {
@@ -14,6 +14,18 @@ describe('bills due', () => {
       ['bpjs', 0],
       ['wifi', 3],
     ])
+  })
+})
+
+describe('expected income', () => {
+  it('is a quest only once 2 days late; Received logs salary income', () => {
+    const salary = bill('salary', '2026-11-14', { income: true, amount: 10_000_000, account: 'bca' })
+    expect(billsDue([salary], '2026-11-15')).toEqual([])
+    expect(billsDue([salary], '2026-11-16').map((d) => d.days)).toEqual([-2])
+    expect(payBill(salary, '2026-11-16')).toEqual({
+      bill: { ...salary, dueDate: '2026-12-14' },
+      expense: { type: 'income', amount: 10_000_000, category: 'salary', date: '2026-11-16', note: 'salary', account: 'bca' },
+    })
   })
 })
 
@@ -39,7 +51,7 @@ describe('paying', () => {
 describe('Bills tab', () => {
   it('reads rows, with a due date typed in the Sheet (day number); newest edit wins', () => {
     const r = billsFromSheet([['pln', 'PLN', '', 46342, true, '', false, at], ['bad']])
-    expect(r.items).toEqual([{ id: 'pln', name: 'PLN', dueDate: '2026-11-16', monthly: true, archived: false, updatedAt: at }])
+    expect(r.items).toEqual([{ id: 'pln', name: 'PLN', dueDate: '2026-11-16', monthly: true, income: false, archived: false, updatedAt: at }])
     expect(r.skipped).toBe(1)
     const paid = { ...r.items[0], dueDate: '2026-12-16', updatedAt: '2026-11-16T00:00:00.000Z' }
     expect(mergeNewest([paid], r.items)).toEqual([paid])

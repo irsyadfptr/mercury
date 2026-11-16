@@ -6,6 +6,7 @@ import { localDate } from '@/domain/cashflow'
 import { byDay, journalStreak } from '@/domain/journal'
 import { JOURNAL_TAGS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
+import { routeParam } from '@/routes'
 import { useStore } from '@/store'
 import type { Holding, JournalTag } from '@/types'
 import { useNow } from '@/useNow'
@@ -54,8 +55,9 @@ function NewEntry({ today, holdings }: { today: string; holdings: Holding[] }) {
   const { t } = useI18n()
   const addJournal = useStore((s) => s.addJournal)
   const [date, setDate] = useState(today)
-  const [tag, setTag] = useState<JournalTag>('note')
-  const [holdingId, setHoldingId] = useState(ALL)
+  // '#/journal?holding=…&tag=exit' (from the exit-lesson quest) starts the note already filled in.
+  const [tag, setTag] = useState<JournalTag>(() => JOURNAL_TAGS.find((x) => x === routeParam('tag')) ?? 'note')
+  const [holdingId, setHoldingId] = useState(() => holdings.find((h) => h.id === routeParam('holding'))?.id ?? ALL)
   const [text, setText] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -125,7 +127,8 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
   const journal = useStore((s) => s.journal)
   const removeJournal = useStore((s) => s.removeJournal)
   const [filter, setFilter] = useState(ALL)
-  const shown = filter ? journal.filter((j) => j.holdingId === filter) : journal
+  const [tagFilter, setTagFilter] = useState<JournalTag | typeof ALL>(ALL)
+  const shown = journal.filter((j) => (!filter || j.holdingId === filter) && (!tagFilter || j.tag === tagFilter))
   const linked = holdings.filter((h) => journal.some((j) => j.holdingId === h.id))
 
   return (
@@ -133,10 +136,10 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
       <CardTitle icon="receipt" aside={t('jr.count', { n: shown.length })}>
         {t('jr.entries')}
       </CardTitle>
-      {linked.length > 0 && (
-        <label className="mb-3 flex items-center gap-2 text-sm">
-          <Label>{t('jr.filter')}</Label>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} className={`${fieldClass} max-w-64`}>
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <Label>{t('jr.filter')}</Label>
+        {linked.length > 0 && (
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('jr.holding')} className={`${fieldClass} w-auto max-w-64`}>
             <option value={ALL}>{t('jr.all')}</option>
             {linked.map((h) => (
               <option key={h.id} value={h.id}>
@@ -144,8 +147,16 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
               </option>
             ))}
           </select>
-        </label>
-      )}
+        )}
+        <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value as JournalTag | typeof ALL)} aria-label={t('jr.tag')} className={`${fieldClass} w-auto`}>
+          <option value={ALL}>{t('jr.allTags')}</option>
+          {JOURNAL_TAGS.map((x) => (
+            <option key={x} value={x}>
+              {t(`jr.tag.${x}`)}
+            </option>
+          ))}
+        </select>
+      </div>
       {!shown.length && <p className="text-sm text-text-muted">{t('jr.empty')}</p>}
       <div className="flex flex-col gap-4">
         {byDay(shown).map(([date, entries]) => (

@@ -16,7 +16,19 @@ describe('deleting entries', () => {
   it('a sync clears the ids it deleted, but keeps hiding one deleted while it ran', () => {
     useCashflow.getState().removeEntry('s1')
     useCashflow.getState().removeEntry('s2') // tapped after the sync read its state
-    useCashflow.getState().applySync({ spreadsheetId: 'x', synced: [entry('s2')], accounts: [], bills: [], deletedIds: ['s1'], sentIds: [], skippedRows: 0, at: '2026-11-16T00:00:00.000Z' })
+    useCashflow.getState().applySync({ spreadsheetId: 'x', synced: [entry('s2')], accounts: [], bills: [], goals: [], edited: [], deletedIds: ['s1'], sentIds: [], skippedRows: 0, at: '2026-11-16T00:00:00.000Z' })
     expect(useCashflow.getState()).toMatchObject({ synced: [], deleted: ['s2'] })
+  })
+})
+
+describe('restoring a backup', () => {
+  it('adds entries this device lacks and merges accounts, never wiping', () => {
+    useCashflow.setState({ synced: [entry('s1')], pending: [], accounts: [], bills: [], goals: [] })
+    const bca = { id: 'bca', name: 'BCA', startingBalance: 0, archived: false, updatedAt: '2026-11-01T00:00:00.000Z' }
+    useCashflow.getState().restoreCashflow({ entries: [entry('s1'), entry('old')], accounts: [bca], bills: [], goals: [] })
+    const s = useCashflow.getState()
+    expect(s.pending.map((e) => e.id)).toEqual(['old'])
+    expect(s.synced.map((e) => e.id)).toEqual(['s1'])
+    expect(s.accounts.map((a) => a.id).sort()).toEqual(['bca', 'cash'])
   })
 })

@@ -9,7 +9,8 @@ import { useNow } from './useNow'
 export function useSummary(): Summary {
   const holdings = useStore((s) => s.holdings)
   const transactions = useStore((s) => s.transactions)
+  const dividends = useStore((s) => s.dividends)
   const usdIdr = useSettings((s) => s.usdIdr)
   const now = useNow()
-  return useMemo(() => summarize(holdings, transactions, usdIdr, now), [holdings, transactions, usdIdr, now])
+  return useMemo(() => summarize(holdings, transactions, usdIdr, now, dividends), [holdings, transactions, usdIdr, now, dividends])
 }

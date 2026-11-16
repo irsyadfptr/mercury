@@ -2,7 +2,9 @@
 import { ACCOUNT_COLUMNS } from '@/domain/accounts'
 import { BILL_COLUMNS } from '@/domain/bills'
 import { SHEET_COLUMNS } from '@/domain/cashflow'
-import { HOLDING_COLUMNS, headerRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
+import { GOAL_COLUMNS } from '@/domain/cashGame'
+import { DIVIDEND_COLUMNS, HOLDING_COLUMNS, headerRow, JOURNAL_COLUMNS, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
+import { SUMMARY_COLUMNS } from '@/domain/summarySheet'
 
 const API = 'https://sheets.googleapis.com/v4/spreadsheets'
 
@@ -10,8 +12,13 @@ export const TABS = {
   entries: 'Entries',
   holdings: 'Holdings',
   transactions: 'Transactions',
+  dividends: 'Dividends',
+  journal: 'Journal',
   accounts: 'Accounts',
   bills: 'Bills',
+  goals: 'Goals',
+  /** Written by the app for reading; never read back. */
+  summary: 'Summary',
   /** Key/value cells for sync bookkeeping (A: key, B: value). */
   meta: 'Meta',
 } as const
@@ -22,8 +29,12 @@ const HEADERS: Record<TabName, readonly string[]> = {
   Entries: SHEET_COLUMNS,
   Holdings: headerRow(HOLDING_COLUMNS),
   Transactions: headerRow(TRANSACTION_COLUMNS),
+  Dividends: headerRow(DIVIDEND_COLUMNS),
+  Journal: headerRow(JOURNAL_COLUMNS),
   Accounts: headerRow(ACCOUNT_COLUMNS),
   Bills: headerRow(BILL_COLUMNS),
+  Goals: headerRow(GOAL_COLUMNS),
+  Summary: SUMMARY_COLUMNS,
   Meta: ['key', 'value'],
 }
 
@@ -133,7 +144,30 @@ export async function deleteRows(token: string, spreadsheetId: string, tab: TabN
   await call(token, `${API}/${spreadsheetId}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests }) })
 }
 
+/** Replaces a whole tab, header row included (for the Summary tab, whose columns change with the categories used). */
+export async function writeWholeTab(token: string, spreadsheetId: string, tab: TabName, rows: Cell[][]): Promise<void> {
+  await call(token, `${API}/${spreadsheetId}/values:batchClear`, { method: 'POST', body: JSON.stringify({ ranges: [tab] }) })
+  await writeCells(token, spreadsheetId, [{ range: `${tab}!A1`, values: rows }])
+}
+
 /** Meta tab as a key → value map. */
 export const metaFromRows = (rows: readonly unknown[][]): Record<string, string> => Object.fromEntries(rows.filter((r) => r[0]).map((r) => [String(r[0]), String(r[1] ?? '')]))
+
+/**
+ * Checks each Google API separately: 'ok', or Google's own message (it names the API to enable and links to it).
+ * Sheets is probed with the linked sheet, or a made-up id: "not found" (404) still proves the API is on.
+ */
+export async function testConnection(token: string, spreadsheetId: string | undefined): Promise<{ sheets: string; drive: string }> {
+  const probe = (url: string, notFoundIsOk = false) =>
+    call(token, url).then(
+      () => 'ok',
+      (e: unknown) => (notFoundIsOk && e instanceof SheetsError && e.status === 404 ? 'ok' : e instanceof Error ? e.message : String(e)),
+    )
+  const [sheets, drive] = await Promise.all([
+    probe(`${API}/${spreadsheetId ?? 'mercury-connection-test'}?fields=spreadsheetId`, true),
+    probe('https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)&spaces=drive'),
+  ])
+  return { sheets, drive }
+}
 
 export const sheetUrl = (spreadsheetId: string): string => `https://docs.google.com/spreadsheets/d/${spreadsheetId}`

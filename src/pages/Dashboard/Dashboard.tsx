@@ -3,22 +3,26 @@ import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
 import { useCashflow } from '@/cashflowStore'
 import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
+import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
-import { localDate } from '@/domain/cashflow'
+import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
 import { loadScanLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
-import type { AllocationItem, Bill, I18n, Quest, RiskStatus, Row, Summary } from '@/types'
+import type { AllocationItem, Bill, Holding, I18n, JournalEntry, Quest, RiskStatus, Row, Summary, Transaction } from '@/types'
 import { WATCHLIST } from '@/market/coingecko'
+import { exitLessonsDue, journalStreak } from '@/domain/journal'
+import { useStore } from '@/store'
+import { useCashEntries } from '@/useCashEntries'
 import { useCryptoMarket } from '@/useCryptoMarket'
 import { useNow } from '@/useNow'
 import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
-import { flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { QuestView, StatTile } from './Dashboard.types'
 
@@ -28,6 +32,7 @@ export function Dashboard() {
   return (
     <>
       <Hero summary={summary} />
+      <MonthCard />
       <div className="flex flex-wrap gap-4">
         <HeatCard heat={summary.heat} />
         <TradeRisk rows={summary.rows} />
@@ -98,7 +103,12 @@ function statTiles(s: Summary, heatLimit: number, f: I18n): StatTile[] {
       sub: `${unrealizedPct >= 0 ? '▲' : '▼'} ${f.num(Math.abs(unrealizedPct), 2)}% ${f.t('dash.vsInvested', { amount: f.compact(s.invested) })}`,
       color: signColor(s.unrealized),
     },
-    { label: f.t('dash.realized'), value: signed(s.realized), sub: f.t('dash.fromSells'), color: signColor(s.realized) },
+    {
+      label: f.t('dash.realized'),
+      value: signed(s.realized + s.dividends),
+      sub: s.dividends ? f.t('dash.withDividends', { amount: f.compact(s.dividends) }) : f.t('dash.fromSells'),
+      color: signColor(s.realized + s.dividends),
+    },
     { label: f.t('dash.heat'), value: `${f.num(s.heat, 1)}%`, sub: f.t('dash.ofLimit', { n: heatLimit }), color: COLOR.text },
   ]
 }
@@ -107,10 +117,15 @@ const LEVEL_UP_SOON = 0.9
 
 function Hero({ summary }: { summary: Summary }) {
   const f = useI18n()
-  const { t, compact, num } = f
+  const { t, compact } = f
   const heatLimit = useSettings((x) => x.heatLimit)
-  const shown = useCountUp(summary.netWorth)
-  const lv = level(summary.netWorth)
+  const { entries } = useCashEntries()
+  const accounts = useCashflow((s) => s.accounts)
+  // Net worth = holdings + money in accounts. Heat and position sizing stay on holdings (trading capital).
+  const cash = accountsTotal(accounts, entries)
+  const total = summary.netWorth + cash
+  const shown = useCountUp(total)
+  const lv = level(total)
   const xpPct = Math.round(lv.xp * 100)
 
   return (
@@ -126,14 +141,30 @@ function Hero({ summary }: { summary: Summary }) {
         <div className="flex items-baseline gap-1.5 leading-[0.8]">
           <span className="font-display text-4xl text-text-muted">Rp</span>
           <span className="font-display text-[clamp(56px,9vw,104px)] tabular-nums" aria-live="off">
-            {num(Math.round(shown))}
+            {f.amount(shown)}
           </span>
+        </div>
+        {/* Total money = accounts (cashflow) + investing holdings + running trades. */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: t('dash.partAccounts'), value: cash },
+            { label: t('dash.partInvesting'), value: summary.byGroup.investing },
+            { label: t('dash.partTrading'), value: summary.byGroup.trading },
+          ].map((x) => (
+            <div key={x.label} className="flex flex-col gap-0.5 rounded-md border border-border px-2.5 py-1.5">
+              <Label>{x.label}</Label>
+              <span className="font-mono text-sm font-medium" style={{ color: x.value < 0 ? COLOR.down : undefined }}>
+                {x.value < 0 ? '−' : ''}
+                {compact(Math.abs(x.value))}
+              </span>
+            </div>
+          ))}
         </div>
         {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
         <div className="flex flex-col gap-1.5 pt-1.5">
           <div className="flex justify-between gap-2">
             <Label className="text-text">{t('dash.xpTo', { n: lv.level + 1 })}</Label>
-            <Label>{t('dash.xpNote', { amount: compact(lv.next - summary.netWorth), pct: xpPct })}</Label>
+            <Label>{t('dash.xpNote', { amount: compact(lv.next - total), pct: xpPct })}</Label>
           </div>
           <Segments items={xpBar(lv.xp)} height={14} label={`${t('dash.level')} ${lv.level}: ${xpPct}%`} />
         </div>
@@ -146,6 +177,50 @@ function Hero({ summary }: { summary: Summary }) {
               {x.value}
             </span>
             <span className="text-[11px] text-text-muted">{x.sub}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+// ---- This month's cashflow ----
+
+/** Spending against the budget, income and net for the current month; the full picture is on the Cashflow page. */
+function MonthCard() {
+  const { t, money, compact, num, month } = useI18n()
+  const { entries } = useCashEntries()
+  const budget = useSettings((x) => x.monthlyBudget)
+  const today = localDate(useNow())
+  const s = monthSummary(entries, monthOf(today), today)
+  const signed = (n: number) => `${n >= 0 ? '+' : '−'}${compact(Math.abs(n))}`
+
+  return (
+    <Card aria-label={t('dash.month', { month: month(s.month) })} className="flex flex-wrap items-center gap-4">
+      <div className="flex min-w-0 flex-[3_1_320px] flex-col gap-1.5">
+        <div className="flex flex-wrap justify-between gap-2">
+          <Label>{t('dash.month', { month: month(s.month) })}</Label>
+          <a href={href('cashflow')} className="font-label text-[11px] text-accent-text uppercase underline underline-offset-4">
+            {t('dash.openCashflow')}
+          </a>
+        </div>
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-display text-[40px] leading-none">{compact(s.expense)}</span>
+          <span className="text-sm text-text-muted">{budget ? t('cf.budgetOf', { amount: money(budget) }) : t('cf.spentLegend')}</span>
+        </div>
+        {budget ? <Segments items={budgetBar(s.expense, budget)} height={10} label={`${money(s.expense)} / ${money(budget)}`} /> : null}
+      </div>
+      <div className="grid flex-[2_1_260px] grid-cols-3 gap-2">
+        {[
+          { label: t('cf.income'), value: compact(s.income), color: COLOR.text },
+          { label: t('cf.net'), value: signed(s.net), color: signColor(s.net) },
+          { label: t('cf.savingsRate'), value: s.savingsRate === null ? '—' : `${num(s.savingsRate, 0)}%`, color: s.savingsRate === null ? COLOR.muted : signColor(s.savingsRate) },
+        ].map((x) => (
+          <div key={x.label} className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2">
+            <Label>{x.label}</Label>
+            <span className="font-display text-[26px] leading-none" style={{ color: x.color }}>
+              {x.value}
+            </span>
           </div>
         ))}
       </div>
@@ -410,9 +485,23 @@ function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
 /** Bills due within a few days or overdue (entered on the Cashflow page). */
 function billAlerts(f: I18n, bills: readonly Bill[], today: string): QuestView[] {
   return billsDue(bills, today).map(({ bill, days }) => ({
-    label: bill.amount ? f.t('quest.payBillAmount', { s: bill.name, amount: f.money(bill.amount) }) : f.t('quest.payBill', { s: bill.name }),
+    label: bill.income
+      ? f.t('quest.incomeLate', { s: bill.name })
+      : bill.amount
+        ? f.t('quest.payBillAmount', { s: bill.name, amount: f.money(bill.amount) })
+        : f.t('quest.payBill', { s: bill.name }),
     tag: dueTag(days, f.t),
     route: 'cashflow' as const,
+  }))
+}
+
+/** Sells of the last two weeks without an exit or lesson note: write it while it's fresh. */
+function exitLessonAlerts(f: I18n, holdings: readonly Holding[], txns: readonly Transaction[], journal: readonly JournalEntry[], today: string): QuestView[] {
+  return exitLessonsDue(holdings, txns, journal, today).map((h) => ({
+    label: f.t('quest.exitLesson', { s: h.symbol }),
+    tag: '',
+    route: 'journal' as const,
+    params: { holding: h.id, tag: 'exit' },
   }))
 }
 
@@ -424,11 +513,22 @@ function Quests({ summary }: { summary: Summary }) {
   const held = longTermSymbols(summary.rows)
   const scores = useScoreLog(held)
   const bills = useCashflow((s) => s.bills)
-  const list = [...billAlerts(f, bills, localDate(now)), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
+  const { holdings, transactions, journal } = useStore()
+  const today = localDate(now)
+  const streak = journalStreak(journal, today)
+  const list = [...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')}>
-      <CardTitle icon="star" aside={f.t('quests.sub')}>
+      <CardTitle
+        icon="star"
+        aside={
+          <a href={href('journal')} className="flex items-center gap-1 hover:underline">
+            {streak > 0 && <PixelIcon name="flame" size={12} />}
+            {f.t('quests.journalStreak', { n: streak })}
+          </a>
+        }
+      >
         {f.t('quests.title')}
       </CardTitle>
       {!list.length && <p className="text-sm text-text-muted">{f.t('quests.none')}</p>}
@@ -436,7 +536,7 @@ function Quests({ summary }: { summary: Summary }) {
         {list.map((q) => (
           <li key={`${q.route}:${q.label}`}>
             <a
-              href={href(q.route)}
+              href={href(q.route, q.params)}
               className="flex items-center gap-2.5 rounded-lg bg-surface-2 px-3 py-2 hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <span aria-hidden="true" className="size-4 shrink-0 rounded border-2 border-text-muted" />

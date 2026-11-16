@@ -9,6 +9,7 @@ export type Currency = z.infer<typeof schema.Currency>
 export type Holding = z.infer<typeof schema.Holding>
 export type Transaction = z.infer<typeof schema.Transaction>
 export type JournalEntry = z.infer<typeof schema.JournalEntry>
+export type Dividend = z.infer<typeof schema.Dividend>
 export type JournalTag = JournalEntry['tag']
 export type NewJournalEntry = Omit<JournalEntry, 'id' | 'createdAt'>
 /** Input for creating a holding: id and createdAt are assigned by the store. */
@@ -63,6 +64,10 @@ export interface Row {
   v: Valuation
   risk: TradeRisk
   daysHeld: number
+  /** Dividends received, all time (rupiah). */
+  dividends: number
+  /** Dividends of the last 12 months ÷ cost of what is still held, %; null without cost. */
+  yieldOnCost: number | null
 }
 
 export interface Summary {
@@ -71,6 +76,8 @@ export interface Summary {
   invested: number
   unrealized: number
   realized: number
+  /** Dividends received, all holdings, all time (rupiah). */
+  dividends: number
   byGroup: Record<Group, number>
   byClass: Partial<Record<AssetClass, number>>
   /** Sum of per-trade risk % for trades that have a stop. */
@@ -205,6 +212,19 @@ export type CashEntry = z.infer<typeof schema.CashEntry>
 export type NewCashEntry = Omit<CashEntry, 'id' | 'createdAt'>
 export type Account = z.infer<typeof schema.Account>
 export type Bill = z.infer<typeof schema.Bill>
+export type Goal = z.infer<typeof schema.Goal>
+
+/** Cashflow badges, worked out from the data (nothing stored). */
+export type CashBadge = 'firstEntry' | 'streak7' | 'streak30' | 'underBudget' | 'saver20' | 'allMatched' | 'goalReached'
+
+/** This month's cashflow score: four parts of 0–25 each. */
+export interface MonthScore {
+  total: number
+  budget: number
+  savings: number
+  logging: number
+  matched: number
+}
 
 /** A bill that needs paying soon; days until due (negative = overdue). */
 export interface BillDue {
@@ -257,6 +277,23 @@ export interface MonthTotal {
 
 export type AccountNameError = 'required' | 'tooLong' | 'duplicate'
 
+/** Cashflow entry list filter; any field set = search all months. */
+export interface EntryFilter {
+  /** Account id. */
+  account?: string
+  category?: string
+  text: string
+}
+
+/** A Quick add chip: an entry the user logs often. */
+export interface Shortcut {
+  type: CashType
+  category: string
+  amount: number
+  note?: string
+  account?: string
+}
+
 /** What the voice parser could read from a transcript; missing fields are left for the user. */
 export interface VoiceDraft {
   type?: CashEntry['type']
@@ -265,6 +302,8 @@ export interface VoiceDraft {
   /** Account id; for a transfer, the source. */
   account?: string
   toAccount?: string
+  /** "kemarin" / "yesterday" = 1, "tadi" / "today" / "hari ini" = 0. */
+  daysAgo?: number
   /** Words not understood, kept so nothing is lost. */
   note: string
 }

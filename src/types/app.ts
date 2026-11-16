@@ -1,6 +1,6 @@
 import type { en } from '@/i18n'
 import type { ROUTES } from '@/routes'
-import type { Account, Backup, Bill, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
+import type { Account, Backup, Bill, CashEntry, CustomCategory, Dividend, Goal, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
 
 // ---- Routes ----
 
@@ -26,6 +26,10 @@ export interface SettingsValues {
   lastExportAt?: string
   /** Monthly spending budget in rupiah; unset = no budget bar. */
   monthlyBudget?: number
+  /** Monthly spending limit per expense category (id or custom name) in rupiah. */
+  categoryBudgets?: Record<string, number>
+  /** Hide money amounts (shown as •••••) until switched off. */
+  privacy?: boolean
 }
 
 export interface SettingsState extends SettingsValues {
@@ -37,6 +41,9 @@ export interface SettingsState extends SettingsValues {
 export interface PortfolioData {
   holdings: Holding[]
   transactions: Transaction[]
+  dividends: Dividend[]
+  /** Synced with the portfolio (Journal tab), so it follows the same push / pull / merge rules. */
+  journal: JournalEntry[]
 }
 
 export interface PortfolioActions {
@@ -47,9 +54,11 @@ export interface PortfolioActions {
   removeHolding: (id: string) => void
   addTransaction: (t: NewTransaction) => void
   removeTransaction: (id: string) => void
+  /** Returns the new dividend's id. */
+  addDividend: (d: Omit<Dividend, 'id'>) => string
+  removeDividend: (id: string) => void
   /** Replaces all data. Callers must validate with parseBackup first. */
   replaceAll: (b: Backup) => void
-  journal: JournalEntry[]
   addJournal: (e: NewJournalEntry) => void
   removeJournal: (id: string) => void
   /** Sheet sync pulled newer data; at = when that sync started. */
@@ -76,6 +85,8 @@ export interface CashflowData {
   pending: CashEntry[]
   /** Ids of synced entries deleted on this device; their Sheet rows are removed at the next sync. */
   deleted: string[]
+  /** Synced entries edited on this device; their Sheet rows are rewritten (by id) at the next sync. */
+  edited: CashEntry[]
   lastSyncAt?: string
   /** Rows in the Sheet that failed validation at the last sync. */
   skippedRows: number
@@ -85,14 +96,20 @@ export interface CashflowData {
   accounts: Account[]
   /** Bills to pay; synced through the Bills tab. */
   bills: Bill[]
+  /** Savings goals; synced through the Goals tab. */
+  goals: Goal[]
 }
 
 export interface CashflowActions {
   /** Queues an entry locally; returns its id. */
   addEntry: (e: NewCashEntry) => string
+  /** Replaces an entry (same id): unsynced ones at once, synced ones in the Sheet at the next sync. */
+  updateEntry: (e: CashEntry) => void
   /** Deletes an entry: unsynced ones at once, synced ones from the Sheet at the next sync. */
   removeEntry: (id: string) => void
   applySync: (r: SyncApplied) => void
+  /** Adds a backup's cashflow without wiping anything: missing entries are queued, the rest merges (newest edit wins). */
+  restoreCashflow: (c: NonNullable<Backup['cashflow']>) => void
   /** Forget the linked sheet (data stays in Google Drive). */
   unlinkSheet: () => void
   /** Call with a name already checked by validateCategoryName. */
@@ -100,9 +117,11 @@ export interface CashflowActions {
   /** Call with a name already checked by validateAccountName; returns the new id. */
   addAccount: (name: string, startingBalance: number, balanceDate?: string) => string
   /** Adds a bill (no id) or replaces one (with id); stamps updatedAt. Delete = save with archived: true. */
-  saveBill: (b: Omit<Bill, 'id' | 'updatedAt' | 'archived'> & { id?: string; archived?: boolean }) => string
+  saveBill: (b: Omit<Bill, 'id' | 'updatedAt' | 'archived' | 'income'> & { id?: string; archived?: boolean; income?: boolean }) => string
+  /** Adds a goal (no id) or replaces one (with id); stamps updatedAt. Delete = save with archived: true. */
+  saveGoal: (g: Omit<Goal, 'id' | 'updatedAt' | 'archived'> & { id?: string; archived?: boolean }) => void
   /** Rename, archive or change the starting balance; stamps updatedAt. */
-  updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'balanceDate' | 'archived'>>) => void
+  updateAccount: (id: string, patch: Partial<Pick<Account, 'name' | 'startingBalance' | 'balanceDate' | 'archived' | 'matchedAt'>>) => void
 }
 
 export interface SyncApplied {
@@ -111,8 +130,11 @@ export interface SyncApplied {
   /** Accounts after merging this device's with the Sheet's. */
   accounts: Account[]
   bills: Bill[]
+  goals: Goal[]
   /** Deleted ids whose Sheet rows this sync removed (or that were already gone). */
   deletedIds: string[]
+  /** The edited entries this sync wrote (same objects as in the store's queue). */
+  edited: CashEntry[]
   /** Pending ids now stored in the Sheet; entries added during the sync stay queued. */
   sentIds: string[]
   skippedRows: number
@@ -155,6 +177,10 @@ export interface I18n {
   num: (n: number, digits?: number) => string
   /** Units: up to 8 decimals, trailing zeros trimmed. */
   qty: (n: number) => string
+  /** Privacy mode: money amounts show as ••••• until switched off. */
+  privacy: boolean
+  /** A money number without "Rp" (for big headline digits): 1,234,567, or ••••• in privacy mode. */
+  amount: (n: number) => string
   /** Whole rupiah: Rp1,234,567. */
   money: (n: number) => string
   /** Rp1.2M / Rp1,2 jt. */

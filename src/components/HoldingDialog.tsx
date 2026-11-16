@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCashflow } from '@/cashflowStore'
 import { Button } from '@/components/ui/button'
 import {
   CLASS_DEFAULTS,
@@ -18,6 +19,7 @@ import type {
   Currency,
   FormError,
   Group,
+  Holding,
   HoldingDialogProps,
   HoldingFormErrors,
   HoldingFormProps,
@@ -181,6 +183,7 @@ function HoldingForm({ holdingId, onDone }: HoldingFormProps) {
         )}
 
         {existing && <Transactions holding={existing} txns={transactions.filter((x) => x.holdingId === existing.id)} />}
+        {existing && <Dividends holding={existing} />}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3">
@@ -267,6 +270,74 @@ function Transactions({ holding, txns }: TransactionsProps) {
           {t(ERROR_KEY[error])}
         </p>
       )}
+    </div>
+  )
+}
+
+/**
+ * Dividends received for a holding. Each one is also logged as Investment income in Cashflow, to the account it
+ * landed in (picked here), so account balances and the month's income include it. Deleting removes both.
+ */
+function Dividends({ holding }: { holding: Holding }) {
+  const { t, money } = useI18n()
+  const dividends = useStore((s) => s.dividends)
+  const addDividend = useStore((s) => s.addDividend)
+  const removeDividend = useStore((s) => s.removeDividend)
+  const accounts = useCashflow((s) => s.accounts).filter((a) => !a.archived)
+  const addEntry = useCashflow((s) => s.addEntry)
+  const removeEntry = useCashflow((s) => s.removeEntry)
+  const [today] = useState(todayIso)
+  const [row, setRow] = useState({ amount: '', date: today, account: '' })
+  const [error, setError] = useState(false)
+  const own = dividends.filter((d) => d.holdingId === holding.id).sort((a, b) => b.date.localeCompare(a.date))
+  const account = row.account || accounts[0]?.id || ''
+
+  function add() {
+    const amount = Math.round(Number(row.amount))
+    if (!(amount > 0) || !row.date || !account) return setError(true)
+    const entryId = addEntry({ type: 'income', amount, category: 'investment', date: row.date, note: t('div.note', { s: holding.symbol }), account })
+    addDividend({ holdingId: holding.id, date: row.date, amount, entryId })
+    setRow({ amount: '', date: row.date, account })
+    setError(false)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{t('div.title')}</Label>
+      <ul className="flex flex-col">
+        {own.map((d) => (
+          <li key={d.id} className="flex items-center gap-3 border-b border-border py-1.5 text-sm">
+            <span className="text-text-muted">{d.date}</span>
+            <span className="ml-auto font-mono text-up">+{money(d.amount)}</span>
+            <button
+              type="button"
+              aria-label={t('div.remove')}
+              onClick={() => {
+                removeDividend(d.id)
+                if (d.entryId) removeEntry(d.entryId)
+              }}
+              className="rounded px-1.5 text-text-muted hover:text-down focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="grid grid-cols-2 gap-2 rounded-lg bg-surface-2 p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+        <input className={`${fieldClass} font-mono`} type="number" min="0" step="1" placeholder={t('div.amount')} aria-label={t('div.amount')} aria-invalid={error} value={row.amount} onChange={(e) => setRow({ ...row, amount: e.target.value })} />
+        <input className={fieldClass} type="date" value={row.date} max={today} aria-label={t('form.date')} onChange={(e) => setRow({ ...row, date: e.target.value })} />
+        <select className={fieldClass} value={account} onChange={(e) => setRow({ ...row, account: e.target.value })} aria-label={t('div.account')}>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <Button type="button" variant="outline" onClick={add}>
+          {t('div.add')}
+        </Button>
+      </div>
+      <p className={`text-xs ${error ? 'text-down' : 'text-text-muted'}`}>{t(error ? 'div.err' : 'div.hint')}</p>
     </div>
   )
 }

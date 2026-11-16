@@ -1,6 +1,6 @@
 // Pure cashflow math and Sheet row mapping. No clock, storage or network: every input is a parameter.
-import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows } from '@/types'
-import { CashEntry as CashEntrySchema, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
+import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows, Shortcut } from '@/types'
+import { ADJUSTMENT, CashEntry as CashEntrySchema, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
 
 export const monthOf = (yyyyMmDd: string): MonthKey => yyyyMmDd.slice(0, 7)
 
@@ -21,7 +21,7 @@ export function daysInMonth(month: MonthKey): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate()
 }
 
-const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])
+const BUILT_IN = new Set<string>([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES, ADJUSTMENT])
 /** "Food" typed in the Sheet means the built-in "food", not a new category. */
 const BUILT_IN_BY_LOWER = new Map([...BUILT_IN].map((c) => [c.toLowerCase(), c]))
 
@@ -57,11 +57,14 @@ export function validateCategoryName(raw: string, labels: readonly string[]): { 
   return { ok: true, name }
 }
 
-const sumOf = (entries: readonly CashEntry[], type: CashType) => entries.reduce((a, e) => (e.type === type ? a + e.amount : a), 0)
+/** Real spending or income: transfers and balance adjustments only move account balances. */
+export const isCashflow = (e: CashEntry, type?: CashType): boolean => (type ? e.type === type : e.type !== 'transfer') && e.category !== ADJUSTMENT
+
+const sumOf = (entries: readonly CashEntry[], type: CashType) => entries.reduce((a, e) => (isCashflow(e, type) ? a + e.amount : a), 0)
 
 function totals(entries: readonly CashEntry[], type: CashType): CategoryTotal[] {
   const by = new Map<string, number>()
-  for (const e of entries) if (e.type === type) by.set(e.category, (by.get(e.category) ?? 0) + e.amount)
+  for (const e of entries) if (isCashflow(e, type)) by.set(e.category, (by.get(e.category) ?? 0) + e.amount)
   const total = sumOf(entries, type)
   return [...by].map(([category, amount]) => ({ category, amount, pct: total ? (amount / total) * 100 : 0 })).sort((a, b) => b.amount - a.amount)
 }
@@ -95,6 +98,29 @@ export function lastMonths(entries: readonly CashEntry[], month: MonthKey, count
     const inMonth = entries.filter((e) => monthOf(e.date) === m)
     return { month: m, income: sumOf(inMonth, 'income'), expense: sumOf(inMonth, 'expense') }
   })
+}
+
+const SHORTCUT_WINDOW_DAYS = 90
+
+/**
+ * Quick add chips: the same type + category + amount + note + account logged at least twice in the last 90 days,
+ * most used first (then most recent). Transfers and adjustments are left out.
+ */
+export function frequentEntries(entries: readonly CashEntry[], today: string, limit = 6): Shortcut[] {
+  const since = new Date(Date.parse(`${today}T00:00:00Z`) - SHORTCUT_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const by = new Map<string, { s: Shortcut; count: number; last: string }>()
+  for (const e of entries) {
+    if (e.type === 'transfer' || !isCashflow(e) || e.date < since) continue
+    const s: Shortcut = { type: e.type, category: e.category, amount: e.amount, note: e.note, account: e.account }
+    const key = JSON.stringify(s)
+    const had = by.get(key)
+    by.set(key, { s, count: (had?.count ?? 0) + 1, last: had && had.last > e.date ? had.last : e.date })
+  }
+  return [...by.values()]
+    .filter((x) => x.count >= 2)
+    .sort((a, b) => b.count - a.count || b.last.localeCompare(a.last))
+    .slice(0, limit)
+    .map((x) => x.s)
 }
 
 /** Synced entries plus local pending ones; pending wins on id clash; newest date first. */

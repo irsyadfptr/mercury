@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { JournalEntry } from '@/types'
+import type { Holding, JournalEntry, Transaction } from '@/types'
 import { parseBackup, toBackup } from './backup'
-import { byDay, journalStreak } from './journal'
+import { byDay, exitLessonsDue, journalStreak } from './journal'
 
 const e = (date: string, createdAt = `${date}T01:00:00.000Z`): JournalEntry => ({ id: createdAt, date, tag: 'note', text: 'x', createdAt })
 
@@ -31,5 +31,32 @@ describe('journal', () => {
     const r2 = parseBackup(JSON.stringify(old))
     expect(r2.ok && r2.data.journal).toEqual([])
     expect(parseBackup(JSON.stringify(toBackup([], [], b.exportedAt, [{ ...e('2026-11-14'), holdingId: 'gone' }]))).ok).toBe(false)
+  })
+})
+
+describe('exit lessons', () => {
+  const h = (id: string): Holding => ({ id, assetClass: 'idx_stock', group: 'trading', symbol: id, currency: 'IDR', paper: false, createdAt: '2026-10-01T00:00:00.000Z' })
+  const sell = (holdingId: string, date: string): Transaction => ({ id: `${holdingId}${date}`, holdingId, type: 'sell', date: `${date}T03:00:00.000Z`, quantity: 1, price: 1, fee: 0 })
+  it('asks once per recent sell until an exit or lesson note is written', () => {
+    const holdings = [h('BBCA'), h('ADRO'), h('PTBA')]
+    const txns = [sell('BBCA', '2026-11-10'), sell('ADRO', '2026-11-15'), sell('PTBA', '2026-10-01')]
+    expect(exitLessonsDue(holdings, txns, [], '2026-11-16').map((x) => x.symbol)).toEqual(['ADRO', 'BBCA'])
+    const note: JournalEntry = { ...e('2026-11-11'), tag: 'lesson', holdingId: 'BBCA' }
+    const before: JournalEntry = { ...e('2026-11-09'), tag: 'exit', holdingId: 'ADRO' } // older than the sell
+    expect(exitLessonsDue(holdings, txns, [note, before], '2026-11-16').map((x) => x.symbol)).toEqual(['ADRO'])
+  })
+})
+
+describe('backup with dividends and cashflow', () => {
+  it('round-trips, and older backups import with none', () => {
+    const account = { id: 'bca', name: 'BCA', startingBalance: 0, archived: false, updatedAt: '2026-11-01T00:00:00.000Z' }
+    const entry = { id: 'x', date: '2026-11-01', type: 'expense' as const, amount: 1, category: 'food', createdAt: '2026-11-01T00:00:00.000Z', account: 'bca' }
+    const b = toBackup([], [], '2026-11-16T00:00:00.000Z', [], { cashflow: { entries: [entry], accounts: [account], bills: [], goals: [] } })
+    const back = parseBackup(JSON.stringify(b))
+    expect(back.ok && back.data.cashflow?.entries).toEqual([entry])
+    const old = parseBackup(JSON.stringify({ schemaVersion: 1, exportedAt: '2026-11-01T00:00:00.000Z', holdings: [], transactions: [] }))
+    expect(old.ok && [old.data.dividends, old.data.cashflow]).toEqual([[], undefined])
+    const stray = toBackup([], [], '2026-11-16T00:00:00.000Z', [], { dividends: [{ id: 'd', holdingId: 'gone', date: '2026-11-01', amount: 1 }] })
+    expect(parseBackup(JSON.stringify(stray)).ok).toBe(false)
   })
 })

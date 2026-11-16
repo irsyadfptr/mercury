@@ -35,6 +35,9 @@ const CATEGORY_WORDS: Record<string, string> = {
   gaji: 'salary', gajian: 'salary', salary: 'salary', bonus: 'bonus', thr: 'bonus', freelance: 'freelance', proyek: 'freelance', project: 'freelance',
   dividen: 'investment', dividend: 'investment', bunga: 'investment', interest: 'investment',
 }
+/** Day words → days ago. "tadi pagi" etc.: the part of day after "tadi" is consumed too. */
+const DAY_WORDS: Record<string, number> = { kemarin: 1, yesterday: 1, tadi: 0, today: 0 }
+const DAY_PARTS = new Set(['pagi', 'siang', 'sore', 'malam', 'morning', 'afternoon', 'evening', 'tonight'])
 const TRANSFER_WORDS = new Set(['transfer', 'tf', 'pindah', 'tarik', 'withdraw'])
 const INCOME_WORDS = new Set(['terima', 'dapat', 'masuk', 'pemasukan', 'income', 'received', 'got', 'earned'])
 const EXPENSE_WORDS = new Set(['beli', 'bayar', 'keluar', 'pengeluaran', 'spent', 'paid', 'pay', 'buy', 'bought'])
@@ -129,6 +132,18 @@ export function parseVoice(transcript: string, accounts: readonly Account[], cus
     found.push({ at: i, id: DEFAULT_ACCOUNT_ID, to })
   })
   found.sort((a, b) => a.at - b.at)
+
+  // Day: "kemarin", "tadi pagi", "hari ini", "yesterday", "this morning".
+  tokens.forEach((t, i) => {
+    if (used[i]) return
+    const hariIni = t === 'ini' && tokens[i - 1] === 'hari'
+    const thisPart = DAY_PARTS.has(t) && tokens[i - 1] === 'this'
+    if (!(t in DAY_WORDS) && !hariIni && !thisPart) return
+    draft.daysAgo ??= DAY_WORDS[t] ?? 0
+    used[i] = true
+    if (hariIni || thisPart) used[i - 1] = true
+    if (t === 'tadi' && DAY_PARTS.has(tokens[i + 1])) used[i + 1] = true
+  })
 
   // Amount: the first run of number words.
   for (let i = 0; i < tokens.length && draft.amount === undefined; i++) {

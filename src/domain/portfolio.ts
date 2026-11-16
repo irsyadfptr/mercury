@@ -1,6 +1,7 @@
 // Pure portfolio math. No clock, storage or UI access: every input is a parameter.
 import type {
   AssetClass,
+  Dividend,
   Group,
   HeatInfo,
   Holding,
@@ -58,10 +59,24 @@ export function daysHeld(txns: readonly Transaction[], now: number): number {
   return Math.max(0, Math.floor((now - Date.parse(first)) / DAY_MS))
 }
 
-export function summarize(holdings: readonly Holding[], txns: readonly Transaction[], usdIdr: number | undefined, now: number): Summary {
+/** Dividends of the last 12 months count toward the yield on cost. */
+const YIELD_WINDOW_DAYS = 365
+
+export function summarize(holdings: readonly Holding[], txns: readonly Transaction[], usdIdr: number | undefined, now: number, dividends: readonly Dividend[] = []): Summary {
+  const since = new Date(now - YIELD_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10)
   const base = holdings.map((holding) => {
     const own = txns.filter((t) => t.holdingId === holding.id)
-    return { holding, txns: own, v: valueHolding(holding, own, usdIdr), daysHeld: daysHeld(own, now) }
+    const v = valueHolding(holding, own, usdIdr)
+    const divs = dividends.filter((d) => d.holdingId === holding.id)
+    const lastYear = sum(divs.filter((d) => d.date >= since).map((d) => d.amount))
+    return {
+      holding,
+      txns: own,
+      v,
+      daysHeld: daysHeld(own, now),
+      dividends: sum(divs.map((d) => d.amount)),
+      yieldOnCost: v.costIdr > 0 && Number.isFinite(v.costIdr) ? (lastYear / v.costIdr) * 100 : null,
+    }
   })
   const isPriced = (r: { v: Valuation }) => Number.isFinite(r.v.valueIdr)
   const priced = base.filter(isPriced)
@@ -81,6 +96,7 @@ export function summarize(holdings: readonly Holding[], txns: readonly Transacti
     invested,
     unrealized: netWorth - invested,
     realized: sum(priced.map((r) => r.v.realizedIdr)),
+    dividends: sum(dividends.map((d) => d.amount)),
     byGroup,
     byClass,
     heat: sum(rows.map((r) => (r.risk.kind === 'ok' ? r.risk.pct : 0))),

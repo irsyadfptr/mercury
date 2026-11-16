@@ -84,13 +84,13 @@ function HoldingRows({ rows, onEdit, scores }: HoldingRowsProps) {
 }
 
 function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
-  const { t, money, change, qty } = useI18n()
+  const { t, money, compact, num, change, qty } = useI18n()
   const { holding: h, v, risk, daysHeld } = row
   const lt = h.group === 'investing' && h.assetClass === 'idx_stock' ? scores[h.symbol.toUpperCase()] : undefined
   const r = rarity(daysHeld)
   const closed = v.quantity === 0
   // USD holding without a rate: show its own-currency value instead of a wrong IDR number.
-  const value = Number.isFinite(v.valueIdr) ? money(v.valueIdr) : `$${v.marketValue.toFixed(2)}`
+  const value = Number.isFinite(v.valueIdr) ? money(v.valueIdr) : `$${qty(Math.round(v.marketValue * 100) / 100)}`
 
   return (
     <button
@@ -109,6 +109,12 @@ function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
           {h.stop != null && <>· stop {h.currency === 'USD' ? `$${qty(h.stop)}` : money(h.stop)}</>}
           {h.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
           {!!lt?.length && <Badge tone={scoreAlert(lt) ? 'warn' : 'neutral'}>{t('pf.ltScore', { n: lt.at(-1)!.total })}</Badge>}
+          {row.dividends > 0 && (
+            <Badge tone="neutral">
+              {t('pf.dividends', { amount: compact(row.dividends) })}
+              {row.yieldOnCost !== null && row.yieldOnCost > 0 && ` · ${t('pf.yoc', { n: num(row.yieldOnCost, 1) })}`}
+            </Badge>
+          )}
           {risk.kind === 'noStop' && <Badge tone="warn">{t('badge.noStop')}</Badge>}
           {v.priceSource === 'cost' && !closed && <Badge tone="neutral">{t('pf.atCost')}</Badge>}
           {closed && <Badge tone="neutral">{t('pf.closed')}</Badge>}
@@ -130,7 +136,8 @@ function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
 const optional = (s: string) => (s.trim() === '' ? undefined : Number(s))
 
 function SizeCalculator({ netWorth }: { netWorth: number }) {
-  const { t, money, num, qty } = useI18n()
+  const f = useI18n()
+  const { t, money, num, qty } = f
   const tradeLimit = useSettings((s) => s.tradeLimit)
   const [inputs, setInputs] = useState<SizeInputs>({ capital: '', riskPct: '', entry: '', stop: '', useLots: true })
   const set = <K extends keyof SizeInputs>(key: K, value: SizeInputs[K]) => setInputs((s) => ({ ...s, [key]: value }))
@@ -150,7 +157,7 @@ function SizeCalculator({ netWorth }: { netWorth: number }) {
       <CardTitle icon="star">{t('size.title')}</CardTitle>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('size.capital')} className="col-span-2">
-          <input className={fieldClass} type="number" min="0" placeholder={num(Math.round(netWorth))} value={inputs.capital} onChange={(e) => set('capital', e.target.value)} />
+          <input className={fieldClass} type="number" min="0" placeholder={f.amount(netWorth)} value={inputs.capital} onChange={(e) => set('capital', e.target.value)} />
         </Field>
         <Field label={t('size.risk')}>
           <input className={fieldClass} type="number" min="0" step="0.1" placeholder={String(tradeLimit)} value={inputs.riskPct} onChange={(e) => set('riskPct', e.target.value)} />

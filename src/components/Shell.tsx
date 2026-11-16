@@ -17,6 +17,7 @@ const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
   const theme = useSettings((s) => s.theme)
+  const privacy = useSettings((s) => !!s.privacy)
   const set = useSettings((s) => s.set)
 
   return (
@@ -43,6 +44,10 @@ export function Shell({ route, children }: ShellProps) {
           ))}
         </nav>
         <div className="flex gap-1">
+          {/* Privacy: masks every money amount (•••••), e.g. when someone can see the screen. */}
+          <button type="button" onClick={() => set({ privacy: !privacy })} aria-pressed={privacy} aria-label={t('set.privacy')} title={t('set.privacy')} className={pill}>
+            {privacy ? '•••' : 'Rp'}
+          </button>
           <button type="button" onClick={() => set({ lang: NEXT_LANG[lang] })} aria-label={t('set.language')} className={pill}>
             {lang.toUpperCase()}
           </button>

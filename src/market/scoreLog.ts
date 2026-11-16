@@ -38,6 +38,22 @@ export function scoreAlert(entries: ScoreEntry[] | undefined): ScoreAlert | unde
   return undefined
 }
 
+/**
+ * Pure: tickers in the log whose latest total beats `symbol`'s latest, best first (then more data known).
+ * Only tickers checked within `maxAgeDays` of the newest check count, so a stale score can't look better.
+ */
+export function betterScored(log: ScoreLog, symbol: string, limit = 3, maxAgeDays = 30): { symbol: string; entry: ScoreEntry }[] {
+  const mine = log[symbol]?.at(-1)
+  if (!mine) return []
+  const latest = Object.entries(log).flatMap(([s, entries]) => (entries.length ? [{ symbol: s, entry: entries.at(-1)! }] : []))
+  const newest = latest.reduce((max, x) => (x.entry.date > max ? x.entry.date : max), '')
+  const cutoff = new Date(Date.parse(`${newest}T00:00:00Z`) - maxAgeDays * 86_400_000).toISOString().slice(0, 10)
+  return latest
+    .filter((x) => x.symbol !== symbol && x.entry.total > mine.total && x.entry.date >= cutoff)
+    .sort((a, b) => b.entry.total - a.entry.total || b.entry.known - a.entry.known)
+    .slice(0, limit)
+}
+
 const KEY = 'mercury.ltScores'
 export function loadScoreLog(): ScoreLog {
   try {

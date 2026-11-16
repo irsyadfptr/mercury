@@ -8,6 +8,7 @@ import { DEFAULT_ACCOUNT_ID, MAX_BILL_NAME } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import type { Bill } from '@/types'
 import { useNow } from '@/useNow'
+import { COLOR } from '@/view/tokens'
 
 interface Draft {
   id?: string
@@ -15,10 +16,14 @@ interface Draft {
   amount: string
   dueDate: string
   monthly: boolean
+  income: boolean
   account: string
 }
 
-/** Bills entered by hand. Due ones also show as Dashboard quests; Pay logs the expense and moves a monthly bill on. */
+/**
+ * Bills and expected income (e.g. salary), entered by hand. Due bills and late income show as Dashboard quests;
+ * Pay / Received logs the entry and moves a monthly one on.
+ */
 export function Bills() {
   const { t, money, day } = useI18n()
   const bills = useCashflow((s) => s.bills)
@@ -38,8 +43,8 @@ export function Bills() {
     setError(false)
     setDraft(
       b
-        ? { id: b.id, name: b.name, amount: b.amount ? String(b.amount) : '', dueDate: b.dueDate, monthly: b.monthly, account: b.account ?? DEFAULT_ACCOUNT_ID }
-        : { name: '', amount: '', dueDate: today, monthly: true, account: DEFAULT_ACCOUNT_ID },
+        ? { id: b.id, name: b.name, amount: b.amount ? String(b.amount) : '', dueDate: b.dueDate, monthly: b.monthly, income: b.income, account: b.account ?? DEFAULT_ACCOUNT_ID }
+        : { name: '', amount: '', dueDate: today, monthly: true, income: false, account: activeAccounts[0]?.id ?? DEFAULT_ACCOUNT_ID },
     )
   }
 
@@ -48,7 +53,7 @@ export function Bills() {
     const name = draft.name.trim()
     const amount = Math.round(Number(draft.amount))
     if (!name || !draft.dueDate) return setError(true)
-    saveBill({ id: draft.id, name, amount: amount > 0 ? amount : undefined, dueDate: draft.dueDate, monthly: draft.monthly, account: draft.account })
+    saveBill({ id: draft.id, name, amount: amount > 0 ? amount : undefined, dueDate: draft.dueDate, monthly: draft.monthly, income: draft.income, account: draft.account })
     setDraft(undefined)
   }
 
@@ -68,9 +73,19 @@ export function Bills() {
     >
       <div className="flex flex-wrap gap-2">
         <Field label={t('cf.billName')} error={error ? t('cf.billErr') : undefined} className="min-w-[12ch] flex-[2_1_0]">
-          <input className={fieldClass} value={draft.name} onChange={(e) => (update({ name: e.target.value }), setError(false))} maxLength={MAX_BILL_NAME} aria-invalid={error} autoFocus />
+          <input
+            className={fieldClass}
+            value={draft.name}
+            onChange={(e) => {
+              update({ name: e.target.value })
+              setError(false)
+            }}
+            maxLength={MAX_BILL_NAME}
+            aria-invalid={error}
+            autoFocus
+          />
         </Field>
-        <Field label={t('cf.billAmount')} hint={t('cf.billAmountHint')} className="min-w-[12ch] flex-[1_1_0]">
+        <Field label={t('cf.billAmount')} hint={t(draft.income ? 'cf.incomeAmountHint' : 'cf.billAmountHint')} className="min-w-[12ch] flex-[1_1_0]">
           <input className={`${fieldClass} font-mono`} type="number" inputMode="numeric" min={0} step={1} value={draft.amount} onChange={(e) => update({ amount: e.target.value })} />
         </Field>
       </div>
@@ -78,7 +93,7 @@ export function Bills() {
         <Field label={t('cf.billDue')} className="min-w-[14ch] flex-1">
           <input className={`${fieldClass} font-mono`} type="date" value={draft.dueDate} onChange={(e) => update({ dueDate: e.target.value })} />
         </Field>
-        <Field label={t('cf.billAccount')} className="min-w-[12ch] flex-1">
+        <Field label={t(draft.income ? 'cf.incomeAccount' : 'cf.billAccount')} className="min-w-[12ch] flex-1">
           <select className={fieldClass} value={draft.account} onChange={(e) => update({ account: e.target.value })}>
             {activeAccounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -87,9 +102,15 @@ export function Bills() {
             ))}
           </select>
         </Field>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
         <label className="flex h-9 items-center gap-2 text-sm">
           <input type="checkbox" checked={draft.monthly} onChange={(e) => update({ monthly: e.target.checked })} className="size-4 accent-[var(--accent)]" />
           {t('cf.billMonthly')}
+        </label>
+        <label className="flex h-9 items-center gap-2 text-sm">
+          <input type="checkbox" checked={draft.income} onChange={(e) => update({ income: e.target.checked })} className="size-4 accent-[var(--accent)]" />
+          {t('cf.billIncome')}
         </label>
       </div>
       <div className="flex gap-1.5">
@@ -118,14 +139,20 @@ export function Bills() {
                 <span className="font-label text-[11px] text-text-muted uppercase">
                   {day(b.dueDate)}
                   {b.monthly ? ` · ${t('cf.billMonthly')}` : ''}
+                  {b.income ? ` · ${t('cf.billIncome')}` : ''}
                 </span>
               </span>
               {due.has(b.id) && <Badge tone={due.get(b.id)! <= 0 ? 'warn' : 'neutral'}>{dueTag(due.get(b.id)!, t)}</Badge>}
               <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
-              {b.amount && <span className="font-mono font-medium">{money(b.amount)}</span>}
+              {b.amount && (
+                <span className="font-mono font-medium" style={{ color: b.income ? COLOR.up : undefined }}>
+                  {b.income ? '+' : ''}
+                  {money(b.amount)}
+                </span>
+              )}
               <span className="flex">
                 <Button size="sm" variant="outline" onClick={() => pay(b)}>
-                  {t('cf.pay')}
+                  {t(b.income ? 'cf.received' : 'cf.pay')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => open(b)}>
                   {t('cf.editAccount')}

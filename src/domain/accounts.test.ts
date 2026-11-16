@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Account, CashEntry } from '@/types'
-import { accountBalances, accountsFromSheet, DEFAULT_ACCOUNT, mergeAccounts, resolveAccount, validateAccountName } from './accounts'
+import { accountBalances, accountsFromSheet, accountsTotal, DEFAULT_ACCOUNT, mergeAccounts, resolveAccount, validateAccountName } from './accounts'
 import { entryToRow, monthSummary, rowsToEntries } from './cashflow'
 import { CashEntry as CashEntrySchema } from './schema'
 
@@ -41,6 +41,11 @@ describe('account balances', () => {
     expect(accountBalances(dated, entries)).toEqual({ bca: 900, cash: 50_300 })
     // Monthly totals still see every entry.
     expect(monthSummary(entries, '2026-11', '2026-11-16')).toMatchObject({ income: 500, expense: 300 })
+  })
+
+  it('total money leaves archived accounts out', () => {
+    const gopay: Account = { id: 'gp', name: 'GoPay', startingBalance: 70_000, archived: true, updatedAt: bca.updatedAt }
+    expect(accountsTotal([...accounts, gopay], [e('expense', 25_000)])).toBe(50_000 - 25_000 + 1_000_000)
   })
 
   it('transfers are never spending or income', () => {

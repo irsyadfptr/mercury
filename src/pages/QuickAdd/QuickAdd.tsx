@@ -4,12 +4,12 @@ import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { fieldClass } from '@/components/ui-bits'
-import { categoriesFor, isBuiltIn, localDate, MAX_CATEGORY_LENGTH, padInput, validateCategoryName } from '@/domain/cashflow'
+import { categoriesFor, frequentEntries, isBuiltIn, localDate, MAX_CATEGORY_LENGTH, padInput, validateCategoryName } from '@/domain/cashflow'
 import { DEFAULT_ACCOUNT_ID, TRANSFER } from '@/domain/schema'
 import { parseVoice } from '@/domain/voice'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
-import { href } from '@/routes'
+import { href, routeParam } from '@/routes'
 import type { CategoryNameError, CustomCategory, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { useSheetSync } from '@/useSheetSync'
@@ -28,9 +28,10 @@ const Recognition = (window as unknown as { SpeechRecognition?: new () => Speech
 
 /** Phone-first entry screen: type, amount on a number pad, category tile, day, save. Works offline. */
 export function QuickAdd() {
-  const { t, num, money, category, lang } = useI18n()
+  const { t, num, money, compact, category, lang } = useI18n()
   const sync = useSheetSync()
   const addEntry = useCashflow((s) => s.addEntry)
+  const updateEntry = useCashflow((s) => s.updateEntry)
   const addCategory = useCashflow((s) => s.addCategory)
   const customCategories = useCashflow((s) => s.customCategories)
   const accounts = useCashflow((s) => s.accounts)
@@ -41,12 +42,27 @@ export function QuickAdd() {
   // Read once per visit to this screen; "today" does not need to tick while the pad is open.
   const [today] = useState(() => localDate(Date.now()))
   const [yesterday] = useState(() => localDate(Date.now() - DAY_MS))
-  const [draft, setDraft] = useState<QuickAddDraft>(() => freshDraft('expense', today))
+  // '#/add?edit=<id>' opens an existing entry; saving replaces it and goes back to Cashflow.
+  const [editing] = useState(() => entries.find((e) => e.id === routeParam('edit')))
+  const [draft, setDraft] = useState<QuickAddDraft>(() =>
+    editing
+      ? {
+          type: editing.type,
+          digits: String(editing.amount),
+          category: editing.type === TRANSFER ? undefined : editing.category,
+          date: editing.date,
+          note: editing.note ?? '',
+          account: editing.account ?? DEFAULT_ACCOUNT_ID,
+          toAccount: editing.toAccount,
+        }
+      : freshDraft('expense', today),
+  )
   const [saved, setSaved] = useState<string>()
   const [listening, setListening] = useState(false)
   const [heard, setHeard] = useState<string>()
   const [voiceError, setVoiceError] = useState(false)
 
+  const shortcuts = frequentEntries(entries, today)
   const amount = Number(draft.digits || 0)
   const transfer = draft.type === TRANSFER
   const categories = draft.type === TRANSFER ? [] : categoriesFor(draft.type, customCategories, entries)
@@ -59,6 +75,13 @@ export function QuickAdd() {
   function save() {
     if (!canSave) return
     const note = draft.note.trim() || undefined
+    if (editing) {
+      const category = transfer ? TRANSFER : draft.category
+      if (!category) return
+      updateEntry({ ...editing, type: draft.type, amount, category, date: draft.date, note, account: draft.account, toAccount: transfer ? draft.toAccount : undefined })
+      location.hash = href('cashflow')
+      return
+    }
     if (transfer) {
       addEntry({ type: TRANSFER, amount, category: TRANSFER, date: draft.date, note, account: draft.account, toAccount: draft.toAccount })
       setSaved(t('add.savedTransfer', { amount: money(amount), from: nameOf(draft.account), to: nameOf(draft.toAccount) }))
@@ -89,6 +112,7 @@ export function QuickAdd() {
         account: v.account ?? d.account,
         toAccount: v.toAccount ?? (type === d.type ? d.toAccount : undefined),
         note: v.note || d.note,
+        date: v.daysAgo === undefined ? d.date : v.daysAgo ? yesterday : today,
       }
     })
   }
@@ -137,9 +161,29 @@ export function QuickAdd() {
         <a href={href('cashflow')} className={cn('rounded-md font-label text-xs uppercase underline underline-offset-4', focusRing)}>
           ← {t('add.back')}
         </a>
-        <h1 className="font-display text-3xl leading-none uppercase">{t('add.title')}</h1>
+        <h1 className="font-display text-3xl leading-none uppercase">{t(editing ? 'add.editTitle' : 'add.title')}</h1>
       </header>
       <SyncBar sync={sync} compact />
+
+      {!editing && shortcuts.length > 0 && (
+        <div aria-label={t('add.frequent')} className="flex gap-1.5 overflow-x-auto pb-1">
+          {shortcuts.map((s) => (
+            <button
+              key={JSON.stringify(s)}
+              type="button"
+              onClick={() => {
+                setDraft((d) => ({ ...d, type: s.type, digits: String(s.amount), category: s.category, note: s.note ?? '', account: s.account ?? DEFAULT_ACCOUNT_ID, toAccount: undefined }))
+                setHeard(undefined)
+              }}
+              className={cn('flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs', focusRing)}
+            >
+              <PixelIcon name={categoryIcon(s.category)} color={categoryColor(s.category)} size={12} />
+              <span>{s.note || category(s.category)}</span>
+              <span className="font-mono text-text-muted">{compact(s.amount)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {Recognition && (
         <div className="flex flex-col gap-1">

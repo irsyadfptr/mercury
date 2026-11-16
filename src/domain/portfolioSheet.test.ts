@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Holding, Transaction } from '@/types'
-import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from './portfolioSheet'
+import { DIVIDEND_COLUMNS, HOLDING_COLUMNS, JOURNAL_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from './portfolioSheet'
 
 const holding: Holding = {
   id: 'h1',
@@ -19,7 +19,7 @@ const tx: Transaction = { id: 't1', holdingId: 'h1', type: 'buy', date: '2026-11
 describe('portfolio ↔ sheet rows', () => {
   it('round-trips holdings and transactions, keeping optional fields optional', () => {
     const p = portfolioFromSheet([toRow(HOLDING_COLUMNS, holding)], [toRow(TRANSACTION_COLUMNS, tx)])
-    expect(p).toEqual({ holdings: [holding], transactions: [tx], skipped: 0 })
+    expect(p).toEqual({ holdings: [holding], transactions: [tx], dividends: [], journal: [], skipped: 0 })
     expect('name' in p.holdings[0]).toBe(false)
   })
 
@@ -35,10 +35,19 @@ describe('portfolio ↔ sheet rows', () => {
   })
 
   it('merges by id, this device first', () => {
-    const remote = { holdings: [{ ...holding, symbol: 'OLD' }, { ...holding, id: 'h2' }], transactions: [tx] }
-    const merged = mergePortfolios({ holdings: [holding], transactions: [] }, remote)
+    const remote = { holdings: [{ ...holding, symbol: 'OLD' }, { ...holding, id: 'h2' }], transactions: [tx], dividends: [], journal: [] }
+    const merged = mergePortfolios({ holdings: [holding], transactions: [], dividends: [], journal: [] }, remote)
     expect(merged.holdings.map((h) => [h.id, h.symbol])).toEqual([['h1', 'ADRO'], ['h2', 'ADRO']])
     expect(merged.transactions).toEqual([tx])
+  })
+
+  it('dividends and journal round-trip; a note about a missing holding keeps the note', () => {
+    const div = { id: 'd1', holdingId: 'h1', date: '2026-11-10', amount: 90_000, entryId: 'e1' }
+    const note = { id: 'j1', date: '2026-11-10', tag: 'lesson' as const, text: 'Held too long', holdingId: 'gone', createdAt: '2026-11-10T00:00:00.000Z' }
+    const p = portfolioFromSheet([toRow(HOLDING_COLUMNS, holding)], [], [toRow(DIVIDEND_COLUMNS, div), toRow(DIVIDEND_COLUMNS, { ...div, id: 'd2', holdingId: 'gone' })], [toRow(JOURNAL_COLUMNS, note)])
+    expect(p.dividends).toEqual([div])
+    expect(p.journal).toEqual([{ ...note, holdingId: undefined }])
+    expect(p.skipped).toBe(1)
   })
 })
 

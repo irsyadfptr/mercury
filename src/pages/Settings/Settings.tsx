@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useCashflow } from '@/cashflowStore'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Field, fieldClass } from '@/components/ui-bits'
@@ -9,6 +10,9 @@ import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import { ENV_KEY } from '@/useCryptoMarket'
 import type { Lang, ThemePref } from '@/types'
+import { useCashEntries } from '@/useCashEntries'
+import { currentToken } from '@/sync/google'
+import { testConnection } from '@/sync/sheets'
 import { useSheetSync } from '@/useSheetSync'
 import type { StatusMessage } from './Settings.types'
 
@@ -72,6 +76,15 @@ function CashflowSettings() {
   const monthlyBudget = useSettings((s) => s.monthlyBudget)
   const set = useSettings((s) => s.set)
   const sync = useSheetSync()
+  const [test, setTest] = useState<{ sheets: string; drive: string } | 'running' | 'signedOut'>()
+
+  async function runTest() {
+    const token = currentToken()
+    if (!token) return setTest('signedOut')
+    setTest('running')
+    setTest(await testConnection(token, useCashflow.getState().spreadsheetId))
+  }
+
   return (
     <Card className="md:col-span-2">
       <CardTitle icon="coin">{t('set.cashflow')}</CardTitle>
@@ -90,10 +103,28 @@ function CashflowSettings() {
           />
         </Field>
         <SyncBar sync={sync} />
-        {(sync.status === 'idle' || sync.status === 'error') && (
-          <Button variant="ghost" size="sm" className="self-start" onClick={sync.disconnect}>
-            {t('sync.disconnect')}
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          {sync.status !== 'unconfigured' && (
+            <Button variant="outline" size="sm" onClick={() => void runTest()} disabled={test === 'running'}>
+              {t(test === 'running' ? 'set.testing' : 'set.testConnection')}
+            </Button>
+          )}
+          {(sync.status === 'idle' || sync.status === 'error') && (
+            <Button variant="ghost" size="sm" onClick={sync.disconnect}>
+              {t('sync.disconnect')}
+            </Button>
+          )}
+        </div>
+        {test === 'signedOut' && <p className="text-sm text-warn-text">{t('set.testSignIn')}</p>}
+        {test && typeof test === 'object' && (
+          <ul role="status" className="flex flex-col gap-1 text-sm">
+            {(['sheets', 'drive'] as const).map((api) => (
+              <li key={api} className={test[api] === 'ok' ? 'text-up' : 'text-down'}>
+                {test[api] === 'ok' ? '✓' : '✗'} {t(api === 'sheets' ? 'set.apiSheets' : 'set.apiDrive')}
+                {test[api] !== 'ok' && <span className="block pl-4 text-xs break-words text-text-muted">{test[api]}</span>}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </Card>
@@ -172,21 +203,26 @@ function MarketData() {
 function Backup() {
   const { t, locale } = useI18n()
   const { lastExportAt, set } = useSettings()
-  const { holdings, transactions, journal, replaceAll } = useStore()
+  const { holdings, transactions, journal, dividends, replaceAll } = useStore()
+  const { entries } = useCashEntries()
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<StatusMessage>()
 
   function exportJson() {
     const now = new Date().toISOString()
-    downloadJson(`mercury-${now.slice(0, 10)}.json`, toBackup(holdings, transactions, now, journal))
+    const { accounts, bills, goals } = useCashflow.getState()
+    downloadJson(`mercury-${now.slice(0, 10)}.json`, toBackup(holdings, transactions, now, journal, { dividends, cashflow: { entries, accounts, bills, goals } }))
     set({ lastExportAt: now })
   }
 
   async function importJson(file: File) {
     const result = parseBackup(await file.text())
     if (!result.ok) return setMessage({ text: result.error, error: true })
-    if (!confirm(t('set.importConfirm', { n: result.data.holdings.length }))) return
+    const cash = result.data.cashflow
+    if (!confirm(t(cash ? 'set.importConfirmCash' : 'set.importConfirm', { n: result.data.holdings.length, e: cash?.entries.length ?? 0 }))) return
     replaceAll(result.data)
+    // Cashflow is added, never wiped: entries this device or the Sheet lacks are queued; accounts, bills and goals merge (newest edit wins).
+    if (cash) useCashflow.getState().restoreCashflow(cash)
     setMessage({ text: t('set.imported', { h: result.data.holdings.length, t: result.data.transactions.length }) })
   }
 

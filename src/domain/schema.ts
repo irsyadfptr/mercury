@@ -63,16 +63,18 @@ export const JournalEntry = z.object({
   createdAt: isoDate,
 })
 
-export const SCHEMA_VERSION = 1
-
-export const Backup = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
-  exportedAt: isoDate,
-  holdings: z.array(Holding),
-  transactions: z.array(Transaction),
-  /** Added after v1 shipped; older backups have none. */
-  journal: z.array(JournalEntry).default([]),
+/** A dividend received for a holding: rupiah actually received (after the 10% IDX final tax). */
+export const Dividend = z.object({
+  id,
+  holdingId: id,
+  /** yyyy-mm-dd it was paid. */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  amount: z.number().int().positive(),
+  /** The Cashflow income entry logged with it, so deleting the dividend removes that entry too. */
+  entryId: id.optional(),
 })
+
+export const SCHEMA_VERSION = 1
 
 // ---- Cashflow (stored in the user's Google Sheet, cached locally) ----
 
@@ -84,6 +86,12 @@ const yyyyMmDd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 /** Entries with no account belong here. It always exists and cannot be archived. */
 export const DEFAULT_ACCOUNT_ID = 'cash'
 export const MAX_ACCOUNT_NAME = 24
+
+/**
+ * Category of a balance correction (from the monthly balance check): an expense or income entry that fixes an account's
+ * balance but is never counted as spending or income. Not offered in Quick add.
+ */
+export const ADJUSTMENT = 'adjustment'
 
 /** A transfer moves money between two accounts; it is never spending or income. */
 export const TRANSFER = 'transfer'
@@ -121,6 +129,18 @@ export const Account = z.object({
   archived: z.boolean().default(false),
   /** Last edit, ISO; the newer copy wins in a sync. */
   updatedAt: isoDate,
+  /** yyyy-mm-dd of the last "Match bank" (even when nothing differed): the monthly balance check. */
+  matchedAt: yyyyMmDd.optional(),
+})
+
+/** A savings goal: progress = the account's balance against the target. Archived, never deleted. */
+export const Goal = z.object({
+  id,
+  name: z.string().trim().min(1).max(40),
+  target: z.number().int().positive(),
+  account: z.string().trim().min(1),
+  archived: z.boolean().default(false),
+  updatedAt: isoDate,
 })
 
 export const MAX_BILL_NAME = 40
@@ -137,9 +157,30 @@ export const Bill = z.object({
   monthly: z.boolean().default(true),
   /** Account the payment comes from (id); none = the default account. */
   account: z.string().trim().min(1).optional(),
+  /** Expected income (e.g. salary) instead of a bill: a quest only once it is late, and "Received" logs income. */
+  income: z.boolean().default(false),
   archived: z.boolean().default(false),
   /** Last edit, ISO; the newer copy wins in a sync. */
   updatedAt: isoDate,
+})
+
+/** The JSON export. Fields added after v1 shipped default to empty, so older backups still import. */
+export const Backup = z.object({
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  exportedAt: isoDate,
+  holdings: z.array(Holding),
+  transactions: z.array(Transaction),
+  journal: z.array(JournalEntry).default([]),
+  dividends: z.array(Dividend).default([]),
+  /** Cashflow (also kept in the Google Sheet). Missing in older backups: then importing leaves cashflow as it is. */
+  cashflow: z
+    .object({
+      entries: z.array(CashEntry),
+      accounts: z.array(Account),
+      bills: z.array(Bill).default([]),
+      goals: z.array(Goal).default([]),
+    })
+    .optional(),
 })
 
 /** How fast an asset turns into cash. Derived, never stored. */

@@ -1,8 +1,8 @@
 // Pure mapping between the portfolio and its Sheet tabs, and the rule for which side wins a sync.
 import type { z } from 'zod'
-import type { ColumnSpec, Holding, ParsedTable, PortfolioData, PortfolioLocalState, PortfolioRemoteState, PortfolioSyncAction, Transaction } from '@/types'
+import type { ColumnSpec, Dividend, Holding, JournalEntry, ParsedTable, PortfolioData, PortfolioLocalState, PortfolioRemoteState, PortfolioSyncAction, Transaction } from '@/types'
 import { sheetDate } from './cashflow'
-import { Holding as HoldingSchema, Transaction as TransactionSchema } from './schema'
+import { Dividend as DividendSchema, Holding as HoldingSchema, JournalEntry as JournalSchema, Transaction as TransactionSchema } from './schema'
 
 export const HOLDING_COLUMNS: readonly ColumnSpec[] = [
   ['id', 'string'],
@@ -30,6 +30,23 @@ export const TRANSACTION_COLUMNS: readonly ColumnSpec[] = [
   ['price', 'number'],
   ['fee', 'number'],
   ['note', 'string'],
+]
+
+export const DIVIDEND_COLUMNS: readonly ColumnSpec[] = [
+  ['id', 'string'],
+  ['holdingId', 'string'],
+  ['date', 'date'],
+  ['amount', 'number'],
+  ['entryId', 'string'],
+]
+
+export const JOURNAL_COLUMNS: readonly ColumnSpec[] = [
+  ['id', 'string'],
+  ['date', 'date'],
+  ['tag', 'string'],
+  ['text', 'string'],
+  ['holdingId', 'string'],
+  ['createdAt', 'string'],
 ]
 
 export const headerRow = (cols: readonly ColumnSpec[]): string[] => cols.map(([name]) => name)
@@ -81,13 +98,26 @@ export function mergeNewest<T extends { id: string; updatedAt: string }>(local: 
   return [...by.values()]
 }
 
-/** Both tabs → portfolio. Transactions whose holding is missing are dropped (counted as skipped). */
-export function portfolioFromSheet(holdingRows: readonly unknown[][], transactionRows: readonly unknown[][]): PortfolioData & { skipped: number } {
+/**
+ * The tabs → portfolio. Transactions and dividends whose holding is missing are dropped (counted as skipped);
+ * journal notes about a missing holding keep the note and lose the link.
+ */
+export function portfolioFromSheet(
+  holdingRows: readonly unknown[][],
+  transactionRows: readonly unknown[][],
+  dividendRows: readonly unknown[][] = [],
+  journalRows: readonly unknown[][] = [],
+): PortfolioData & { skipped: number } {
   const h = parseTable(HOLDING_COLUMNS, holdingRows, HoldingSchema)
   const t = parseTable(TRANSACTION_COLUMNS, transactionRows, TransactionSchema)
+  const d = parseTable(DIVIDEND_COLUMNS, dividendRows, DividendSchema)
+  const j = parseTable(JOURNAL_COLUMNS, journalRows, JournalSchema)
   const ids = new Set(h.items.map((x) => x.id))
   const transactions = t.items.filter((x) => ids.has(x.holdingId))
-  return { holdings: h.items, transactions, skipped: h.skipped + t.skipped + (t.items.length - transactions.length) }
+  const dividends = d.items.filter((x) => ids.has(x.holdingId))
+  const journal = j.items.map((x) => (x.holdingId && !ids.has(x.holdingId) ? { ...x, holdingId: undefined } : x))
+  const orphans = t.items.length - transactions.length + d.items.length - dividends.length
+  return { holdings: h.items, transactions, dividends, journal, skipped: h.skipped + t.skipped + d.skipped + j.skipped + orphans }
 }
 
 /** Union by id; this device's version wins when both have the same id. Used once, on a device's first sync. */
@@ -96,7 +126,12 @@ export function mergePortfolios(local: PortfolioData, remote: PortfolioData): Po
     const ids = new Set(mine.map((x) => x.id))
     return [...mine, ...theirs.filter((x) => !ids.has(x.id))]
   }
-  return { holdings: union<Holding>(local.holdings, remote.holdings), transactions: union<Transaction>(local.transactions, remote.transactions) }
+  return {
+    holdings: union<Holding>(local.holdings, remote.holdings),
+    transactions: union<Transaction>(local.transactions, remote.transactions),
+    dividends: union<Dividend>(local.dividends, remote.dividends),
+    journal: union<JournalEntry>(local.journal, remote.journal),
+  }
 }
 
 /**

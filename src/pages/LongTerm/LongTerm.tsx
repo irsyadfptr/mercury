@@ -1,11 +1,14 @@
-import { useState, type FormEvent } from 'react'
+import { useReducer, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
 import { scoreFundamentals, type FundamentalScore, type Metric, type MetricId } from '@/market/fundamentals'
 import { fetchFundamentals, fetchScreen, IDX_AVAILABLE, IdxFetchError, SCREENS, type FundamentalRow, type IdxError, type ScreenId } from '@/market/idx'
 import type { I18n, Key } from '@/types'
-import { saveCheck } from '@/useScoreLog'
+import { loadScoreLog } from '@/market/scoreLog'
+import { longTermSymbols, saveCheck, useScoreLog } from '@/useScoreLog'
+import { useSummary } from '@/useSummary'
+import { BetterScored, ScoreHistory } from './History'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'fetch-failed')
@@ -39,11 +42,17 @@ export function LongTerm() {
   const { t } = useI18n()
   const [check, setCheckState] = useState(lastCheck)
   const setCheck = (c: Check) => setCheckState((lastCheck = c))
+  const held = longTermSymbols(useSummary().rows)
+  const auto = useScoreLog(held)
+  // The stored log: re-read on each render (small), so a ticker checked here shows at once; rerender() triggers that.
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
+  const log = { ...auto, ...loadScoreLog() }
   const run = async (symbol: string) => {
     setCheck({ status: 'loading' })
     try {
       const row = await fetchFundamentals(symbol)
       saveCheck(row)
+      rerender()
       setCheck({ status: 'done', row: scored(row) })
     } catch (e) {
       setCheck({ status: 'error', error: errorOf(e) })
@@ -71,6 +80,14 @@ export function LongTerm() {
           <p className="text-sm">{t('scan.localOnly')}</p>
         </Card>
       )}
+      <div className="flex flex-wrap gap-4">
+        <div className="min-w-0 flex-[3_1_420px]">
+          <ScoreHistory log={log} initial={check.status === 'done' ? check.row.symbol : held[0]} onPick={(s) => void run(s)} />
+        </div>
+        <div className="min-w-0 flex-[2_1_320px]">
+          <BetterScored log={log} held={held} onPick={(s) => void run(s)} />
+        </div>
+      </div>
     </>
   )
 }

@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { recordScore, scoreAlert, type ScoreEntry } from './scoreLog'
+import { betterScored, recordScore, scoreAlert, type ScoreEntry } from './scoreLog'
+
+describe('better-scored alternatives', () => {
+  it('beats the held ticker, best first, recent checks only', () => {
+    const log = {
+      BBRI: [{ date: '2026-11-14', total: 9, known: 15, price: 1 }],
+      PTBA: [{ date: '2026-11-14', total: 13, known: 14, price: 1 }],
+      ITMG: [{ date: '2026-11-13', total: 13, known: 15, price: 1 }],
+      ADRO: [{ date: '2026-09-01', total: 14, known: 15, price: 1 }], // stale
+      TLKM: [{ date: '2026-11-14', total: 8, known: 15, price: 1 }],
+    }
+    expect(betterScored(log, 'BBRI').map((x) => x.symbol)).toEqual(['ITMG', 'PTBA'])
+    expect(betterScored(log, 'NONE')).toEqual([])
+  })
+})
 
 const e = (date: string, total: number): ScoreEntry => ({ date, total, known: 15, price: 1000 })
 

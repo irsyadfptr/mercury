@@ -12,4 +12,6 @@ export interface QuestView {
   /** Short status like "14 days old"; empty when none. */
   tag: string
   route: Route
+  /** Query for the route, e.g. a journal note to prefill. */
+  params?: Record<string, string>
 }

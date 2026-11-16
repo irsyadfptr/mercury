@@ -17,6 +17,7 @@ export function useSheetSync(): SheetSync {
   const [error, setError] = useState<string>()
   const pendingCount = useCashflow((s) => s.pending.length)
   const deletedCount = useCashflow((s) => s.deleted.length)
+  const edited = useCashflow((s) => s.edited)
   const portfolioChangedAt = useStore((s) => s.changedAt)
 
   const runWith = useCallback(async (token: string) => {
@@ -59,10 +60,10 @@ export function useSheetSync(): SheetSync {
     if (isConfigured()) prepareGoogle().catch((e: Error) => setError(e.message))
   }, [])
 
-  // Sync on mount, whenever cashflow is queued or deleted, and after portfolio edits.
+  // Sync on mount, whenever cashflow is queued, edited or deleted, and after portfolio edits.
   useEffect(() => {
     if (currentToken()) sync()
-  }, [sync, pendingCount, deletedCount, portfolioChangedAt])
+  }, [sync, pendingCount, deletedCount, edited, portfolioChangedAt])
 
   useEffect(() => {
     window.addEventListener('online', sync)
