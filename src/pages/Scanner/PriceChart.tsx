@@ -1,6 +1,7 @@
-import { BaselineSeries, CandlestickSeries, createChart, LineSeries, LineStyle, type AutoscaleInfo } from 'lightweight-charts'
+import { BaselineSeries, CandlestickSeries, createChart, createSeriesMarkers, LineSeries, LineStyle, type AutoscaleInfo, type SeriesMarker, type Time } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 import { sma, type Bar, type Check } from '@/market/indicators'
+import type { Bias, PatternAnalysis } from '@/market/patterns'
 import { useSettings } from '@/settings'
 
 /** CSS token → 'rgb(r, g, b)'. lightweight-charts can't read var() or oklch, so paint it once and read the pixel back. */
@@ -12,15 +13,19 @@ function tokenColor(name: string): string {
   return `rgb(${r}, ${g}, ${b})`
 }
 
-/** Daily candles (last year) with MA50/MA200, the buy zone, and the stop and targets as dashed lines. `step` = the price step, for the axis decimals. */
-export function PriceChart({ bars, check, label, step }: { bars: Bar[]; check: Check; label: string; step: number }) {
+/**
+ * Daily candles (last year) with MA50/MA200, the buy zone, and the stop and targets as dashed lines. `step` = the price step, for the axis decimals.
+ * With `patterns`, chart patterns are drawn as an outline through their pivots plus their neckline/edges, and candle signals as markers.
+ * `labels` turns a pattern or candle id into the short text shown on the chart.
+ */
+export function PriceChart({ bars, check, label, step, patterns, labels }: { bars: Bar[]; check: Check; label: string; step: number; patterns?: PatternAnalysis; labels?: (id: string) => string }) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useSettings((s) => s.theme)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const [text, border, up, down, accent, muted] = ['--text', '--border', '--up', '--down', '--accent', '--text-muted'].map(tokenColor)
+    const [text, border, up, down, accent, muted, warn] = ['--text', '--border', '--up', '--down', '--accent', '--text-muted', '--warn'].map(tokenColor)
     const chart = createChart(el, {
       autoSize: true,
       layout: { background: { color: 'transparent' }, textColor: text, fontFamily: 'Geist Mono Variable, monospace' },
@@ -69,10 +74,32 @@ export function PriceChart({ bars, check, label, step }: { bars: Bar[]; check: C
     line(check.stop, 'STOP', down)
     line(check.target2, '2R', up)
     line(check.target3, '3R', up)
+    if (patterns) {
+      const tone: Record<Bias, string> = { bull: up, bear: down, neutral: warn }
+      const at = (i: number) => bars[Math.min(i, bars.length - 1)].time
+      const markers: SeriesMarker<Time>[] = []
+      for (const p of patterns.chart) {
+        const color = tone[p.bias]
+        const opts = { color, lineWidth: 2 as const, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true }
+        chart.addSeries(LineSeries, opts).setData(p.points.map((pt) => ({ time: at(pt.i), value: pt.price })))
+        for (const l of p.lines)
+          chart
+            .addSeries(LineSeries, { ...opts, lineWidth: 1, lineStyle: LineStyle.Dotted, pointMarkersVisible: false })
+            .setData(l.from.i === l.to.i ? [] : [{ time: at(l.from.i), value: l.from.price }, { time: at(l.to.i), value: l.to.price }])
+        const last = p.points[p.points.length - 1]
+        markers.push({ time: at(last.i), position: last.price >= bars[last.i].close ? 'aboveBar' : 'belowBar', shape: 'circle', color, text: labels?.(p.id) ?? p.id, size: 0 })
+        if (p.breakAt !== undefined)
+          markers.push({ time: at(p.breakAt), position: p.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: p.bias === 'bear' ? 'arrowDown' : 'arrowUp', color, text: labels?.('break') ?? 'break' })
+      }
+      for (const c of patterns.candles)
+        markers.push({ time: at(c.i), position: c.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: c.bias === 'bear' ? 'arrowDown' : 'arrowUp', color: tone[c.bias], text: labels?.(c.id) ?? c.id })
+      // Markers must be in time order.
+      createSeriesMarkers(candles, markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)))
+    }
     // Show the last year; MA200 still uses the full two years behind it.
     if (bars.length > 250) chart.timeScale().setVisibleLogicalRange({ from: bars.length - 250, to: bars.length })
     return () => chart.remove()
-  }, [bars, check, theme, step])
+  }, [bars, check, theme, step, patterns, labels])
 
   return <div ref={ref} role="img" aria-label={label} className="h-[320px] w-full" />
 }

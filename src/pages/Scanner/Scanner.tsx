@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
@@ -9,6 +9,7 @@ import { CRYPTO_COINS } from '@/market/cryptoList'
 import { fetchHistory, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
 import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
+import { analyzePatterns, type Bias, type PatternAnalysis } from '@/market/patterns'
 import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood, type MoodLight } from '@/market/mood'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
 import { href } from '@/routes'
@@ -428,6 +429,9 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
     liquidity: t('rule.liquidity.d', { v: m.value(f, c.avgValue), min: m.value(f, m.rules.minValue) }),
   }
   const years = Math.round((Date.parse(last) - Date.parse(r.bars[0].time)) / (365.25 * 864e5))
+  const patterns = useMemo(() => analyzePatterns(r.bars), [r.bars])
+  const [showPatterns, setShowPatterns] = useState(true)
+  const patternLabel = useCallback((id: string) => t(`pat.short.${id}` as Key), [t])
 
   return (
     <div className="flex flex-col gap-4">
@@ -494,7 +498,19 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         <PaperTrade m={m} r={r} defensive={filter.defensive} />
       </div>
 
-      <PriceChart bars={r.bars} check={c} label={t('scan.chartLabel', { s: r.symbol })} step={m.rules.step(c.close)} />
+      <label className="flex items-center gap-2 self-start text-sm">
+        <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
+        {t('pat.toggle')}
+      </label>
+      <PriceChart
+        bars={r.bars}
+        check={c}
+        label={t('scan.chartLabel', { s: r.symbol })}
+        step={m.rules.step(c.close)}
+        patterns={showPatterns ? patterns : undefined}
+        labels={patternLabel}
+      />
+      {showPatterns && <PatternList m={m} bars={r.bars} patterns={patterns} />}
       {m.id === 'idx' && <p className="text-xs text-text-muted">{t('scan.backtestLater')}</p>}
     </div>
   )
@@ -545,6 +561,49 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
       <span className="text-xs text-text-muted">
         {why ?? (crypto ? t('paper.sizeCoin', { q: qty(units), s: r.symbol, p, risk: tradeLimit }) : t('paper.size', { lots: num(units / IDX_LOT), p, risk: tradeLimit }))}
       </span>
+    </div>
+  )
+}
+
+const BIAS_CLASS: Record<Bias, string> = { bull: 'text-up', bear: 'text-down', neutral: 'text-warn-text' }
+
+/** Chart patterns and recent candle signals, newest first. Display only: not in the score, not backtested. */
+function PatternList({ m, bars, patterns }: { m: Market; bars: Bar[]; patterns: PatternAnalysis }) {
+  const f = useI18n()
+  const { t, day } = f
+  const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
+  const candles = patterns.candles.filter((c) => c.i >= bars.length - 10).reverse()
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{t('pat.title')}</Label>
+      {patterns.chart.length === 0 && candles.length === 0 ? (
+        <p className="text-sm text-text-muted">{t('pat.none')}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+          {patterns.chart.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
+              <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${BIAS_CLASS[p.bias]}`}>{t(`pat.bias.${p.bias}`)}</span>
+              <span className="flex-1">
+                {t(`pat.${p.id}`)} <Badge tone={p.status === 'confirmed' ? 'paper' : 'neutral'}>{t(`pat.status.${p.status}`)}</Badge>
+              </span>
+              <span className="w-full pl-[4.25rem] font-mono text-xs text-text-muted sm:w-auto sm:pl-0">
+                {p.breakAt !== undefined
+                  ? t('pat.broke', { d: day(bars[p.breakAt].time), p: price(p.trigger) })
+                  : t('pat.watch', { p: price(p.trigger), d: day(bars[p.end].time) })}
+                {p.target !== undefined && ` · ${t('pat.target', { p: price(p.target) })}`}
+              </span>
+            </li>
+          ))}
+          {candles.map((c) => (
+            <li key={`${c.id}-${c.i}`} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
+              <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${BIAS_CLASS[c.bias]}`}>{t(`pat.bias.${c.bias}`)}</span>
+              <span className="flex-1">{t(`pat.${c.id}`)}</span>
+              <span className="font-mono text-xs text-text-muted">{day(bars[c.i].time)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-text-muted">{t('pat.note')}</p>
     </div>
   )
 }

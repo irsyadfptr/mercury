@@ -275,3 +275,11 @@ Suggested order: commit → tick sizes + ARB warning → achievements → schedu
 - Data source for US stocks/ETFs.
 - Tick sizes (fraksi harga): hardcode them in config like ARA/ARB (idx doesn't provide them), then round stops to them.
 - Confirm on a real run that idx's `close` is split-adjusted (see "idx CLI" below).
+
+## Chart patterns (2026-11-16)
+
+- Scanner → ticker check → "Show chart patterns" (on by default). Code in src/market/patterns.ts, display only: **not in the score, not backtested**.
+- Swing points: a high/low that beats 5 bars on each side (so it shows 5 bars late, never peeks ahead). Levels are "equal" within 3%.
+- Chart patterns (last 120 bars, newest of each type): double top/bottom (≥ 10 bars apart, ≥ 5% deep), head and shoulders + inverse (sloped neckline), ascending/descending/symmetrical triangles (last 2 swing highs and lows). Status Forming until a close breaks the neckline/edge, then Confirmed; a close beyond the tops/head first drops it. Target = measured move (pattern height from the break).
+- Candle signals (markers on the last 60 bars, list shows the last 10): bullish/bearish engulfing, hammer, shooting star, morning/evening star, each only after a matching 5-bar move.
+- Later: backtest pattern breaks before trusting them.
