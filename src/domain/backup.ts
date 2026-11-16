@@ -1,8 +1,8 @@
-import type { Backup as BackupData, Holding, ParseResult, Transaction } from '@/types'
+import type { Backup as BackupData, Holding, JournalEntry, ParseResult, Transaction } from '@/types'
 import { Backup, SCHEMA_VERSION } from './schema'
 
-export function toBackup(holdings: Holding[], transactions: Transaction[], exportedAt: string): BackupData {
-  return { schemaVersion: SCHEMA_VERSION, exportedAt, holdings, transactions }
+export function toBackup(holdings: Holding[], transactions: Transaction[], exportedAt: string, journal: JournalEntry[] = []): BackupData {
+  return { schemaVersion: SCHEMA_VERSION, exportedAt, holdings, transactions, journal }
 }
 
 /** Parse an export file. Returns readable errors instead of throwing; never partially imports. */
@@ -21,5 +21,7 @@ export function parseBackup(text: string): ParseResult {
   const ids = new Set(result.data.holdings.map((h) => h.id))
   const orphan = result.data.transactions.find((t) => !ids.has(t.holdingId))
   if (orphan) return { ok: false, error: `Transaction ${orphan.id} points to a missing holding.` }
+  const lost = result.data.journal.find((j) => j.holdingId !== undefined && !ids.has(j.holdingId))
+  if (lost) return { ok: false, error: `Journal entry ${lost.id} points to a missing holding.` }
   return { ok: true, data: result.data }
 }

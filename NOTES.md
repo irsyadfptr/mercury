@@ -156,7 +156,35 @@ Second round (same day): mood filter (skip signals on days the mood was Defensiv
 - IDX mood (src/market/mood.ts): average of % of LQ45 above MA50, IHSG vs MA50/MA200 (0/50/100) and IHSG calm (20-day vs 250-day volatility). < 35 Defensive, < 65 Careful, else Healthy. Foreign flow is left out because idx.co.id often blocks it (Cloudflare). First real reading, 2026-11-13: 23 Defensive.
 - The Scanner runs the LQ45 scan by itself when opened, and remembers the last two price dates in localStorage to show what started or stopped passing. It only runs while the dev server and app are open; a run with the laptop idle would need Windows Task Scheduler.
 - **LQ45 membership can't come from idx:** `market indices` returns only the number of constituents, not the tickers. Keep src/market/lq45.ts by hand and check it against idx.co.id after each February and August review.
-- Not done yet: tick-size rounding, ARB warning, foreign flow in the mood, fundamental scanner (`idx stocks screen`), bandarmology (IPOT broker summary was down on 2026-11-14, a Saturday).
+- Not done yet: tick-size rounding, ARB warning, foreign flow in the mood, bandarmology (IPOT broker summary was down on 2026-11-14, a Saturday).
+
+## Long-term check (2026-11-14)
+
+Page **Long-term** (`#/longterm`, src/pages/LongTerm). Scoring is pure code in src/market/fundamentals.ts; thresholds are named constants there. Each metric passes or fails; **missing data is "unknown" and earns no point**. Each part = metrics passed (0–5); total 0–15, shown with how many of the 15 had data.
+
+| Part | Metric (pass when) |
+|---|---|
+| Quality | ROE ≥ 15% · net margin ≥ 10% · debt/equity ≤ 1 · dividend paid ≥ 5 years in a row · earnings growth (y/y) > 0 |
+| Value | 0 < trailing P/E ≤ 15 · 0 < P/B ≤ 2 · 0 < PEG ≤ 1 · dividend yield ≥ 3% · analyst mean target ≥ 15% above price |
+| Risk (5 = low risk) | net cash (cash − debt) ≥ 0 · beta ≤ 1 · 52-week high ÷ low − 1 ≤ 60% · current ratio ≥ 1.5 · market cap ≥ Rp10T |
+
+- First readings: PTBA 13/15 (5/4/4: analyst gap 11%, current ratio 1.25 fail); BBCA 11/15 (5/3/3, current ratio unknown).
+- Data: `idx stocks fundamental` (Yahoo quoteSummary) + `idx stocks dividends` (`consecutive_years`), both through `GET /api/idx/fundamentals?symbol=PTBA` → `{fundamentals, dividends}`; dividends null when that call fails (streak unknown).
+- Scanner: `GET /api/idx/screen?screen=large|quality|value|dividend` runs `idx stocks screen --fundamentals --max-fundamentals 100 -n 0` with a fixed filter per key (idxPlugin.ts `SCREENS`; no user text reaches the command). Only rows with fundamentals come back, ranked by total, then data known. Same per-WIB-day cache and error codes as history.
+- **idx data limits:**
+  - Screen rows have no dividend streak, analyst target, cash/debt, beta or current ratio, so a screen score has at most 10 of 15 known. The ranking is still fair across rows (the same fields are missing for all); open a ticker for the full check.
+  - Fundamentals are fetched only for the 100 largest companies that pass a screen's quote-level filters (by market cap), so small caps are not scored.
+  - Banks/financials: no current ratio, and Yahoo's debt/equity and debt figures don't mean the same as for other companies (BBCA D/E 0.0014).
+  - Statements in USD with an IDR price (ITMG, BSSR): Yahoo's P/B is not a ratio (ITMG 14,494), so P/B is dropped (unknown). Net cash then compares USD amounts, which is fine for the sign.
+  - Earnings growth is Yahoo's latest quarter y/y, which can swing wildly (PTBA +214%). No multi-year earnings history in the screen; `eps_growth_3y_pct` exists in fundamentals but is often null.
+- **Score log and alerts (2026-11-14):** every full check is saved per ticker and day in localStorage `mercury.ltScores` (src/market/scoreLog.ts): date, total, data known, price. The Portfolio shows `LT 13/15` on Investing IDX stocks still held (warn badge when alerting), and the Dashboard adds a quest when one fell ≥ 3 points since its previous check (`LT_SCORE_DROP`) or is below 8/15 (`LT_LOW_SCORE`). Portfolio and Dashboard re-check held tickers once a day on the dev server; the static build only shows logged scores.
+- **The score is not backtested:** idx gives only today's fundamentals. The score log (with price) is the start of a forward test: after 6–12 months, compare returns of high vs low scores.
+
+## Journal (2026-11-14)
+
+- Page **Journal** (`#/journal`): dated entries tagged Note / Plan / Entry / Exit / Lesson, optionally linked to a holding (paper trades keep their PAPER badge); filter by holding; delete asks first. Streak = days in a row with an entry, ending today, or yesterday until today's entry is written (src/domain/journal.ts).
+- Stored with the portfolio (localStorage `mercury.data`) and in the JSON backup as `journal` (older backups import with none). Not in the Google Sheet sync yet. Deleting a holding keeps its notes, unlinked.
+- Later (user, 2026-11-14): add the journal to the Google Sheet sync (a Journal tab), and show the journal streak on the Dashboard.
 
 ## Open questions
 

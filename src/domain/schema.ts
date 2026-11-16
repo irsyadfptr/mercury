@@ -51,6 +51,18 @@ export const Transaction = z.object({
   note: z.string().optional(),
 })
 
+/** Trading journal: a dated note, optionally about one holding. */
+export const JOURNAL_TAGS = ['note', 'plan', 'entry', 'exit', 'lesson'] as const
+export const JournalEntry = z.object({
+  id,
+  /** Local calendar date the note is about, yyyy-mm-dd. */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  tag: z.enum(JOURNAL_TAGS).default('note'),
+  text: z.string().trim().min(1),
+  holdingId: id.optional(),
+  createdAt: isoDate,
+})
+
 export const SCHEMA_VERSION = 1
 
 export const Backup = z.object({
@@ -58,6 +70,8 @@ export const Backup = z.object({
   exportedAt: isoDate,
   holdings: z.array(Holding),
   transactions: z.array(Transaction),
+  /** Added after v1 shipped; older backups have none. */
+  journal: z.array(JournalEntry).default([]),
 })
 
 // ---- Cashflow (stored in the user's Google Sheet, cached locally) ----

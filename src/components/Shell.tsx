@@ -26,7 +26,7 @@ export function Shell({ route, children }: ShellProps) {
           <PixelIcon name="coin" size={24} />
           <span className="font-display text-3xl leading-none">MERCURY</span>
         </a>
-        <nav aria-label="Main" className="flex flex-wrap gap-1" title={t('nav.soon')}>
+        <nav aria-label="Main" className="flex flex-wrap gap-1">
           {NAV_ROUTES.map((r) => (
             <a
               key={r}

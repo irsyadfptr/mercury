@@ -21,11 +21,17 @@ export const useStore = create<PortfolioData & PortfolioSyncMeta & PortfolioActi
         set((s) => ({
           holdings: s.holdings.filter((h) => h.id !== id),
           transactions: s.transactions.filter((t) => t.holdingId !== id),
+          // Notes outlive the holding; they just lose the link.
+          journal: s.journal.map((j) => (j.holdingId === id ? { ...j, holdingId: undefined } : j)),
           ...touched(),
         })),
       addTransaction: (t) => set((s) => ({ transactions: [...s.transactions, { ...t, id: crypto.randomUUID() }], ...touched() })),
       removeTransaction: (id) => set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id), ...touched() })),
-      replaceAll: (b) => set({ holdings: b.holdings, transactions: b.transactions, ...touched() }),
+      replaceAll: (b) => set({ holdings: b.holdings, transactions: b.transactions, journal: b.journal, ...touched() }),
+      // shortcut: the journal is in localStorage and the JSON backup only, not the Sheet sync; add a Journal tab if it must reach other devices.
+      journal: [],
+      addJournal: (e) => set((s) => ({ journal: [...s.journal, { ...e, id: crypto.randomUUID(), createdAt: new Date().toISOString() }] })),
+      removeJournal: (id) => set((s) => ({ journal: s.journal.filter((j) => j.id !== id) })),
       // Sync results are not user edits: they move syncedAt, never changedAt.
       applyPortfolioPull: (data, at) => set({ holdings: data.holdings, transactions: data.transactions, syncedAt: at }),
       markPortfolioSynced: (at) => set({ syncedAt: at }),
@@ -33,7 +39,13 @@ export const useStore = create<PortfolioData & PortfolioSyncMeta & PortfolioActi
     {
       name: 'mercury.data',
       version: SCHEMA_VERSION,
-      partialize: (s): PortfolioData & PortfolioSyncMeta => ({ holdings: s.holdings, transactions: s.transactions, changedAt: s.changedAt, syncedAt: s.syncedAt }),
+      partialize: (s): PortfolioData & PortfolioSyncMeta & Pick<PortfolioActions, 'journal'> => ({
+        holdings: s.holdings,
+        transactions: s.transactions,
+        journal: s.journal,
+        changedAt: s.changedAt,
+        syncedAt: s.syncedAt,
+      }),
     },
   ),
 )

@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react'
 import { Shell } from '@/components/Shell'
 import { Cashflow } from '@/pages/Cashflow/Cashflow'
 import { Dashboard } from '@/pages/Dashboard/Dashboard'
+import { Journal } from '@/pages/Journal/Journal'
+import { LongTerm } from '@/pages/LongTerm/LongTerm'
 import { Portfolio } from '@/pages/Portfolio/Portfolio'
 import { QuickAdd } from '@/pages/QuickAdd/QuickAdd'
 import { Scanner } from '@/pages/Scanner/Scanner'
@@ -25,6 +27,8 @@ export default function App() {
       {route === 'dashboard' && <Dashboard />}
       {route === 'portfolio' && <Portfolio />}
       {route === 'scanner' && <Scanner />}
+      {route === 'longterm' && <LongTerm />}
+      {route === 'journal' && <Journal />}
       {route === 'cashflow' && <Cashflow />}
       {route === 'settings' && <Settings />}
     </Shell>

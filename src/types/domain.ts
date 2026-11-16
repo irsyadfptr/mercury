@@ -8,6 +8,9 @@ export type Group = z.infer<typeof schema.Group>
 export type Currency = z.infer<typeof schema.Currency>
 export type Holding = z.infer<typeof schema.Holding>
 export type Transaction = z.infer<typeof schema.Transaction>
+export type JournalEntry = z.infer<typeof schema.JournalEntry>
+export type JournalTag = JournalEntry['tag']
+export type NewJournalEntry = Omit<JournalEntry, 'id' | 'createdAt'>
 /** Input for creating a holding: id and createdAt are assigned by the store. */
 export type NewHolding = Omit<Holding, 'id' | 'createdAt'>
 /** Input for creating a transaction: id is assigned by the store. */

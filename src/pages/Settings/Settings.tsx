@@ -172,13 +172,13 @@ function MarketData() {
 function Backup() {
   const { t, locale } = useI18n()
   const { lastExportAt, set } = useSettings()
-  const { holdings, transactions, replaceAll } = useStore()
+  const { holdings, transactions, journal, replaceAll } = useStore()
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<StatusMessage>()
 
   function exportJson() {
     const now = new Date().toISOString()
-    downloadJson(`mercury-${now.slice(0, 10)}.json`, toBackup(holdings, transactions, now))
+    downloadJson(`mercury-${now.slice(0, 10)}.json`, toBackup(holdings, transactions, now, journal))
     set({ lastExportAt: now })
   }
 

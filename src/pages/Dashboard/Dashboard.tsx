@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
 import { loadScanLog, scanChanges } from '@/market/scanLog'
+import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
@@ -11,6 +12,7 @@ import type { AllocationItem, I18n, Quest, RiskStatus, Row, Summary } from '@/ty
 import { WATCHLIST } from '@/market/coingecko'
 import { useCryptoMarket } from '@/useCryptoMarket'
 import { useNow } from '@/useNow'
+import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
 import { flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
@@ -392,12 +394,24 @@ function scanAlerts(f: I18n): QuestView[] {
   })
 }
 
+/** Long-term holdings whose fundamentals score dropped or is low (the score log is refreshed daily on the dev server). */
+function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
+  return [...new Set(symbols)].flatMap((s) => {
+    const a = scoreAlert(log[s])
+    if (!a) return []
+    const label = a.kind === 'drop' ? f.t('quest.ltDrop', { s, from: a.from, n: a.total }) : f.t('quest.ltLow', { s, n: a.total })
+    return [{ label, tag: a.kind === 'drop' ? f.day(a.since) : '', route: 'longterm' as const }]
+  })
+}
+
 function Quests({ summary }: { summary: Summary }) {
   const f = useI18n()
   const tradeLimit = useSettings((x) => x.tradeLimit)
   const lastExportAt = useSettings((x) => x.lastExportAt)
   const now = useNow()
-  const list = [...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f)]
+  const held = longTermSymbols(summary.rows)
+  const scores = useScoreLog(held)
+  const list = [...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')}>

@@ -5,8 +5,10 @@ import { SyncBar } from '@/components/SyncBar'
 import { Badge, Card, CardTitle, Field, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, RARITIES, RARITY_MIN_DAYS, rarity, sizeQuote } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
+import { scoreAlert } from '@/market/scoreLog'
 import { useSettings } from '@/settings'
 import type { Group, HoldingDialogTarget } from '@/types'
+import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSheetSync } from '@/useSheetSync'
 import { useSummary } from '@/useSummary'
 import { RARITY_COLOR, signColor } from '@/view/tokens'
@@ -19,6 +21,7 @@ export function Portfolio() {
   const summary = useSummary()
   const [dialog, setDialog] = useState<HoldingDialogTarget>({ mode: 'closed' })
   const sync = useSheetSync()
+  const scores = useScoreLog(longTermSymbols(summary.rows))
 
   return (
     <>
@@ -38,7 +41,7 @@ export function Portfolio() {
             <Card key={g} aria-label={t(`pf.${g}`)}>
               <CardTitle aside={money(summary.byGroup[g])}>{t(`pf.${g}`)}</CardTitle>
               <RarityKey />
-              <HoldingRows rows={summary.rows.filter((r) => r.holding.group === g)} onEdit={(holdingId) => setDialog({ mode: 'edit', holdingId })} />
+              <HoldingRows rows={summary.rows.filter((r) => r.holding.group === g)} onEdit={(holdingId) => setDialog({ mode: 'edit', holdingId })} scores={scores} />
             </Card>
           ))}
         </div>
@@ -66,23 +69,24 @@ function RarityKey() {
   )
 }
 
-function HoldingRows({ rows, onEdit }: HoldingRowsProps) {
+function HoldingRows({ rows, onEdit, scores }: HoldingRowsProps) {
   const { t } = useI18n()
   if (!rows.length) return <p className="py-3 text-sm text-text-muted">{t('pf.noHoldings')}</p>
   return (
     <ul>
       {rows.map((row) => (
         <li key={row.holding.id}>
-          <HoldingRow row={row} onEdit={() => onEdit(row.holding.id)} />
+          <HoldingRow row={row} onEdit={() => onEdit(row.holding.id)} scores={scores} />
         </li>
       ))}
     </ul>
   )
 }
 
-function HoldingRow({ row, onEdit }: HoldingRowProps) {
+function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
   const { t, money, change, qty } = useI18n()
   const { holding: h, v, risk, daysHeld } = row
+  const lt = h.group === 'investing' && h.assetClass === 'idx_stock' ? scores[h.symbol.toUpperCase()] : undefined
   const r = rarity(daysHeld)
   const closed = v.quantity === 0
   // USD holding without a rate: show its own-currency value instead of a wrong IDR number.
@@ -104,6 +108,7 @@ function HoldingRow({ row, onEdit }: HoldingRowProps) {
           {h.platform && <>· {h.platform}</>}
           {h.stop != null && <>· stop {h.currency === 'USD' ? `$${qty(h.stop)}` : money(h.stop)}</>}
           {h.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
+          {!!lt?.length && <Badge tone={scoreAlert(lt) ? 'warn' : 'neutral'}>{t('pf.ltScore', { n: lt.at(-1)!.total })}</Badge>}
           {risk.kind === 'noStop' && <Badge tone="warn">{t('badge.noStop')}</Badge>}
           {v.priceSource === 'cost' && !closed && <Badge tone="neutral">{t('pf.atCost')}</Badge>}
           {closed && <Badge tone="neutral">{t('pf.closed')}</Badge>}

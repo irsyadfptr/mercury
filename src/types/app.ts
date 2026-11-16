@@ -1,6 +1,6 @@
 import type { en } from '@/i18n'
 import type { ROUTES } from '@/routes'
-import type { Backup, CashEntry, CustomCategory, Holding, NewCashEntry, NewHolding, NewTransaction, Transaction } from './domain'
+import type { Backup, CashEntry, CustomCategory, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
 
 // ---- Routes ----
 
@@ -49,6 +49,9 @@ export interface PortfolioActions {
   removeTransaction: (id: string) => void
   /** Replaces all data. Callers must validate with parseBackup first. */
   replaceAll: (b: Backup) => void
+  journal: JournalEntry[]
+  addJournal: (e: NewJournalEntry) => void
+  removeJournal: (id: string) => void
   /** Sheet sync pulled newer data; at = when that sync started. */
   applyPortfolioPull: (data: PortfolioData, at: string) => void
   /** Sheet sync pushed this device's data; at = when that sync started. */
