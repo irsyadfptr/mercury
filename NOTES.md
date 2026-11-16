@@ -280,6 +280,6 @@ Suggested order: commit → tick sizes + ARB warning → achievements → schedu
 
 - Scanner → ticker check → "Show chart patterns" (on by default). Code in src/market/patterns.ts, display only: **not in the score, not backtested**.
 - Swing points: a high/low that beats 5 bars on each side (so it shows 5 bars late, never peeks ahead). Levels are "equal" within 3%.
-- Chart patterns (last 120 bars, newest of each type): double top/bottom (≥ 10 bars apart, ≥ 5% deep), head and shoulders + inverse (sloped neckline), ascending/descending/symmetrical triangles (last 2 swing highs and lows). Status Forming until a close breaks the neckline/edge, then Confirmed; a close beyond the tops/head first drops it. Target = measured move (pattern height from the break).
-- Candle signals (markers on the last 60 bars, list shows the last 10): bullish/bearish engulfing, hammer, shooting star, morning/evening star, each only after a matching 5-bar move.
+- Chart patterns (last 120 bars, newest of each type): double top/bottom (≥ 10 bars apart, ≥ 5% deep), head and shoulders + inverse (sloped neckline), ascending/descending/symmetrical triangles (last 2 swing highs and lows). Status Forming until a close breaks the neckline/edge, then Confirmed, then Target hit once price touches the target (drawn faded, no label); a close beyond the tops/head first drops it. Target = measured move (pattern height from the break).
+- Candle signals (last 20 bars, bare arrows on the chart, named in the list): bullish/bearish engulfing, hammer, shooting star, morning/evening star, each only after a matching 5-bar move.
 - Later: backtest pattern breaks before trusting them.

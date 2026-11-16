@@ -14,7 +14,7 @@ export const MIN_GAP = 10
 /** Only patterns whose last pivot is within this many bars of today are reported. */
 export const PATTERN_LOOKBACK = 120
 /** Candlestick signals are reported for this many recent bars. */
-export const CANDLE_LOOKBACK = 60
+export const CANDLE_LOOKBACK = 20
 /** Bars before a candle used to decide "after a decline" / "after a rise". */
 const TREND_BARS = 5
 
@@ -72,8 +72,8 @@ export interface ChartPattern {
   id: ChartPatternId
   /** Direction once confirmed. A symmetrical triangle is neutral until it breaks out. */
   bias: Bias
-  /** forming = shape is there, no close through the neckline/edge yet; confirmed = a close broke it. */
-  status: 'forming' | 'confirmed'
+  /** forming = shape is there, no close through the neckline/edge yet; confirmed = a close broke it; reached = price later hit the target. */
+  status: 'forming' | 'confirmed' | 'reached'
   /** The pivots that outline the shape, oldest first. */
   points: Point[]
   lines: PatternLine[]
@@ -85,6 +85,8 @@ export interface ChartPattern {
   target?: number
   /** Bar index of the last pivot. */
   end: number
+  /** Bar index where the high (bullish) or low (bearish) first touched the target after the break. */
+  targetHitAt?: number
 }
 
 const near = (a: number, b: number, tol = EQUAL_TOL) => Math.abs(a - b) <= tol * ((a + b) / 2)
@@ -206,6 +208,14 @@ function triangle(bars: readonly Bar[], piv: readonly Pivot[]): ChartPattern | u
   }
 }
 
+/** Marks a confirmed pattern as reached once price touches its target after the break. */
+function withTargetHit(bars: readonly Bar[], p: ChartPattern): ChartPattern {
+  if (p.breakAt === undefined || p.target === undefined || p.bias === 'neutral') return p
+  for (let i = p.breakAt; i < bars.length; i++)
+    if (p.bias === 'bull' ? bars[i].high >= p.target : bars[i].low <= p.target) return { ...p, status: 'reached', targetHitAt: i }
+  return p
+}
+
 /** Chart patterns ending in the last PATTERN_LOOKBACK bars, at most one per type (the most recent), newest first. */
 export function chartPatterns(bars: readonly Bar[], piv: readonly Pivot[] = pivots(bars)): ChartPattern[] {
   const minEnd = bars.length - 1 - PATTERN_LOOKBACK
@@ -217,7 +227,7 @@ export function chartPatterns(bars: readonly Bar[], piv: readonly Pivot[] = pivo
   }
   const tri = triangle(bars, piv)
   if (tri) latest.set(tri.id, tri)
-  return [...latest.values()].sort((a, b) => b.end - a.end)
+  return [...latest.values()].map((p) => withTargetHit(bars, p)).sort((a, b) => b.end - a.end)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

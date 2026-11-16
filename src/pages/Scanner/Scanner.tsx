@@ -572,7 +572,7 @@ function PatternList({ m, bars, patterns }: { m: Market; bars: Bar[]; patterns: 
   const f = useI18n()
   const { t, day } = f
   const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
-  const candles = patterns.candles.filter((c) => c.i >= bars.length - 10).reverse()
+  const candles = [...patterns.candles].reverse()
   return (
     <div className="flex flex-col gap-2">
       <Label>{t('pat.title')}</Label>
@@ -584,13 +584,13 @@ function PatternList({ m, bars, patterns }: { m: Market; bars: Bar[]; patterns: 
             <li key={p.id} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
               <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${BIAS_CLASS[p.bias]}`}>{t(`pat.bias.${p.bias}`)}</span>
               <span className="flex-1">
-                {t(`pat.${p.id}`)} <Badge tone={p.status === 'confirmed' ? 'paper' : 'neutral'}>{t(`pat.status.${p.status}`)}</Badge>
+                {t(`pat.${p.id}`)} <Badge tone={p.status === 'forming' ? 'neutral' : 'paper'}>{t(`pat.status.${p.status}`)}</Badge>
               </span>
               <span className="w-full pl-[4.25rem] font-mono text-xs text-text-muted sm:w-auto sm:pl-0">
                 {p.breakAt !== undefined
                   ? t('pat.broke', { d: day(bars[p.breakAt].time), p: price(p.trigger) })
                   : t('pat.watch', { p: price(p.trigger), d: day(bars[p.end].time) })}
-                {p.target !== undefined && ` · ${t('pat.target', { p: price(p.target) })}`}
+                {p.target !== undefined && ` · ${t(p.targetHitAt !== undefined ? 'pat.targetHit' : 'pat.target', { p: price(p.target), d: p.targetHitAt !== undefined ? day(bars[p.targetHitAt].time) : '' })}`}
               </span>
             </li>
           ))}

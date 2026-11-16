@@ -28,10 +28,15 @@ describe('chart patterns', () => {
   it('double top confirmed on a close below the trough, with a measured-move target', () => {
     const bars = fromCloses(zigzag([100, 120, 105, 120, 95]))
     const dt = chartPatterns(bars).find((p) => p.id === 'doubleTop')!
-    expect(dt.status).toBe('confirmed')
+    expect(dt.status).not.toBe('forming')
     expect(dt.bias).toBe('bear')
     expect(dt.trigger).toBeCloseTo(104.5)
     expect(dt.target).toBeLessThan(dt.trigger)
+  })
+  it('marks a pattern reached once price touches its target', () => {
+    const dt = chartPatterns(fromCloses(zigzag([100, 120, 105, 120, 80]))).find((p) => p.id === 'doubleTop')!
+    expect(dt.status).toBe('reached')
+    expect(dt.targetHitAt).toBeGreaterThan(dt.breakAt!)
   })
   it('double bottom still forming until the peak breaks', () => {
     const bars = fromCloses(zigzag([120, 100, 112, 100, 108]))

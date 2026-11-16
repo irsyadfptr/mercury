@@ -80,19 +80,23 @@ export function PriceChart({ bars, check, label, step, patterns, labels }: { bar
       const markers: SeriesMarker<Time>[] = []
       for (const p of patterns.chart) {
         const color = tone[p.bias]
-        const opts = { color, lineWidth: 2 as const, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true }
+        // A pattern that already hit its target is history: thin and faded, unlabelled (the list names it), so live ones stand out.
+        const done = p.status === 'reached'
+        const faded = done ? color.replace('rgb(', 'rgba(').replace(')', ', 0.7)') : color
+        const opts = { color: faded, lineWidth: (done ? 1 : 2) as 1 | 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: !done }
         chart.addSeries(LineSeries, opts).setData(p.points.map((pt) => ({ time: at(pt.i), value: pt.price })))
         for (const l of p.lines)
           chart
             .addSeries(LineSeries, { ...opts, lineWidth: 1, lineStyle: LineStyle.Dotted, pointMarkersVisible: false })
             .setData(l.from.i === l.to.i ? [] : [{ time: at(l.from.i), value: l.from.price }, { time: at(l.to.i), value: l.to.price }])
-        const last = p.points[p.points.length - 1]
-        markers.push({ time: at(last.i), position: last.price >= bars[last.i].close ? 'aboveBar' : 'belowBar', shape: 'circle', color, text: labels?.(p.id) ?? p.id, size: 0 })
-        if (p.breakAt !== undefined)
-          markers.push({ time: at(p.breakAt), position: p.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: p.bias === 'bear' ? 'arrowDown' : 'arrowUp', color, text: labels?.('break') ?? 'break' })
+        // Label at the pattern's first point: the newest bars sit against the price axis, which would clip it.
+        const first = p.points[0]
+        if (!done) markers.push({ time: at(first.i), position: first.price >= bars[first.i].close ? 'aboveBar' : 'belowBar', shape: 'circle', color, text: labels?.(p.id) ?? p.id, size: 0 })
+        if (!done && p.breakAt !== undefined) markers.push({ time: at(p.breakAt), position: p.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: p.bias === 'bear' ? 'arrowDown' : 'arrowUp', color })
       }
+      // Candle signals: bare arrows (named in the list under the chart), so a busy stretch stays readable.
       for (const c of patterns.candles)
-        markers.push({ time: at(c.i), position: c.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: c.bias === 'bear' ? 'arrowDown' : 'arrowUp', color: tone[c.bias], text: labels?.(c.id) ?? c.id })
+        markers.push({ time: at(c.i), position: c.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: c.bias === 'bear' ? 'arrowDown' : 'arrowUp', color: tone[c.bias], size: 0.7 })
       // Markers must be in time order.
       createSeriesMarkers(candles, markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)))
     }
