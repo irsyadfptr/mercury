@@ -9,7 +9,7 @@ import { entryToRow, missingFromRows, rowsToEntries } from '@/domain/cashflow'
 import { HOLDING_COLUMNS, mergePortfolios, portfolioFromSheet, portfolioSyncAction, toRow, TRANSACTION_COLUMNS } from '@/domain/portfolioSheet'
 import { useStore } from '@/store'
 import type { PortfolioData } from '@/types'
-import { appendRows, createSpreadsheet, deleteRows, ensureTabs, findSpreadsheets, metaFromRows, readTabs, replaceTabs, SheetsError, TABS, writeCells } from './sheets'
+import { appendRows, createSpreadsheet, deleteRows, ensureTabs, findSpreadsheets, metaFromRows, readTabs, replaceTabs, TABS, writeCells } from './sheets'
 
 export const SHEET_TITLE = 'Mercury Cashflow'
 const PORTFOLIO_UPDATED_AT = 'portfolioUpdatedAt'
@@ -25,27 +25,22 @@ export function syncSheets(token: string): Promise<void> {
 }
 
 /**
- * The sheet every device with this Google account shares: the oldest "Mercury Cashflow" this app made in their Drive,
- * else the linked one (e.g. renamed), else a new one. Upgraded with any missing tabs.
+ * The sheet every device with this Google account shares: the oldest "Mercury Cashflow" this app made in their Drive
+ * (Drive search skips trashed ones), else a new one. The device's remembered id is not reused on its own: it may point
+ * at a trashed or renamed sheet that other devices can't find, which would split the devices again.
  */
-async function spreadsheet(token: string, linked: string | undefined): Promise<string> {
+async function spreadsheet(token: string): Promise<string> {
   const [oldest] = await findSpreadsheets(token, SHEET_TITLE)
-  const id = oldest ?? linked
-  if (!id) return createSpreadsheet(token, SHEET_TITLE)
-  try {
-    await ensureTabs(token, id)
-    return id
-  } catch (e) {
-    if (e instanceof SheetsError && e.status === 404) return createSpreadsheet(token, SHEET_TITLE)
-    throw e
-  }
+  if (!oldest) return createSpreadsheet(token, SHEET_TITLE)
+  await ensureTabs(token, oldest)
+  return oldest
 }
 
 async function run(token: string): Promise<void> {
   // Edits made while this pass runs are newer than startedAt, so they stay "unsynced" for the next pass.
   const startedAt = new Date().toISOString()
   const { spreadsheetId: linked, pending, synced: localSynced, accounts: localAccounts, deleted } = useCashflow.getState()
-  const spreadsheetId = await spreadsheet(token, linked)
+  const spreadsheetId = await spreadsheet(token)
 
   // Moving to another device's sheet (each device used to make its own): bring this device's entries along,
   // and merge the portfolio as on a first sync. The old sheet stays in Drive untouched.
