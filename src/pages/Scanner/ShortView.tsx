@@ -7,10 +7,11 @@ import type { Backtest } from '@/market/backtest'
 import { summarize } from '@/market/backtest'
 import { COIN, fetchCryptoFrame, fetchCryptoHistory } from '@/market/binance'
 import { loadCoinList } from '@/market/cryptoList'
-import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
+import { fetchHistory, fetchHourly, IdxFetchError, type IdxError } from '@/market/idx'
 import { to4h, toMonthly, toWeekly, type Bar } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
 import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood } from '@/market/mood'
+import { saveShortLog } from '@/market/scanLog'
 import { clearShortCache, loadShort, type ShortData } from '@/market/shortData'
 import {
   MAX_ATR_STOP,
@@ -34,38 +35,21 @@ import { useStore } from '@/store'
 import type { I18n, Key } from '@/types'
 import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
-import { ChartPanel } from '../Scanner/ChartPanel'
-import { frameCache } from '../Scanner/frameCache'
+import { ChartPanel } from './ChartPanel'
+import { ArbNote, ExpectedRange } from './RiskNotes'
+import { frameCache } from './frameCache'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const SCAN_CONCURRENCY = 4
 const MIN_TRADES = 10
 const RULES: Record<ShortMarket, ShortMarketRules> = { idx: SHORT_IDX, crypto: SHORT_CRYPTO }
 const INDEX: Record<ShortMarket, string> = { idx: '^JKSE', crypto: 'BTC' }
-const MARKET_KEY = 'mercury.short.market'
-const STYLE_KEY = 'mercury.short.style'
 
 const usd = (f: I18n, n: number) => `$${n.toLocaleString(f.locale, n >= 1e4 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 5 })}`
 const priceOf = (mk: ShortMarket, f: I18n) => (n: number | undefined) => (n === undefined ? '—' : mk === 'idx' ? f.money(n) : usd(f, n))
 const valueOf = (mk: ShortMarket, f: I18n, n: number) => (mk === 'idx' ? `${f.money(n / 1e9)} bn` : `$${n.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })}`)
 const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'fetch-failed')
 const WIB_MS = 7 * 3600_000
-
-function stored<T extends string>(key: string, ok: readonly T[], fallback: T): T {
-  try {
-    const v = localStorage.getItem(key) as T | null
-    return v && ok.includes(v) ? v : fallback
-  } catch {
-    return fallback
-  }
-}
-function store(key: string, v: string) {
-  try {
-    localStorage.setItem(key, v)
-  } catch {
-    // Storage blocked: the choice lasts this visit only.
-  }
-}
 
 interface Row {
   symbol: string
@@ -92,50 +76,8 @@ function statusOf(c: ShortCheck, defensive: boolean): Status {
 }
 const STATUS_ORDER: Record<Status, number> = { buy: 0, paused: 1, wait: 2, none: 3 }
 
-export function Short() {
-  const { t } = useI18n()
-  const [mk, setMk] = useState<ShortMarket>(() => stored(MARKET_KEY, ['idx', 'crypto'], IDX_AVAILABLE ? 'idx' : 'crypto'))
-  const [styleId, setStyleId] = useState<StyleId>(() => stored(STYLE_KEY, ['week', 'month'], 'week'))
-  const tabs = <T extends string>(ids: readonly T[], cur: T, pick: (v: T) => void, label: (v: T) => string, aria: string) => (
-    <div role="group" aria-label={aria} className="flex gap-1 rounded-md border border-border p-1">
-      {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          aria-pressed={id === cur}
-          onClick={() => pick(id)}
-          className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${id === cur ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
-        >
-          {label(id)}
-        </button>
-      ))}
-    </div>
-  )
-
-  return (
-    <>
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase">{t('short.title')}</h1>
-          <div className="flex flex-wrap gap-2">
-            {tabs(['week', 'month'] as const, styleId, (v) => (setStyleId(v), store(STYLE_KEY, v)), (v) => t(`short.style.${v}`), t('short.styleLabel'))}
-            {tabs(['idx', 'crypto'] as const, mk, (v) => (setMk(v), store(MARKET_KEY, v)), (v) => t(`scan.market.${v}`), t('scan.title'))}
-          </div>
-        </div>
-        <p className="mt-2 text-sm text-text-muted">{t(`short.intro.${styleId}`)}</p>
-      </Card>
-      {mk === 'idx' && !IDX_AVAILABLE ? (
-        <Card>
-          <p className="text-sm">{t('scan.localOnly')}</p>
-        </Card>
-      ) : (
-        <ShortView key={`${mk}:${styleId}`} mk={mk} styleId={styleId} />
-      )}
-    </>
-  )
-}
-
-function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }) {
+/** One market + holding time of the short-term scanner: mood, ticker check, scan and rules test. */
+export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }) {
   const { t } = useI18n()
   const style = STYLES[styleId]
   const rules = RULES[mk]
@@ -173,6 +115,13 @@ function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }) {
     }
     await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
     publish({ rows: [...rows], running: false, list, index })
+    // Saved for the Dashboard alert: buy signals only, none while the mood is Defensive.
+    const ok = rows.filter(isRow)
+    const defensive = idxMood(index ?? [], ok.map((r) => r.data.daily))?.light === 'red'
+    const signals = defensive
+      ? []
+      : ok.flatMap((r) => (r.check.signal && r.check.stop !== undefined && r.check.target !== undefined ? [{ symbol: r.symbol, time: r.check.time, entry: r.check.entry, stop: r.check.stop, target: r.check.target }] : []))
+    saveShortLog(mk, styleId, { scannedAt: Date.now(), signals })
   }
 
   useEffect(() => {
@@ -426,9 +375,10 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         <Stat label={t('scan.stop')} value={price(c.stop)} note={c.risk !== undefined ? `−${pct(c.risk / c.entry)} · ${t('short.stopRule', { n: SWING_BARS, k: MAX_ATR_STOP, f: frame })}` : undefined} />
         <Stat label={t('short.col.target')} value={price(c.target)} note={c.target !== undefined ? `+${pct((c.target - c.entry) / c.entry)}` : undefined} />
         <Stat label={t('scan.timeStop')} value={day(timeStop.toISOString().slice(0, 10))} note={t(`short.hold.${mk}`, { n: style.holdDays[mk] })} />
-        <Stat label={t('short.expected')} value={c.expectedMove !== undefined ? `±${pct(c.expectedMove)}` : '—'} note={t('short.expectedNote', { n: style.holdDays[mk] })} />
       </div>
 
+      {mk === 'idx' && <ArbNote entry={c.entry} stop={c.stop} price={(n) => price(n)} />}
+      <ExpectedRange daily={row.data.daily} horizons={[style.holdDays[mk]]} price={(n) => price(n)} entry={c.entry} stop={c.stop} />
       <div className="flex flex-col items-stretch gap-3 rounded-md bg-surface-2 px-3 py-2 sm:flex-row sm:items-start sm:gap-4">
         <div className="flex-1">
           <Label>{t('short.bt.title', { m: months })}</Label>

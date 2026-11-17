@@ -8,6 +8,7 @@ import type { I18n, Key } from '@/types'
 import { loadScoreLog } from '@/market/scoreLog'
 import { longTermSymbols, saveCheck, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
+import { CryptoCheck } from './CryptoCheck'
 import { BetterScored, ScoreHistory } from './History'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
@@ -38,8 +39,27 @@ let lastCheck: Check = { status: 'idle' }
 type Screen = { status: 'idle' } | { status: 'loading'; id: ScreenId } | { status: 'error'; id: ScreenId; error: IdxError } | { status: 'done'; id: ScreenId; universe: number; rows: Scored[] }
 let lastScreen: Screen = { status: 'idle' }
 
+const LT_MARKET_KEY = 'mercury.longterm.market'
+function initialMarket(): 'idx' | 'crypto' {
+  try {
+    if (localStorage.getItem(LT_MARKET_KEY) === 'crypto') return 'crypto'
+  } catch {
+    // Storage blocked: start on the default.
+  }
+  return IDX_AVAILABLE ? 'idx' : 'crypto'
+}
+
 export function LongTerm() {
   const { t } = useI18n()
+  const [market, setMarket] = useState(initialMarket)
+  const pickMarket = (v: 'idx' | 'crypto') => {
+    setMarket(v)
+    try {
+      localStorage.setItem(LT_MARKET_KEY, v)
+    } catch {
+      // Storage blocked: the choice lasts this visit only.
+    }
+  }
   const [check, setCheckState] = useState(lastCheck)
   const setCheck = (c: Check) => setCheckState((lastCheck = c))
   const held = longTermSymbols(useSummary().rows)
@@ -62,10 +82,27 @@ export function LongTerm() {
   return (
     <>
       <Card>
-        <h1 className="font-display text-5xl leading-none uppercase">{t('lt.title')}</h1>
-        <p className="mt-2 text-sm text-text-muted">{t('lt.intro')}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-5xl leading-none uppercase">{t('lt.title')}</h1>
+          <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
+            {(['idx', 'crypto'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={id === market}
+                onClick={() => pickMarket(id)}
+                className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${id === market ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
+              >
+                {t(`scan.market.${id}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-2 text-sm text-text-muted">{t(market === 'idx' ? 'lt.intro' : 'cryf.intro')}</p>
       </Card>
-      {IDX_AVAILABLE ? (
+      {market === 'crypto' ? (
+        <CryptoCheck />
+      ) : IDX_AVAILABLE ? (
         <>
           <TickerCheck check={check} onCheck={run} />
           <ScreenCard
@@ -80,14 +117,14 @@ export function LongTerm() {
           <p className="text-sm">{t('scan.localOnly')}</p>
         </Card>
       )}
-      <div className="flex flex-wrap gap-4">
+      {market === 'idx' && <div className="flex flex-wrap gap-4">
         <div className="min-w-0 flex-[3_1_420px]">
           <ScoreHistory log={log} initial={check.status === 'done' ? check.row.symbol : held[0]} onPick={(s) => void run(s)} />
         </div>
         <div className="min-w-0 flex-[2_1_320px]">
           <BetterScored log={log} held={held} onPick={(s) => void run(s)} />
         </div>
-      </div>
+      </div>}
     </>
   )
 }

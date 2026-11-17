@@ -7,7 +7,7 @@ import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
 import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
-import { loadScanLog, scanChanges } from '@/market/scanLog'
+import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
@@ -474,6 +474,18 @@ function scanAlerts(f: I18n): QuestView[] {
   })
 }
 
+/** Fresh short-term buy signals from each market's last short-term scan (≤ 1 week and ≤ 1 month). */
+function shortAlerts(f: I18n): QuestView[] {
+  return (['idx', 'crypto'] as const).flatMap((m) =>
+    (['week', 'month'] as const).flatMap((st) => {
+      const fresh = freshSignals(loadShortLog(m, st), st)
+      if (!fresh.length) return []
+      const list = fresh.map((x) => x.symbol).join(', ')
+      return [{ label: f.t('quest.shortSignals', { s: list, h: f.t(`short.style.${st}`), m: f.t(`scan.market.${m}`) }), tag: f.t('quest.shortTag'), route: 'scanner' as const }]
+    }),
+  )
+}
+
 /** Long-term holdings whose fundamentals score dropped or is low (the score log is refreshed daily on the dev server). */
 function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
   return [...new Set(symbols)].flatMap((s) => {
@@ -518,7 +530,7 @@ function Quests({ summary }: { summary: Summary }) {
   const { holdings, transactions, journal } = useStore()
   const today = localDate(now)
   const streak = journalStreak(journal, today)
-  const list = [...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...scoreAlerts(f, held, scores)]
+  const list = [...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')}>

@@ -51,3 +51,45 @@ export function saveScanLog(log: ScanLog, market: ScanMarket = 'idx') {
     // Storage blocked: changes just won't show next time.
   }
 }
+
+/** A short-term buy signal as the last scan saw it (src/market/shortSwing.ts). */
+export interface ShortSignal {
+  symbol: string
+  /** Start time of the signal bar: ISO for 4H bars, 'yyyy-mm-dd' for daily. */
+  time: string
+  entry: number
+  stop: number
+  target: number
+}
+export interface ShortLog {
+  scannedAt: number
+  signals: ShortSignal[]
+}
+export type ShortStyle = 'week' | 'month'
+const shortKey = (m: ScanMarket, s: ShortStyle) => `mercury.shortLog.${m}.${s}`
+export function loadShortLog(m: ScanMarket, s: ShortStyle): ShortLog | undefined {
+  try {
+    return (JSON.parse(localStorage.getItem(shortKey(m, s)) ?? 'null') as ShortLog | null) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+export function saveShortLog(m: ScanMarket, s: ShortStyle, log: ShortLog) {
+  try {
+    localStorage.setItem(shortKey(m, s), JSON.stringify(log))
+  } catch {
+    // Storage blocked: no Dashboard alert.
+  }
+}
+
+/** How long after its bar closes a short-term signal still counts as fresh: half a day (≤ 1 week) or two days (≤ 1 month). */
+export const SHORT_FRESH_MS: Record<ShortStyle, number> = { week: 12 * 3600_000, month: 2 * 864e5 }
+const BAR_MS: Record<ShortStyle, number> = { week: 4 * 3600_000, month: 864e5 }
+
+/** Pure: the signals whose bar closed within the freshness window. */
+export function freshSignals(log: ShortLog | undefined, style: ShortStyle, now = Date.now()): ShortSignal[] {
+  return (log?.signals ?? []).filter((x) => {
+    const start = Date.parse(x.time.length <= 10 ? `${x.time}T00:00:00Z` : x.time)
+    return now - (start + BAR_MS[style]) <= SHORT_FRESH_MS[style]
+  })
+}

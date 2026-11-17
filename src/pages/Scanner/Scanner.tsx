@@ -18,6 +18,8 @@ import type { I18n, Key } from '@/types'
 import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
 import { ChartPanel, type Timeframe } from './ChartPanel'
+import { ArbNote, ExpectedRange } from './RiskNotes'
+import { ShortView } from './ShortView'
 
 const TIME_STOP_DAYS = 56 // ~8 weeks (NOTES.md)
 const SCAN_CONCURRENCY = 4
@@ -116,6 +118,10 @@ async function load(m: Market, symbol: string): Promise<Result> {
 const lastCheck: Record<ScanMarket, Load> = { idx: { status: 'idle' }, crypto: { status: 'idle' } }
 const lastScan: Partial<Record<ScanMarket, Scan>> = {}
 const TAB_KEY = 'mercury.scanner.market'
+const MODE_KEY = 'mercury.scanner.mode'
+/** Holding time: the 3–6 month swing rules, or the short-term rules (src/market/shortSwing.ts). */
+type Mode = 'swing' | 'month' | 'week'
+const MODES: readonly Mode[] = ['swing', 'month', 'week']
 function initialMarket(): ScanMarket {
   try {
     if (localStorage.getItem(TAB_KEY) === 'crypto') return 'crypto'
@@ -124,47 +130,70 @@ function initialMarket(): ScanMarket {
   }
   return IDX_AVAILABLE ? 'idx' : 'crypto'
 }
+function initialMode(): Mode {
+  try {
+    const v = localStorage.getItem(MODE_KEY) as Mode | null
+    return v && MODES.includes(v) ? v : 'swing'
+  } catch {
+    return 'swing'
+  }
+}
 
 export function Scanner() {
   const { t } = useI18n()
   const [marketId, setMarketId] = useState(initialMarket)
+  const [mode, setMode] = useState(initialMode)
   const m = MARKETS[marketId]
-  const pick = (id: ScanMarket) => {
-    setMarketId(id)
+  const save = (key: string, v: string) => {
     try {
-      localStorage.setItem(TAB_KEY, id)
+      localStorage.setItem(key, v)
     } catch {
       // Storage blocked: the choice lasts this visit only.
     }
   }
+  const pick = (id: ScanMarket) => {
+    setMarketId(id)
+    save(TAB_KEY, id)
+  }
+  const pickMode = (v: Mode) => {
+    setMode(v)
+    save(MODE_KEY, v)
+  }
+  const tab = (on: boolean) =>
+    `rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${on ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`
 
   return (
     <>
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-display text-5xl leading-none uppercase">{t('scan.title')}</h1>
-          <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
-            {(['idx', 'crypto'] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={id === marketId}
-                onClick={() => pick(id)}
-                className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${id === marketId ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
-              >
-                {t(`scan.market.${id}`)}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2">
+            <div role="group" aria-label={t('short.styleLabel')} className="flex gap-1 rounded-md border border-border p-1">
+              {MODES.map((id) => (
+                <button key={id} type="button" aria-pressed={id === mode} onClick={() => pickMode(id)} className={tab(id === mode)}>
+                  {t(`scan.mode.${id}`)}
+                </button>
+              ))}
+            </div>
+            <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
+              {(['idx', 'crypto'] as const).map((id) => (
+                <button key={id} type="button" aria-pressed={id === marketId} onClick={() => pick(id)} className={tab(id === marketId)}>
+                  {t(`scan.market.${id}`)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <p className="mt-2 text-sm text-text-muted">{t('scan.intro')}</p>
+        <p className="mt-2 text-sm text-text-muted">{t(mode === 'swing' ? 'scan.intro' : `short.intro.${mode}`)}</p>
       </Card>
-      {m.available ? (
-        <MarketView key={m.id} m={m} />
-      ) : (
+      {!m.available ? (
         <Card>
           <p className="text-sm">{t('scan.localOnly')}</p>
         </Card>
+      ) : mode === 'swing' ? (
+        <MarketView key={m.id} m={m} />
+      ) : (
+        <ShortView key={`${m.id}:${mode}`} mk={m.id} styleId={mode} />
       )}
     </>
   )
@@ -514,6 +543,8 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         <Stat label={t('scan.timeStop')} value={day(timeStop.toISOString().slice(0, 10))} note={t('scan.timeStopNote')} />
       </div>
 
+      {m.id === 'idx' && <ArbNote entry={c.entry} stop={c.stop} price={(n) => m.price(f, n)} />}
+      <ExpectedRange daily={r.bars} horizons={m.id === 'idx' ? [5, 20, 60] : [7, 30, 90]} price={(n) => m.price(f, n)} entry={c.entry} stop={c.stop} />
       <div className="flex flex-col items-stretch gap-3 rounded-md bg-surface-2 px-3 py-2 sm:flex-row sm:items-start sm:gap-4">
         <div className="flex-1">
           <Label>{t('bt.title', { y: years })}</Label>

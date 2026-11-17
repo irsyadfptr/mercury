@@ -293,9 +293,9 @@ Suggested order: commit → tick sizes + ARB warning → achievements → schedu
 - Crypto scan list: top 50 by market cap from CoinGecko `/coins/markets` (needs the CoinGecko key in Settings), keeping coins with a Binance USDT pair and dropping stablecoins (list + anything within 2% of $1), gold tokens and wrapped/staked/bridged copies. Cached a day in localStorage `mercury.cryptoTop`. Without a key, or if a call fails, the old fixed 30 (src/market/cryptoList.ts) is used and the scan note says so.
   - Coins with under ~200 days on Binance can't pass the MA200 rule; they still show, with unknowns.
 
-## Short-term page (2026-11-17)
+## Short-term scanner (2026-11-17)
 
-Page **Short-term** (`#/short`, src/pages/Short; rules in src/market/shortSwing.ts, data in src/market/shortData.ts). Two holding times, both markets, separate from the 3–6 month swing scanner.
+Inside the **Scanner** as a holding-time switch: 3–6 months (the swing rules) | ≤ 1 month | ≤ 1 week (src/pages/Scanner/ShortView.tsx; rules in src/market/shortSwing.ts, data in src/market/shortData.ts). Briefly a separate page; moved into the Scanner on the user's request (2026-11-18).
 
 | | ≤ 1 week | ≤ 1 month |
 |---|---|---|
@@ -310,4 +310,24 @@ Page **Short-term** (`#/short`, src/pages/Short; rules in src/market/shortSwing.
 - A 4H bar reads the daily trend from the previous full day only (no peeking); signals use finished bars only (Binance close time; IDX 4H block end).
 - Backtests and the rules test include fees: IDX 0.15% buy / 0.25% sell (assumed, Stockbit-style), Binance 0.1% each side. Rules test variants: both triggers (current), pullback only, breakout only, + MACD, 1.5R, no normal-move check, no mood, no fees.
 - Data: crypto 4H = 3 × 1,000 finished bars from Binance (~16 months); IDX 4H = 1 year of 1H from idx, built into WIB 08–12 / 12–16 blocks, dev server refetches every 15 minutes while the market is open.
-- Not done yet: scan log / Dashboard alerts for short-term signals, ARB warning, real-data check of IDX hourly bars.
+- Dashboard alerts: each short-term scan saves its buy signals (none while Defensive) in localStorage `mercury.shortLog.<market>.<week|month>`; the Dashboard lists them while fresh (12 h after the 4H bar closes for ≤ 1 week, 2 days after the daily bar for ≤ 1 month). Like the swing alerts, they only update when the Scanner runs.
+- Not done yet: real-data check of IDX hourly bars.
+
+## ARB warning and expected range (2026-11-18)
+
+- **ARB** (src/market/idxLimits.ts, the only place with the limits; valid until 2026-12-31): IDX checks (swing and short-term) warn when the stop is more than one ARB (7%, Rp1 under Rp15) below the entry, with how many limit-down days it could take. After the valid-until date the note says the limits expired and to re-check idx.co.id.
+- **Expected range** (src/market/expectedRange.ts): standard deviation of the last 60 daily log returns, scaled by √days. Shown on the swing check (IDX 5/20/60 trading days, crypto 7/30/90 days), the short-term check (its holding time) and the crypto fundamentals card. 2 in 3 = ±1σ, 19 in 20 = ±2σ, log-normal, no drift. Warns when the stop is inside one normal day's move. A risk measure, not a forecast.
+
+## Crypto fundamentals (2026-11-18)
+
+Long-term page → Crypto (src/market/cryptoFundamentals.ts scoring, src/market/cryptoFundamentalsData.ts fetching, src/pages/LongTerm/CryptoCheck.tsx). Needs the CoinGecko key; works on the deployed site. Score out of 14; unknown earns no point.
+
+| Part | Metric (pass when) |
+|---|---|
+| Tokenomics (4) | circulating ≥ 70% of max (or total) · FDV ÷ market cap ≤ 1.5 · has a max supply · on Binance ≥ 3 years |
+| Usage (5, DefiLlama) | TVL ≥ $1B · TVL up over 7 days · fees last 30 days > 0 · fee pace (7d × 30/7 ÷ 30d) ≥ 100% · revenue last year > 0 |
+| Market & dev (5) | 24h volume ≥ 2% of market cap · market cap ≥ $1B · within 50% of the all-time high · 1-year high ÷ low ≤ 3 · GitHub commits (4 weeks) ≥ 20 |
+
+- Sources: CoinGecko `/coins/markets` (top 250, symbol → largest coin) and `/coins/{id}` (developer_data); DefiLlama `/v2/chains` (matched by gecko_id), else `/protocols`, `/summary/fees/{slug}?dataType=dailyFees|dailyRevenue`, `/v2/historicalChainTvl/{chain}`; Binance first daily candle (listing age) and 365 daily candles.
+- **Field names are from memory, not yet checked against live responses** (the docs weren't reachable from the build sandbox). Parsing is lenient: a wrong name shows as unknown, never an error. Check on a real run, especially DefiLlama fees for chains and CoinGecko developer data (often empty).
+- Meme and payment coins have no DefiLlama entry: Usage shows unknown.
