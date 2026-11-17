@@ -8,6 +8,7 @@ import { Portfolio } from '@/pages/Portfolio/Portfolio'
 import { QuickAdd } from '@/pages/QuickAdd/QuickAdd'
 import { Scanner } from '@/pages/Scanner/Scanner'
 import { Settings } from '@/pages/Settings/Settings'
+import { Short } from '@/pages/Short/Short'
 import { parseRoute } from '@/routes'
 import type { Route } from '@/types'
 
@@ -27,6 +28,7 @@ export default function App() {
       {route === 'dashboard' && <Dashboard />}
       {route === 'portfolio' && <Portfolio />}
       {route === 'scanner' && <Scanner />}
+      {route === 'short' && <Short />}
       {route === 'longterm' && <LongTerm />}
       {route === 'journal' && <Journal />}
       {route === 'cashflow' && <Cashflow />}

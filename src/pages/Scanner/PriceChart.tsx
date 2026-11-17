@@ -11,9 +11,16 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
-import { sma, type Bar, type Check } from '@/market/indicators'
+import { sma, type Bar } from '@/market/indicators'
 import type { Bias, ChartPattern, PatternAnalysis } from '@/market/patterns'
 import { useSettings } from '@/settings'
+
+/** Price levels drawn as dashed lines: an optional buy zone, a stop and any targets. */
+export interface ChartLevels {
+  zone?: { low: number; high: number }
+  stop?: number
+  targets: { price: number; title: string }[]
+}
 
 /** The one pattern the user picked from the list: a chart pattern by id, or a candle signal by bar index. */
 export type Focus = { kind: 'chart' | 'candle'; key: string } | undefined
@@ -34,14 +41,14 @@ const FOCUS_PAD = 15
 const WIB_S = 7 * 3600
 
 /**
- * Candles with MA50/MA200 of the bar size shown, the buy zone, and the stop and targets (from the daily check) as dashed lines.
+ * Candles with MA50/MA200 of the bar size shown, and the buy zone, stop and targets (`levels`) as dashed lines.
  * `step` = the price step, for the axis decimals. Hourly bars (ISO times) are plotted in WIB.
  * Patterns: with no focus, every chart pattern is a thin unlabelled outline and candle signals are small arrows. With a focus, only
  * that pattern is drawn, bold and labelled with its break and target, and the view zooms to it.
  */
 export function PriceChart({
   bars,
-  check,
+  levels,
   label,
   step,
   zoneBand = true,
@@ -50,7 +57,7 @@ export function PriceChart({
   labels,
 }: {
   bars: Bar[]
-  check: Check
+  levels: ChartLevels
   label: string
   step: number
   /** Shade the buy zone over the last 20 bars (daily view only; on other bar sizes only its edges are drawn). */
@@ -95,10 +102,10 @@ export function PriceChart({
       autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
         const r = base()
         if (!r?.priceRange || focusCandle) return r
-        const extra = focusChart ? [focusChart.trigger, focusChart.target] : [check.stop, check.target3]
-        const levels = extra.filter((v): v is number => v !== undefined)
+        const extra: (number | undefined)[] = focusChart ? [focusChart.trigger, focusChart.target] : [levels.stop, ...levels.targets.map((x) => x.price)]
+        const known = extra.filter((v): v is number => v !== undefined)
         const { minValue, maxValue } = r.priceRange
-        return { ...r, priceRange: { minValue: Math.min(minValue, ...levels), maxValue: Math.max(maxValue, ...levels) } }
+        return { ...r, priceRange: { minValue: Math.min(minValue, ...known), maxValue: Math.max(maxValue, ...known) } }
       },
     })
     candles.setData(bars.map(({ open, high, low, close }, i) => ({ time: at(i), open, high, low, close })))
@@ -112,8 +119,8 @@ export function PriceChart({
     const line = (price: number | undefined, title: string, color: string, style = LineStyle.Dashed) =>
       price !== undefined && candles.createPriceLine({ price, title, color, lineStyle: style, lineWidth: 1, axisLabelVisible: true })
     if (!focused) {
-      if (check.buyZone) {
-        const { low, high } = check.buyZone
+      if (levels.zone) {
+        const { low, high } = levels.zone
         if (zoneBand) {
           const fill = alpha(accent, 0.25)
           chart
@@ -132,9 +139,8 @@ export function PriceChart({
         line(high, 'BUY', accent)
         line(low, 'BUY', accent)
       }
-      line(check.stop, 'STOP', down)
-      line(check.target2, '2R', up)
-      line(check.target3, '3R', up)
+      line(levels.stop, 'STOP', down)
+      for (const x of levels.targets) line(x.price, x.title, up)
     }
 
     if (patterns) {
@@ -185,7 +191,7 @@ export function PriceChart({
       chart.timeScale().setVisibleLogicalRange({ from: focusCandle.i - 40, to: Math.min(n + 2, focusCandle.i + 20) })
     } else if (n > VISIBLE_BARS) chart.timeScale().setVisibleLogicalRange({ from: n - VISIBLE_BARS, to: n })
     return () => chart.remove()
-  }, [bars, check, theme, step, zoneBand, patterns, focus, labels])
+  }, [bars, levels, theme, step, zoneBand, patterns, focus, labels])
 
   return <div ref={ref} role="img" aria-label={label} className="h-[320px] w-full" />
 }

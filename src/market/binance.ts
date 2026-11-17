@@ -45,3 +45,24 @@ export async function fetchCryptoFrame(coin: string, interval: '1h' | '4h' | '1w
   if (!res?.ok) throw new IdxFetchError('fetch-failed')
   return parseKlines(await res.json(), Infinity, interval === '1h' || interval === '4h')
 }
+
+/**
+ * Finished candles only, for signals and backtests: `pages` requests of 1,000 going back in time (3 × 4H ≈ 16 months).
+ * Binance weight is small (2 per request), well inside the public limit even for a 50-coin scan.
+ */
+export async function fetchCryptoClosed(coin: string, interval: '1h' | '4h', pages = 3): Promise<Bar[]> {
+  if (!COIN.test(coin)) throw new IdxFetchError('bad-symbol')
+  let out: Bar[] = []
+  let end: number | undefined
+  for (let p = 0; p < pages; p++) {
+    const res = await fetch(`${BASE}/klines?symbol=${coin}USDT&interval=${interval}&limit=1000${end ? `&endTime=${end}` : ''}`).catch(() => undefined)
+    if (res?.status === 400) throw new IdxFetchError('not-found')
+    if (!res?.ok) throw new IdxFetchError('fetch-failed')
+    const page = parseKlines(await res.json(), Date.now(), true)
+    if (!page.length) break
+    out = [...page, ...out]
+    end = Date.parse(page[0].time) - 1
+    if (page.length < 1000) break
+  }
+  return out
+}

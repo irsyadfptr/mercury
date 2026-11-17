@@ -454,6 +454,17 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
     macdCross: c.crossAgo !== undefined ? t('rule.macdCross.ago', { n: c.crossAgo }) : t('rule.macdCross.none', { n: CROSS_LOOKBACK }),
     liquidity: t('rule.liquidity.d', { v: m.value(f, c.avgValue), min: m.value(f, m.rules.minValue) }),
   }
+  const levels = useMemo(
+    () => ({
+      zone: c.buyZone,
+      stop: c.stop,
+      targets: [
+        ...(c.target2 !== undefined ? [{ price: c.target2, title: '2R' }] : []),
+        ...(c.target3 !== undefined ? [{ price: c.target3, title: '3R' }] : []),
+      ],
+    }),
+    [c],
+  )
   const years = Math.round((Date.parse(last) - Date.parse(r.bars[0].time)) / (365.25 * 864e5))
 
   return (
@@ -503,7 +514,7 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         <Stat label={t('scan.timeStop')} value={day(timeStop.toISOString().slice(0, 10))} note={t('scan.timeStopNote')} />
       </div>
 
-      <div className="flex flex-wrap items-start gap-4 rounded-md bg-surface-2 px-3 py-2">
+      <div className="flex flex-col items-stretch gap-3 rounded-md bg-surface-2 px-3 py-2 sm:flex-row sm:items-start sm:gap-4">
         <div className="flex-1">
           <Label>{t('bt.title', { y: years })}</Label>
           {bt.trades.length === 0 ? (
@@ -524,7 +535,7 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
       <ChartPanel
         symbol={r.symbol}
         daily={r.bars}
-        check={c}
+        levels={levels}
         step={m.rules.step(c.close)}
         price={price}
         loadFrame={(tf) => m.frame(r.symbol, tf, r.bars)}
@@ -573,7 +584,7 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   }
 
   return (
-    <div className="flex max-w-64 flex-col gap-1">
+    <div className="flex flex-col gap-1 sm:max-w-64">
       <Button onClick={add} disabled={!!why} className={primary}>
         {t('paper.button')}
       </Button>

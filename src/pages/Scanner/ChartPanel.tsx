@@ -1,18 +1,18 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Label } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
-import type { Bar, Check } from '@/market/indicators'
+import type { Bar } from '@/market/indicators'
 import { analyzePatterns, type Bias, type PatternAnalysis } from '@/market/patterns'
 import type { Key } from '@/types'
-import { PriceChart, type Focus } from './PriceChart'
+import { frameCache } from './frameCache'
+import { PriceChart, type ChartLevels, type Focus } from './PriceChart'
 
 const TIMEFRAMES = ['1h', '4h', '1d', '1w', '1M'] as const
 export type Timeframe = (typeof TIMEFRAMES)[number]
+export type { ChartLevels }
 /** Loads bars for a bar size other than daily. */
 export type FrameLoader = (tf: Exclude<Timeframe, '1d'>) => Promise<Bar[]>
 
-// Kept outside React so switching back to a timeframe (or reopening the ticker this visit) doesn't refetch.
-const frameCache = new Map<string, Bar[]>()
 const BIAS_CLASS: Record<Bias, string> = { bull: 'text-up', bear: 'text-down', neutral: 'text-warn-text' }
 const WIB_MS = 7 * 3600_000
 
@@ -23,23 +23,29 @@ const WIB_MS = 7 * 3600_000
 export function ChartPanel({
   symbol,
   daily,
-  check,
+  levels,
   step,
   price,
   loadFrame,
   cacheKey,
+  initialTf = '1d',
+  levelsNote = 'chart.levelsDaily',
 }: {
   symbol: string
   daily: Bar[]
-  check: Check
+  levels: ChartLevels
   step: number
   price: (n: number | undefined) => string
   loadFrame: FrameLoader
   /** Unique per market + ticker + last daily bar, for the frame cache. */
   cacheKey: string
+  /** The bar size shown first (its bars must be loadable, or '1d'). */
+  initialTf?: Timeframe
+  /** Shown when the bar size differs from the one the levels came from. */
+  levelsNote?: Key
 }) {
   const { t } = useI18n()
-  const [tf, setTf] = useState<Timeframe>('1d')
+  const [tf, setTf] = useState<Timeframe>(initialTf)
   const [status, setStatus] = useState<Partial<Record<Timeframe, 'loading' | 'error'>>>({})
   const [, rerender] = useState(0)
   const [showPatterns, setShowPatterns] = useState(true)
@@ -48,7 +54,7 @@ export function ChartPanel({
   const pick = (next: Timeframe) => {
     setTf(next)
     setFocus(undefined)
-    if (next === '1d' || frameCache.has(`${cacheKey}:${next}`)) return
+    if (next === '1d' || frameCache.has(`${cacheKey}:${next}`) || status[next] === 'loading') return
     setStatus((s) => ({ ...s, [next]: 'loading' }))
     loadFrame(next)
       .then((bars) => {
@@ -59,6 +65,11 @@ export function ChartPanel({
       .catch(() => setStatus((s) => ({ ...s, [next]: 'error' })))
   }
 
+  // A non-daily first bar size is loaded once, when the panel opens.
+  useEffect(() => {
+    if (initialTf !== '1d') pick(initialTf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount; the panel is keyed by ticker
+  }, [])
   const bars = tf === '1d' ? daily : frameCache.get(`${cacheKey}:${tf}`)
   const patterns = useMemo(() => (bars && bars.length > 0 ? analyzePatterns(bars) : undefined), [bars])
   const labels = useCallback((id: string) => t(`pat.short.${id}` as Key), [t])
@@ -85,7 +96,7 @@ export function ChartPanel({
           {t('pat.toggle')}
         </label>
       </div>
-      {tf !== '1d' && <p className="text-xs text-text-muted">{t('chart.levelsDaily')}</p>}
+      {tf !== initialTf && <p className="text-xs text-text-muted">{t(levelsNote)}</p>}
 
       {status[tf] === 'error' ? (
         <p className="flex h-[320px] items-center justify-center rounded-md border border-border text-sm text-down">{t('chart.loadFailed')}</p>
@@ -94,7 +105,7 @@ export function ChartPanel({
       ) : (
         <PriceChart
           bars={bars}
-          check={check}
+          levels={levels}
           label={t('scan.chartLabelTf', { s: symbol, tf: t(`chart.tf.${tf}`) })}
           step={step}
           zoneBand={tf === '1d'}

@@ -292,3 +292,22 @@ Suggested order: commit → tick sizes + ARB warning → achievements → schedu
   - IDX: 1H from `idx stocks history SYM --period 1y --interval 1h` (`GET /api/idx/history1h`, dev server only); 4H built from 1H in WIB 4-hour blocks (08–12, 12–16); 1W/1M built from the 5 years of daily bars. Not yet seen on a real idx run.
 - Crypto scan list: top 50 by market cap from CoinGecko `/coins/markets` (needs the CoinGecko key in Settings), keeping coins with a Binance USDT pair and dropping stablecoins (list + anything within 2% of $1), gold tokens and wrapped/staked/bridged copies. Cached a day in localStorage `mercury.cryptoTop`. Without a key, or if a call fails, the old fixed 30 (src/market/cryptoList.ts) is used and the scan note says so.
   - Coins with under ~200 days on Binance can't pass the MA200 rule; they still show, with unknowns.
+
+## Short-term page (2026-11-17)
+
+Page **Short-term** (`#/short`, src/pages/Short; rules in src/market/shortSwing.ts, data in src/market/shortData.ts). Two holding times, both markets, separate from the 3–6 month swing scanner.
+
+| | ≤ 1 week | ≤ 1 month |
+|---|---|---|
+| Direction (daily) | close above a rising MA20 (vs 5 days ago), MA20 > MA50, close > MA200 | close above a rising MA50, MA50 > MA200, close > MA200 |
+| Entry chart | 4H | Daily |
+| Trigger | pullback (a low in the last 3 bars touched EMA20, bullish close above EMA20 and above the previous high) or breakout (close above the 10-bar high, volume above its 20-bar average) | same, on daily bars |
+| Stop | 10-bar low − one step, max 2× ATR of the entry chart | same |
+| Target / time stop | 2R; 5 trading days IDX, 7 days crypto | 2R; 20 trading days IDX, 28 days crypto |
+
+- Also: liquidity (IDX ≥ Rp20 bn/day, crypto ≥ $10M) and a "normal move" check: the target must be within one standard deviation of the coin's 60-day daily swings scaled to the holding time.
+- Mood filter as in the swing scanner: Defensive = signals show as Paused, no paper trades, backtests skip those days.
+- A 4H bar reads the daily trend from the previous full day only (no peeking); signals use finished bars only (Binance close time; IDX 4H block end).
+- Backtests and the rules test include fees: IDX 0.15% buy / 0.25% sell (assumed, Stockbit-style), Binance 0.1% each side. Rules test variants: both triggers (current), pullback only, breakout only, + MACD, 1.5R, no normal-move check, no mood, no fees.
+- Data: crypto 4H = 3 × 1,000 finished bars from Binance (~16 months); IDX 4H = 1 year of 1H from idx, built into WIB 08–12 / 12–16 blocks, dev server refetches every 15 minutes while the market is open.
+- Not done yet: scan log / Dashboard alerts for short-term signals, ARB warning, real-data check of IDX hourly bars.

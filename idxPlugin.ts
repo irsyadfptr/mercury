@@ -13,6 +13,12 @@ const wibStamp = () => {
   const [day, time] = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }).split(' ')
   return `${day} ${time >= '16:30' ? 'closed' : 'open'}`
 }
+// Hourly bars change during the session: refetch every 15 minutes while the market is open, once after the close.
+const wibQuarterStamp = () => {
+  const [day, time] = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }).split(' ')
+  if (time >= '16:30' || time < '08:45') return `${day} ${time >= '16:30' ? 'closed' : 'pre'}`
+  return `${day} ${time.slice(0, 3)}${String(Math.floor(Number(time.slice(3, 5)) / 15) * 15).padStart(2, '0')}`
+}
 
 function run(args: string[]): Promise<{ code: number | string; out: string; err: string }> {
   return new Promise((resolve) => {
@@ -54,7 +60,7 @@ export function idxPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       /** GET path?param=… → validate, then serve from the per-WIB-day cache or produce (only 200s are cached). */
-      const route = (path: string, param: string, valid: (v: string) => boolean, produce: (v: string) => Promise<Reply>) =>
+      const route = (path: string, param: string, valid: (v: string) => boolean, produce: (v: string) => Promise<Reply>, stamp = wibStamp) =>
         server.middlewares.use(path, async (req, res) => {
           const value = new URL(req.url ?? '', 'http://x').searchParams.get(param) ?? ''
           const send = ({ status, body }: Reply) => {
@@ -64,7 +70,7 @@ export function idxPlugin(): Plugin {
           }
           if (!valid(value)) return send(fail(400, param === 'symbol' ? 'bad-symbol' : 'bad-screen'))
           const key = `${path} ${value}`
-          const day = wibStamp()
+          const day = stamp()
           const hit = cache.get(key)
           if (hit?.day === day) return send({ status: 200, body: hit.body })
           const reply = await produce(value)
@@ -77,7 +83,7 @@ export function idxPlugin(): Plugin {
       route('/api/idx/history', 'symbol', isSymbol, (symbol) => idx(['stocks', 'history', symbol, '--period', '5y', '--interval', '1d']))
 
       // GET /api/idx/history1h?symbol=BBCA → one year of 1-hour bars (Yahoo keeps about two years of hourly data).
-      route('/api/idx/history1h', 'symbol', isSymbol, (symbol) => idx(['stocks', 'history', symbol, '--period', '1y', '--interval', '1h']))
+      route('/api/idx/history1h', 'symbol', isSymbol, (symbol) => idx(['stocks', 'history', symbol, '--period', '1y', '--interval', '1h']), wibQuarterStamp)
 
       // GET /api/idx/fundamentals?symbol=PTBA → { fundamentals: idx.fundamentals.v1, dividends: idx.dividends.v1 | null }.
       route('/api/idx/fundamentals', 'symbol', (s) => isSymbol(s) && s !== '^JKSE', async (symbol) => {
