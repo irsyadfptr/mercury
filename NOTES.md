@@ -282,4 +282,13 @@ Suggested order: commit → tick sizes + ARB warning → achievements → schedu
 - Swing points: a high/low that beats 5 bars on each side (so it shows 5 bars late, never peeks ahead). Levels are "equal" within 3%.
 - Chart patterns (last 120 bars, newest of each type): double top/bottom (≥ 10 bars apart, ≥ 5% deep), head and shoulders + inverse (sloped neckline), ascending/descending/symmetrical triangles (last 2 swing highs and lows). Status Forming until a close breaks the neckline/edge, then Confirmed, then Target hit once price touches the target (drawn faded, no label); a close beyond the tops/head first drops it. Target = measured move (pattern height from the break).
 - Candle signals (last 20 bars, bare arrows on the chart, named in the list): bullish/bearish engulfing, hammer, shooting star, morning/evening star, each only after a matching 5-bar move.
+- Tap a row in the pattern list to show only that pattern, zoomed in, with its trigger and target lines; tap again for all. With nothing picked, chart patterns are thin unlabelled outlines.
 - Later: backtest pattern breaks before trusting them.
+
+## Chart timeframes and the top-50 crypto list (2026-11-17)
+
+- Ticker check chart has 1H / 4H / 1D / 1W / 1M. **The checklist, buy zone, stop and targets always come from the daily bars**; other sizes only change the candles, MA50/MA200 (of that bar size) and the patterns. Hourly times are shown in WIB.
+  - Crypto: every size straight from Binance klines (latest 1,000 bars, forming candle kept since it's only a view).
+  - IDX: 1H from `idx stocks history SYM --period 1y --interval 1h` (`GET /api/idx/history1h`, dev server only); 4H built from 1H in WIB 4-hour blocks (08–12, 12–16); 1W/1M built from the 5 years of daily bars. Not yet seen on a real idx run.
+- Crypto scan list: top 50 by market cap from CoinGecko `/coins/markets` (needs the CoinGecko key in Settings), keeping coins with a Binance USDT pair and dropping stablecoins (list + anything within 2% of $1), gold tokens and wrapped/staked/bridged copies. Cached a day in localStorage `mercury.cryptoTop`. Without a key, or if a call fails, the old fixed 30 (src/market/cryptoList.ts) is used and the scan note says so.
+  - Coins with under ~200 days on Binance can't pass the MA200 rule; they still show, with unknowns.

@@ -1,23 +1,23 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { backtest, summarize, type Backtest, type BacktestOptions, type Trade } from '@/market/backtest'
-import { COIN, fetchCryptoHistory } from '@/market/binance'
-import { CRYPTO_COINS } from '@/market/cryptoList'
-import { fetchHistory, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
-import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
+import { COIN, fetchCryptoFrame, fetchCryptoHistory } from '@/market/binance'
+import { cachedCoinList, FIXED_LIST, loadCoinList, type CoinList } from '@/market/cryptoList'
+import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
+import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
-import { analyzePatterns, type Bias, type PatternAnalysis } from '@/market/patterns'
 import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood, type MoodLight } from '@/market/mood'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import type { I18n, Key } from '@/types'
+import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
-import { PriceChart } from './PriceChart'
+import { ChartPanel, type Timeframe } from './ChartPanel'
 
 const TIME_STOP_DAYS = 56 // ~8 weeks (NOTES.md)
 const SCAN_CONCURRENCY = 4
@@ -37,6 +37,10 @@ interface Market {
   indexName: string
   list: readonly string[]
   listName: string
+  /** Where the list comes from, shown under the scan. */
+  listNote: Key
+  /** Candles at another bar size for the chart; `daily` is the history already loaded. */
+  frame: (symbol: string, tf: Exclude<Timeframe, '1d'>, daily: Bar[]) => Promise<Bar[]>
   symbol: RegExp
   example: string
   /** Price as text. */
@@ -56,6 +60,9 @@ const MARKETS: Record<ScanMarket, Market> = {
     indexName: 'IHSG',
     list: LQ45,
     listName: 'LQ45',
+    listNote: 'scan.listSource',
+    // Hourly from the idx CLI (4-hour built from it); weekly and monthly from the 5 years of daily bars already loaded.
+    frame: async (symbol, tf, daily) => (tf === '1h' ? fetchHourly(symbol) : tf === '4h' ? to4h(await fetchHourly(symbol)) : tf === '1w' ? toWeekly(daily) : toMonthly(daily)),
     symbol: /^[A-Z]{4}$/,
     example: 'BBCA',
     price: (f, n) => f.money(n),
@@ -68,8 +75,12 @@ const MARKETS: Record<ScanMarket, Market> = {
     fetch: fetchCryptoHistory,
     index: 'BTC',
     indexName: 'BTC',
-    list: CRYPTO_COINS,
-    listName: `Top ${CRYPTO_COINS.length}`,
+    // Replaced by the live top-by-market-cap list once MarketView loads it (see withCoins).
+    list: FIXED_LIST.coins,
+    listName: `Top ${FIXED_LIST.coins.length}`,
+    listNote: 'scan.listSource.cryptoFixed',
+    // Binance has every bar size natively, with more history than building weekly/monthly from 1,000 days.
+    frame: (symbol, tf) => fetchCryptoFrame(symbol, tf),
     symbol: COIN,
     example: 'BTC',
     price: usd,
@@ -159,8 +170,17 @@ export function Scanner() {
   )
 }
 
+// The crypto coin list in use this visit (live top by market cap, or the fixed fallback).
+let lastCoins: CoinList | undefined
+/** The crypto market with its coin list swapped in. */
+const withCoins = (m: Market, c: CoinList | undefined): Market =>
+  !c ? m : { ...m, list: c.coins, listName: `Top ${c.coins.length}`, listNote: c.source === 'mcap' ? 'scan.listSource.crypto' : 'scan.listSource.cryptoFixed' }
+
 /** One market's mood, ticker check and scan. Keyed by market, so switching starts from that market's saved state. */
-function MarketView({ m }: { m: Market }) {
+function MarketView({ m: base }: { m: Market }) {
+  const cgKey = useSettings((s) => s.coingeckoKey) || ENV_KEY
+  const [coins, setCoins] = useState(() => (base.id === 'crypto' ? (lastCoins ?? cachedCoinList()) : undefined))
+  const m = useMemo(() => withCoins(base, coins), [base, coins])
   const [check, setCheckState] = useState(lastCheck[m.id])
   const setCheck = (l: Load) => setCheckState((lastCheck[m.id] = l))
   const run = async (symbol: string) => {
@@ -178,6 +198,12 @@ function MarketView({ m }: { m: Market }) {
     const rows: ScanRow[] = []
     let index: Bar[] | undefined
     publish({ rows, running: true })
+    let list = m.list
+    if (m.id === 'crypto') {
+      const c = await loadCoinList(cgKey)
+      setCoins((lastCoins = c))
+      list = c.coins
+    }
     try {
       index = (await m.fetch(m.index)).bars
     } catch {
@@ -186,8 +212,8 @@ function MarketView({ m }: { m: Market }) {
     let next = 0
     // A few calls at a time; the dev server caches IDX tickers until the close.
     const worker = async () => {
-      while (next < m.list.length) {
-        const symbol = m.list[next++]
+      while (next < list.length) {
+        const symbol = list[next++]
         try {
           rows.push(await load(m, symbol))
         } catch (e) {
@@ -429,9 +455,6 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
     liquidity: t('rule.liquidity.d', { v: m.value(f, c.avgValue), min: m.value(f, m.rules.minValue) }),
   }
   const years = Math.round((Date.parse(last) - Date.parse(r.bars[0].time)) / (365.25 * 864e5))
-  const patterns = useMemo(() => analyzePatterns(r.bars), [r.bars])
-  const [showPatterns, setShowPatterns] = useState(true)
-  const patternLabel = useCallback((id: string) => t(`pat.short.${id}` as Key), [t])
 
   return (
     <div className="flex flex-col gap-4">
@@ -498,19 +521,15 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         <PaperTrade m={m} r={r} defensive={filter.defensive} />
       </div>
 
-      <label className="flex items-center gap-2 self-start text-sm">
-        <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
-        {t('pat.toggle')}
-      </label>
-      <PriceChart
-        bars={r.bars}
+      <ChartPanel
+        symbol={r.symbol}
+        daily={r.bars}
         check={c}
-        label={t('scan.chartLabel', { s: r.symbol })}
         step={m.rules.step(c.close)}
-        patterns={showPatterns ? patterns : undefined}
-        labels={patternLabel}
+        price={price}
+        loadFrame={(tf) => m.frame(r.symbol, tf, r.bars)}
+        cacheKey={`${m.id}:${r.symbol}:${last}`}
       />
-      {showPatterns && <PatternList m={m} bars={r.bars} patterns={patterns} />}
       {m.id === 'idx' && <p className="text-xs text-text-muted">{t('scan.backtestLater')}</p>}
     </div>
   )
@@ -561,49 +580,6 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
       <span className="text-xs text-text-muted">
         {why ?? (crypto ? t('paper.sizeCoin', { q: qty(units), s: r.symbol, p, risk: tradeLimit }) : t('paper.size', { lots: num(units / IDX_LOT), p, risk: tradeLimit }))}
       </span>
-    </div>
-  )
-}
-
-const BIAS_CLASS: Record<Bias, string> = { bull: 'text-up', bear: 'text-down', neutral: 'text-warn-text' }
-
-/** Chart patterns and recent candle signals, newest first. Display only: not in the score, not backtested. */
-function PatternList({ m, bars, patterns }: { m: Market; bars: Bar[]; patterns: PatternAnalysis }) {
-  const f = useI18n()
-  const { t, day } = f
-  const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
-  const candles = [...patterns.candles].reverse()
-  return (
-    <div className="flex flex-col gap-2">
-      <Label>{t('pat.title')}</Label>
-      {patterns.chart.length === 0 && candles.length === 0 ? (
-        <p className="text-sm text-text-muted">{t('pat.none')}</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-          {patterns.chart.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
-              <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${BIAS_CLASS[p.bias]}`}>{t(`pat.bias.${p.bias}`)}</span>
-              <span className="flex-1">
-                {t(`pat.${p.id}`)} <Badge tone={p.status === 'forming' ? 'neutral' : 'paper'}>{t(`pat.status.${p.status}`)}</Badge>
-              </span>
-              <span className="w-full pl-[4.25rem] font-mono text-xs text-text-muted sm:w-auto sm:pl-0">
-                {p.breakAt !== undefined
-                  ? t('pat.broke', { d: day(bars[p.breakAt].time), p: price(p.trigger) })
-                  : t('pat.watch', { p: price(p.trigger), d: day(bars[p.end].time) })}
-                {p.target !== undefined && ` · ${t(p.targetHitAt !== undefined ? 'pat.targetHit' : 'pat.target', { p: price(p.target), d: p.targetHitAt !== undefined ? day(bars[p.targetHitAt].time) : '' })}`}
-              </span>
-            </li>
-          ))}
-          {candles.map((c) => (
-            <li key={`${c.id}-${c.i}`} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
-              <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${BIAS_CLASS[c.bias]}`}>{t(`pat.bias.${c.bias}`)}</span>
-              <span className="flex-1">{t(`pat.${c.id}`)}</span>
-              <span className="font-mono text-xs text-text-muted">{day(bars[c.i].time)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-xs text-text-muted">{t('pat.note')}</p>
     </div>
   )
 }
@@ -697,7 +673,7 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
         </div>
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
-      <p className="mt-3 text-xs text-text-muted">{m.id === 'idx' ? t('scan.listSource') : t('scan.listSource.crypto')}</p>
+      <p className="mt-3 text-xs text-text-muted">{t(m.listNote)}</p>
     </Card>
   )
 }

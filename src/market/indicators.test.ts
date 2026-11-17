@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseHistory } from './idx'
-import { atr, checkSetup, ema, lowestLow, macd, sma, toWeekly, weeklyTrendSeries, type Bar } from './indicators'
+import { atr, checkSetup, ema, lowestLow, macd, sma, to4h, toMonthly, toWeekly, weeklyTrendSeries, type Bar } from './indicators'
 
 const bar = (time: string, close: number, extra: Partial<Bar> = {}): Bar => ({ time, open: close, high: close + 1, low: close - 1, close, volume: 1e6, ...extra })
 /** n weekday bars from Mon 2025-01-06 with closes from f(i). */
@@ -121,4 +121,18 @@ describe('parseHistory', () => {
     expect(parseHistory(json)).toEqual({ name: 'Telkom', bars: [{ time: '2025-10-13', open: 1, high: 2, low: 0.5, close: 1.5, volume: 9 }] })
   })
   it('rejects junk', () => expect(() => parseHistory({ data: {} })).toThrow())
+})
+
+describe('other bar sizes', () => {
+  it('monthly bars start on the 1st and combine the month', () => {
+    const m = toMonthly([bar('2025-01-30', 10), bar('2025-01-31', 12), bar('2025-02-03', 11)])
+    expect(m.map((b) => [b.time, b.open, b.close, b.high])).toEqual([['2025-01-01', 10, 12, 13], ['2025-02-01', 11, 11, 12]])
+  })
+  it('4-hour buckets follow WIB: IDX 09:00–11:00 in one bar, 13:00–15:00 in the next', () => {
+    const h = ['09', '10', '11', '13', '14', '15'].map((hh, i) => bar(`2025-01-06T${hh}:00:00+07:00`, 100 + i))
+    const four = to4h(h)
+    expect(four.map((b) => b.time)).toEqual(['2025-01-06T01:00:00.000Z', '2025-01-06T05:00:00.000Z']) // 08:00 and 12:00 WIB
+    expect(four[0].close).toBe(102)
+    expect(four[1].volume).toBe(3e6)
+  })
 })

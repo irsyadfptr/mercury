@@ -63,11 +63,26 @@ function weekOf(time: string): string {
 }
 
 /** Daily bars → weekly bars, weeks starting Monday. The last week may be partial. */
-export function toWeekly(bars: readonly Bar[]): Bar[] {
+export const toWeekly = (bars: readonly Bar[]): Bar[] => aggregate(bars, weekOf)
+/** Daily bars → monthly bars, dated the 1st. The last month may be partial. */
+export const toMonthly = (bars: readonly Bar[]): Bar[] => aggregate(bars, (t) => `${t.slice(0, 7)}-01`)
+/**
+ * Hourly bars (ISO times) → 4-hour bars, buckets counted from midnight WIB (00, 04, 08, 12, 16, 20), each timed at its start (UTC ISO).
+ * For IDX that gives two bars a day: the 08–12 and 12–16 WIB blocks.
+ */
+export const to4h = (bars: readonly Bar[]): Bar[] =>
+  aggregate(bars, (t) => {
+    const ms = Date.parse(t) + 7 * 3600_000
+    const start = ms - (ms % (4 * 3600_000)) - 7 * 3600_000
+    return new Date(start).toISOString()
+  })
+
+/** Bars grouped by key (in order), first open, highest high, lowest low, last close, summed volume. The bar's time is the key. */
+function aggregate(bars: readonly Bar[], keyOf: (time: string) => string): Bar[] {
   const out: Bar[] = []
   let key = ''
   for (const b of bars) {
-    const k = weekOf(b.time)
+    const k = keyOf(b.time)
     const w = out[out.length - 1]
     if (k !== key || !w) {
       key = k

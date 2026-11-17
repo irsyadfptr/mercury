@@ -76,6 +76,9 @@ export function idxPlugin(): Plugin {
       // GET /api/idx/history?symbol=BBCA → idx's idx.history.v1 JSON (5 years of daily bars, enough for the backtest).
       route('/api/idx/history', 'symbol', isSymbol, (symbol) => idx(['stocks', 'history', symbol, '--period', '5y', '--interval', '1d']))
 
+      // GET /api/idx/history1h?symbol=BBCA → one year of 1-hour bars (Yahoo keeps about two years of hourly data).
+      route('/api/idx/history1h', 'symbol', isSymbol, (symbol) => idx(['stocks', 'history', symbol, '--period', '1y', '--interval', '1h']))
+
       // GET /api/idx/fundamentals?symbol=PTBA → { fundamentals: idx.fundamentals.v1, dividends: idx.dividends.v1 | null }.
       route('/api/idx/fundamentals', 'symbol', (s) => isSymbol(s) && s !== '^JKSE', async (symbol) => {
         const f = await idx(['stocks', 'fundamental', symbol])

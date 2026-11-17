@@ -25,10 +25,13 @@ export class IdxFetchError extends Error {
   }
 }
 
-/** Pure: idx.history.v1 JSON → bars. Candle time is ISO with the WIB offset, so its first 10 chars are the exchange date. */
-export function parseHistory(json: unknown): { name?: string; bars: Bar[] } {
+/**
+ * Pure: idx.history.v1 JSON → bars. Candle time is ISO with the WIB offset, so its first 10 chars are the exchange date.
+ * `intraday` keeps the full timestamp (e.g. 2026-11-05T09:00:00+07:00) for hourly bars.
+ */
+export function parseHistory(json: unknown, intraday = false): { name?: string; bars: Bar[] } {
   const d = history.parse(json).data
-  return { name: d.name ?? undefined, bars: d.candles.map((c) => ({ ...c, time: c.time.slice(0, 10) })) }
+  return { name: d.name ?? undefined, bars: d.candles.map((c) => ({ ...c, time: intraday ? c.time : c.time.slice(0, 10) })) }
 }
 
 async function getJson(url: string): Promise<unknown> {
@@ -39,6 +42,8 @@ async function getJson(url: string): Promise<unknown> {
 }
 
 export const fetchHistory = async (symbol: string) => parseHistory(await getJson(`/api/idx/history?symbol=${encodeURIComponent(symbol)}`))
+/** One year of 1-hour bars (dev server only). */
+export const fetchHourly = async (symbol: string) => parseHistory(await getJson(`/api/idx/history1h?symbol=${encodeURIComponent(symbol)}`), true).bars
 
 const n = z.number().nullish().transform((v) => v ?? null)
 const fundamentals = z.object({
