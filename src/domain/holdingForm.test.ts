@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Holding, HoldingFormValues, Transaction } from '@/types'
-import { cashOf, formByAmount, formToFirstBuy, formToHolding, holdingToForm, parseTransaction, validateHoldingForm } from './holdingForm'
+import { cashOf, formByAmount, formToFirstBuy, formToHolding, holdingToForm, parseTransaction, sellAllRow, validateHoldingForm } from './holdingForm'
 import { valueHolding } from './portfolio'
 import { monthSummary } from './cashflow'
 
@@ -56,6 +56,13 @@ describe('transaction row', () => {
       ok: true,
       tx: { holdingId: 'h1', type: 'sell', date: '2026-11-13T00:00:00.000Z', quantity: 1000, price: 2700, fee: 0 },
     })
+  })
+
+  it('fills a sell-all row that sells exactly what is held', () => {
+    const all = sellAllRow({ ...holding, manualPrice: 2700 }, held, TODAY)
+    expect(all).toEqual({ type: 'sell', qty: '50', price: '2700', fee: '', date: TODAY })
+    expect(parseTransaction(all, holding, held)).toMatchObject({ ok: true, tx: { quantity: 5000 } })
+    expect(sellAllRow(holding, held, TODAY).price).toBe('')
   })
 
   it('rejects oversells and bad numbers', () => {

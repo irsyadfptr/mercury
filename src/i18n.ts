@@ -140,6 +140,7 @@ export const en = {
   'tx.buy': 'Buy',
   'tx.sell': 'Sell',
   'tx.add': 'Add transaction',
+  'tx.sellAll': 'Sell all (fills the form, then press Add)',
   'tx.remove': 'Remove transaction',
   'tx.oversell': 'You cannot sell more than you hold.',
 
@@ -903,6 +904,7 @@ const id: Record<Key, string> = {
   'tx.buy': 'Beli',
   'tx.sell': 'Jual',
   'tx.add': 'Tambah transaksi',
+  'tx.sellAll': 'Jual semua (isi form, lalu tekan Tambah)',
   'tx.remove': 'Hapus transaksi',
   'tx.oversell': 'Tidak bisa jual melebihi jumlah yang dimiliki.',
 

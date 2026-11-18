@@ -153,3 +153,10 @@ export function parseTransaction(v: TransactionFormValues, holding: Holding, exi
   }
   return { ok: true, tx }
 }
+
+/** A sell row for everything still held, at the holding's current price (if set) and today's date; the user still presses Add. */
+export function sellAllRow(holding: Holding, txns: readonly Transaction[], today: string): TransactionFormValues {
+  const held = position(txns).quantity
+  const qty = holding.byAmount ? held * (holding.manualPrice ?? 1) : inputFromUnits(held, holding.assetClass)
+  return { type: 'sell', qty: String(qty), price: holding.byAmount || holding.manualPrice == null ? '' : String(holding.manualPrice), fee: '', date: today }
+}

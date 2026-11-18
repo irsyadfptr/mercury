@@ -11,8 +11,10 @@ import {
   holdingToForm,
   inputFromUnits,
   parseTransaction,
+  sellAllRow,
   validateHoldingForm,
 } from '@/domain/holdingForm'
+import { position } from '@/domain/positions'
 import { ASSET_CLASSES, INVEST } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
@@ -299,13 +301,28 @@ function Transactions({ holding, txns, account: initialAccount }: TransactionsPr
           </li>
         ))}
       </ul>
-      <div className="grid grid-cols-2 gap-2 rounded-lg bg-surface-2 p-3 sm:grid-cols-[auto_1fr_1fr_1fr_auto]">
+      {position(txns).quantity > 0 && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => {
+            setRow(sellAllRow(holding, txns, today))
+            setError(undefined)
+          }}
+        >
+          {t('tx.sellAll')}
+        </Button>
+      )}
+      {/* Two columns at every width: five in a row squeezed Lot and Price to ~20px inside the dialog. */}
+      <div className="grid grid-cols-2 gap-2 rounded-lg bg-surface-2 p-3">
         <select className={fieldClass} value={row.type} onChange={(e) => setField('type', e.target.value as TransactionType)} aria-label={t('tx.title')}>
           <option value="buy">{t('tx.buy')}</option>
           <option value="sell">{t('tx.sell')}</option>
         </select>
         {amountMode ? (
-          <input className={`${fieldClass} sm:col-span-2`} type="number" step="any" min="0" placeholder={t('form.amount')} aria-label={t('form.amount')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
+          <input className={fieldClass} type="number" step="any" min="0" placeholder={t('form.amount')} aria-label={t('form.amount')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
         ) : (
           <>
             <input className={fieldClass} type="number" step="any" min="0" placeholder={lots ? 'Lot' : t('form.qty')} aria-label={lots ? t('form.lots') : t('form.qty')} value={row.qty} onChange={(e) => setField('qty', e.target.value)} />
@@ -313,13 +330,13 @@ function Transactions({ holding, txns, account: initialAccount }: TransactionsPr
           </>
         )}
         <input className={fieldClass} type="date" value={row.date} max={today} aria-label={t('form.date')} onChange={(e) => setField('date', e.target.value)} />
-        <Button type="button" variant="outline" onClick={add}>
-          {t('tx.add')}
-        </Button>
-        <input className={`${fieldClass} col-span-2 sm:col-span-1`} type="number" step="any" min="0" placeholder={t('form.fee')} aria-label={t('form.fee')} value={row.fee} onChange={(e) => setField('fee', e.target.value)} />
-        <div className="col-span-2 sm:col-span-4">
+        <input className={fieldClass} type="number" step="any" min="0" placeholder={t('form.fee')} aria-label={t('form.fee')} value={row.fee} onChange={(e) => setField('fee', e.target.value)} />
+        <div className="col-span-2">
           <AccountPicker label={t(row.type === 'buy' ? 'form.paidFrom' : 'form.paidTo')} value={account} onChange={setAccount} />
         </div>
+        <Button type="button" variant="outline" className="col-span-2" onClick={add}>
+          {t('tx.add')}
+        </Button>
       </div>
       {error && (
         <p role="alert" className="text-sm text-down">
