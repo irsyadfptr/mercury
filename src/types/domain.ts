@@ -11,6 +11,8 @@ export type Transaction = z.infer<typeof schema.Transaction>
 export type JournalEntry = z.infer<typeof schema.JournalEntry>
 export type Dividend = z.infer<typeof schema.Dividend>
 export type JournalTag = JournalEntry['tag']
+export type Setup = NonNullable<Holding['setup']>
+export type ExitReason = NonNullable<Holding['exitReason']>
 export type NewJournalEntry = Omit<JournalEntry, 'id' | 'createdAt'>
 /** Input for creating a holding: id and createdAt are assigned by the store. */
 export type NewHolding = Omit<Holding, 'id' | 'createdAt'>
@@ -138,6 +140,8 @@ export type Quest =
   /** days = age of the manual price; null = never priced. */
   | { kind: 'stalePrice'; holding: Holding; days: number | null }
   | { kind: 'backup'; days: number | null }
+  /** An open trade whose review date (yyyy-mm-dd) has come. */
+  | { kind: 'review'; holding: Holding; since: string }
   | { kind: 'fxRate' }
 
 export interface QuestOptions {
@@ -165,6 +169,13 @@ export interface HoldingFormValues {
   paper: boolean
   stop: string
   target: string
+  // Trade memory (trading group only).
+  setup: Setup | ''
+  thesis: string
+  invalidation: string
+  /** yyyy-mm-dd or '' */
+  reviewBy: string
+  exitReason: ExitReason | ''
   price: string
   // First buy, only used when creating.
   qty: string

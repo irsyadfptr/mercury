@@ -3,6 +3,7 @@ import { useCashflow } from '@/cashflowStore'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Field, fieldClass } from '@/components/ui-bits'
+import { DEFAULT_BREAKER, type BreakerSettings } from '@/domain/circuitBreaker'
 import { parseBackup, toBackup } from '@/domain/backup'
 import { useI18n } from '@/i18n'
 import { install, useInstallState } from '@/pwa'
@@ -39,6 +40,7 @@ export function Settings() {
       <div className="grid gap-4 md:grid-cols-2">
         <Preferences />
         <RiskLimits />
+        <BreakerLimits />
         <MarketData />
         <AiSettings />
         <CashflowSettings />
@@ -180,6 +182,51 @@ function RiskLimits() {
         <Field label={t('set.fx')} hint={t('set.fxHint')}>
           <input className={fieldClass} type="number" min="0" step="any" value={usdIdr ?? ''} onChange={(e) => set({ usdIdr: optional(e.target.value) })} />
         </Field>
+      </div>
+    </Card>
+  )
+}
+
+/** Circuit breaker limits and the gate's revenge window (src/domain/circuitBreaker.ts). */
+function BreakerLimits() {
+  const { t } = useI18n()
+  const saved = useSettings((s) => s.breaker)
+  const set = useSettings((s) => s.set)
+  const b = saved ?? DEFAULT_BREAKER
+  const field = (key: keyof BreakerSettings, step: string) => (
+    <Field label={t(`set.cb.${key}`)}>
+      <input
+        className={fieldClass}
+        type="number"
+        min={key === 'streak' ? '1' : key === 'revengeDays' || key === 'cooldownDays' ? '0' : '0.1'}
+        step={step}
+        value={b[key]}
+        onChange={(e) => {
+          const n = optional(e.target.value)
+          // Percent limits stay positive; counts and days can be 0 (off) except the streak.
+          if (n !== undefined && n >= (key === 'streak' ? 1 : 0) && (n > 0 || key === 'cooldownDays' || key === 'revengeDays')) set({ breaker: { ...b, [key]: n } })
+        }}
+      />
+    </Field>
+  )
+  return (
+    <Card>
+      <CardTitle icon="cross">{t('set.cb.title')}</CardTitle>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {field('dailyPct', '0.1')}
+        {field('weeklyPct', '0.1')}
+        {field('monthlyPct', '0.1')}
+        {field('streak', '1')}
+        {field('cooldownDays', '1')}
+        {field('revengeDays', '1')}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-text-muted">{t('set.cb.note')}</p>
+        {saved && (
+          <button type="button" className="text-xs underline" onClick={() => set({ breaker: undefined })}>
+            {t('set.cb.reset')}
+          </button>
+        )}
       </div>
     </Card>
   )

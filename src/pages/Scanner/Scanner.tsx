@@ -11,7 +11,18 @@ import { cachedCoinList, FIXED_LIST, loadCoinList, type CoinList } from '@/marke
 import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
 import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
-import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood, type MoodLight } from '@/market/mood'
+import { MOOD_DEFENSIVE, type MoodLight } from '@/market/mood'
+import { marketMood, marketMoodSeries, saveMood, type MarketMood } from '@/market/marketMood'
+import { useGate } from '@/useGate'
+import { firstProblem, gateNote } from '@/components/gateText'
+import { localDate } from '@/domain/cashflow'
+
+import type { RegimeExtras } from '@/market/cryptoRegime'
+import { fetchRegimeExtras } from '@/market/cryptoRegimeData'
+import { trackScan } from '@/market/signalTrack'
+import { signalId } from '@/market/signalLog'
+import { addDays, REVIEW_DAYS } from '@/domain/tradeMemory'
+import { CryptoMoodParts } from './CryptoMoodParts'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
@@ -106,7 +117,11 @@ interface Scan {
   rows: ScanRow[]
   running: boolean
   index?: Bar[]
+  /** Crypto only: funding and dominance for mood v2. */
+  extras?: RegimeExtras
 }
+/** Scanned tickers as mood inputs. */
+const moodRows = (rows: readonly ScanRow[]) => rows.filter(isResult).map((r) => ({ symbol: r.symbol, bars: r.bars }))
 
 const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'fetch-failed')
 const isResult = (r: ScanRow): r is Result => 'check' in r
@@ -236,10 +251,12 @@ function MarketView({ m: base }: { m: Market }) {
     let index: Bar[] | undefined
     publish({ rows, running: true })
     let list = m.list
+    let extras: Promise<RegimeExtras> | undefined
     if (m.id === 'crypto') {
       const c = await loadCoinList(cgKey)
       setCoins((lastCoins = c))
       list = withWatched(c.coins, watch)
+      extras = fetchRegimeExtras(c.coins, cgKey)
     }
     try {
       index = (await m.fetch(m.index)).bars
@@ -260,14 +277,24 @@ function MarketView({ m: base }: { m: Market }) {
       }
     }
     await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
-    publish({ rows: [...rows], running: false, index })
+    const more = await extras
+    publish({ rows: [...rows], running: false, index, extras: more })
     const ok = rows.filter(isResult)
     if (ok.length) {
       const date = ok.map((r) => r.bars[r.bars.length - 1].time).sort().at(-1)!
       const pick = (f: (c: Check) => boolean) => ok.filter((r) => f(r.check)).map((r) => r.symbol).sort()
-      const defensive = idxMood(index ?? [], ok.map((r) => r.bars))?.light === 'red'
+      const mood = marketMood(m.id, index, moodRows(ok), more)
+      saveMood(m.id, mood, localDate(Date.now()))
+      const defensive = mood?.light === 'red'
       const passing = defensive ? [] : pick((c) => c.score === c.rules.length)
       saveScanLog(recordScan(loadScanLog(m.id), { date, passing, inZone: pick((c) => c.zone === 'in') }), m.id)
+      // Signal postmortem: every buy signal (all rules pass, price in the buy zone), paused ones too, then outcomes of older ones.
+      const signals = ok.flatMap(({ symbol, bars, check: c }) =>
+        c.score === c.rules.length && c.zone === 'in' && c.stop !== undefined && c.target2 !== undefined
+          ? [{ market: m.id, style: 'swing' as const, symbol, time: bars[bars.length - 1].time, entry: c.entry, stop: c.stop, target: c.target2, paused: defensive, mood: mood?.score }]
+          : [],
+      )
+      trackScan(m.id, 'swing', signals, ok)
     }
   }
 
@@ -277,12 +304,12 @@ function MarketView({ m: base }: { m: Market }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount; the component is keyed by market
   }, [])
 
-  const mood = useMemo(() => (scan && !scan.running ? idxMood(scan.index ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined), [scan])
+  const mood = useMemo(() => (scan && !scan.running ? marketMood(m.id, scan.index, moodRows(scan.rows), scan.extras) : undefined), [scan, m.id])
   // Mood filter (live rule since 2026-11-14): no new buys while the market mood is Defensive, today and in the backtest.
   const filter = useMemo<MoodFilter>(() => {
-    const series = scan && !scan.running ? moodSeries(scan.index ?? [], scan.rows.filter(isResult).map((r) => r.bars)) : undefined
+    const series = scan && !scan.running ? marketMoodSeries(m.id, scan.index, moodRows(scan.rows)) : undefined
     return { defensive: mood?.light === 'red', skip: series && ((d: string) => (series.get(d) ?? 100) < MOOD_DEFENSIVE) }
-  }, [scan, mood])
+  }, [scan, mood, m.id])
 
   return (
     <>
@@ -326,8 +353,8 @@ function RulesTest({ m, scan }: { m: Market; scan?: Scan }) {
   const run = async () => {
     const trades = Object.fromEntries(VARIANT_IDS.map((id) => [id, [] as Trade[]])) as Record<VariantId, Trade[]>
     // The mood as it was on each day; a day with no score (early history) counts as not Defensive.
-    const mood = moodSeries(scan?.index ?? [], tickers.map((r) => r.bars))
-    const defensive = (d: string) => (mood.get(d) ?? 100) < 35
+    const mood = marketMoodSeries(m.id, scan?.index, tickers)
+    const defensive = (d: string) => (mood.get(d) ?? 100) < MOOD_DEFENSIVE
     for (let k = 0; k < tickers.length; k++) {
       setProgress(k)
       await new Promise((r) => setTimeout(r)) // let the page repaint between tickers
@@ -395,16 +422,19 @@ interface MoodFilter {
 /** Names used by the shared mood strings. */
 const moodVars = (m: Market) => ({ m: m.id === 'idx' ? 'IDX' : 'Crypto', u: m.listName, i: m.indexName })
 
-function MoodCard({ m, mood, running }: { m: Market; mood?: IdxMood; running: boolean }) {
+function MoodCard({ m, mood: any, running }: { m: Market; mood?: MarketMood; running: boolean }) {
   const { t, num } = useI18n()
   const v = moodVars(m)
   const part = (x: number | undefined) => (x === undefined ? '—' : `${num(x)}/100`)
+  const mood = any?.idx
   return (
     <Card>
-      <CardTitle icon="heart" aside={t('mood.idx.source', v)}>
+      <CardTitle icon="heart" aside={t(m.id === 'crypto' ? 'regime.source' : 'mood.idx.source', v)}>
         {t('mood.idx.title', v)}
       </CardTitle>
-      {!mood ? (
+      {any?.crypto ? (
+        <CryptoMoodParts mood={any.crypto} />
+      ) : !mood ? (
         <p className="text-sm text-text-muted">{running ? t('mood.idx.waiting', v) : '—'}</p>
       ) : (
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
@@ -618,7 +648,22 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   // Net worth is in rupiah; crypto prices are in USDT (≈ USD), so convert the capital first.
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
-  const why = c.zone !== 'in' ? t('paper.notInZone') : defensive ? t('paper.defensive') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
+  // Pre-trade gate (paper side): a Scanner signal is its own written plan, so only risk, heat, revenge, mood and breaker count.
+  const runGate = useGate()
+  const addJournal = useStore((s) => s.addJournal)
+  const gate = runGate({ paper: true, assetClass: crypto ? 'crypto' : 'idx_stock', currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
+  const why =
+    c.zone !== 'in'
+      ? t('paper.notInZone')
+      : defensive
+        ? t('paper.defensive')
+        : crypto && !usdIdr
+          ? t('paper.needFx')
+          : units === 0
+            ? t('paper.tooSmall')
+            : gate.decision !== 'go'
+              ? firstProblem(gate, f)
+              : undefined
   const p = m.price(f, c.entry)
 
   const add = () => {
@@ -636,7 +681,12 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
       manualPrice: c.close,
       manualPriceAt: now,
       note: t('paper.note', { score: c.score, total: c.rules.length }),
+      setup: 'swing',
+      signalId: signalId({ market: m.id, style: 'swing', symbol: r.symbol, time: r.bars[r.bars.length - 1].time }),
+      reviewBy: addDays(now.slice(0, 10), REVIEW_DAYS.swing),
+      gate: gate.decision,
     })
+    addJournal({ date: localDate(Date.now()), tag: 'entry', text: gateNote(gate, f), holdingId: id })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
     location.hash = href('portfolio')
   }

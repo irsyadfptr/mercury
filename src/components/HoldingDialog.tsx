@@ -10,17 +10,23 @@ import {
   formToHolding,
   holdingToForm,
   inputFromUnits,
+  parseOptional,
   parseTransaction,
   sellAllRow,
+  unitsFromInput,
   validateHoldingForm,
 } from '@/domain/holdingForm'
 import { position } from '@/domain/positions'
-import { ASSET_CLASSES, INVEST } from '@/domain/schema'
+import { useGate } from '@/useGate'
+import { GatePanel } from './GatePanel'
+import { gateNote } from './gateText'
+import { ASSET_CLASSES, EXIT_REASONS, INVEST, SETUPS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import type {
   AssetClass,
   Currency,
+  ExitReason,
   FormError,
   Group,
   Holding,
@@ -29,6 +35,7 @@ import type {
   HoldingFormProps,
   HoldingFormValues,
   Key,
+  Setup,
   Transaction,
   TransactionFormValues,
   TransactionsProps,
@@ -67,7 +74,8 @@ export function HoldingDialog({ target, onClose }: HoldingDialogProps) {
 }
 
 function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingFormProps) {
-  const { t } = useI18n()
+  const f = useI18n()
+  const { t } = f
   const { holdings, transactions, addHolding, updateHolding, removeHolding, addTransaction } = useStore()
   const addEntry = useCashflow((s) => s.addEntry)
   const existing = holdingId ? holdings.find((h) => h.id === holdingId) : undefined
@@ -87,15 +95,35 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
     setValues((v) => ({ ...v, assetClass, ...(isNew ? CLASS_DEFAULTS[assetClass] : {}) }))
   }
 
+  // Pre-trade gate for a new trade (trading group): every check visible; anything but GO needs an explicit tick.
+  const runGate = useGate()
+  const addJournal = useStore((s) => s.addJournal)
+  const [gateAck, setGateAck] = useState(false)
+  const gate =
+    isNew && values.group === 'trading'
+      ? runGate({
+          paper: values.paper,
+          assetClass: values.assetClass,
+          currency: values.currency,
+          planWritten: !!values.thesis.trim(),
+          entry: parseOptional(values.buyPrice),
+          stop: parseOptional(values.stop),
+          units: unitsFromInput(Number(values.qty) || 0, values.assetClass),
+        })
+      : undefined
+  const gateBlocks = !!gate && gate.decision !== 'go' && !gateAck
+
   function save(e: FormEvent) {
     e.preventDefault()
     const found = validateHoldingForm(values, isNew)
     setErrors(found)
-    if (Object.keys(found).length) return
-    const fields = formToHolding(values, existing, new Date().toISOString(), own)
+    if (Object.keys(found).length || gateBlocks) return
+    const fields = { ...formToHolding(values, existing, new Date().toISOString(), own), ...(gate ? { gate: gate.decision } : {}) }
     if (existing) updateHolding(existing.id, fields)
     else {
-      const tx = formToFirstBuy(values, addHolding(fields))
+      const id = addHolding(fields)
+      if (gate) addJournal({ date: values.date, tag: 'entry', text: gateNote(gate, f), holdingId: id })
+      const tx = formToFirstBuy(values, id)
       // Paid from an account: that money leaves the account (category Investing, never counted as spending).
       const entryId = account
         ? addEntry({ type: 'expense', amount: cashOf(tx), category: INVEST, date: values.date, note: t('tx.note.buy', { s: fields.symbol }), account })
@@ -176,6 +204,45 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
           </div>
         )}
 
+        {values.group === 'trading' && (
+          <fieldset className="grid grid-cols-2 gap-3 rounded-lg bg-surface-2 p-3">
+            <legend className="sr-only">{t('tm.title')}</legend>
+            <Label className="col-span-2">{t('tm.title')}</Label>
+            <Field label={t('tm.setup')}>
+              <select className={fieldClass} value={values.setup} onChange={(e) => set('setup', e.target.value as Setup | '')}>
+                <option value="">{t('tm.setup.none')}</option>
+                {SETUPS.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`tm.setup.${s}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('tm.reviewBy')} hint={t('tm.reviewByHint')}>
+              <input className={fieldClass} type="date" value={values.reviewBy} onChange={(e) => set('reviewBy', e.target.value)} />
+            </Field>
+            <Field label={t('tm.thesis')} hint={t('tm.thesisHint')} className="col-span-2">
+              <textarea className={`${fieldClass} h-auto min-h-16 py-1.5`} value={values.thesis} onChange={(e) => set('thesis', e.target.value)} maxLength={500} />
+            </Field>
+            <Field label={t('tm.invalidation')} hint={t('tm.invalidationHint')} className="col-span-2">
+              <input className={fieldClass} value={values.invalidation} onChange={(e) => set('invalidation', e.target.value)} maxLength={200} />
+            </Field>
+            {existing && own.some((x) => x.type === 'sell') && (
+              <Field label={t('tm.exitReason')} hint={t('tm.exitReasonHint')}>
+                <select className={fieldClass} value={values.exitReason} onChange={(e) => set('exitReason', e.target.value as ExitReason | '')}>
+                  <option value="">{t('tm.setup.none')}</option>
+                  {EXIT_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`tm.exit.${r}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {existing?.initialStop !== undefined && <p className="col-span-2 text-xs text-text-muted">{t('tm.initialStop', { p: String(existing.initialStop) })}</p>}
+          </fieldset>
+        )}
+
         <Field label={t(amountMode ? 'form.currentValue' : 'form.price')} hint={t(amountMode ? 'form.currentValueHint' : 'form.priceHint')} error={errorText('price')}>
           {numberInput('price')}
         </Field>
@@ -202,6 +269,8 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
           </fieldset>
         )}
 
+        {gate && <GatePanel gate={gate} ack={{ checked: gateAck, onChange: setGateAck }} />}
+
         {existing && <Transactions holding={existing} txns={own} account={initialAccount} />}
         {existing && <Dividends holding={existing} />}
       </div>
@@ -218,7 +287,9 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
           <Button type="button" variant="outline" onClick={onDone}>
             {t('form.cancel')}
           </Button>
-          <Button type="submit">{t('form.save')}</Button>
+          <Button type="submit" disabled={gateBlocks}>
+            {t('form.save')}
+          </Button>
         </div>
       </div>
     </form>
@@ -260,10 +331,32 @@ function Transactions({ holding, txns, account: initialAccount }: TransactionsPr
   const newestFirst = [...txns].sort((a, b) => b.date.localeCompare(a.date))
   const setField = <K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) => setRow((r) => ({ ...r, [key]: value }))
 
+  // Adding to a trade is a new entry too: same gate as opening one.
+  const f = useI18n()
+  const runGate = useGate()
+  const addJournal = useStore((s) => s.addJournal)
+  const [gateAck, setGateAck] = useState(false)
+  const gate =
+    holding.group === 'trading' && row.type === 'buy' && row.qty.trim()
+      ? runGate({
+          paper: holding.paper,
+          assetClass: holding.assetClass,
+          currency: holding.currency,
+          planWritten: !!holding.thesis,
+          entry: parseOptional(row.price),
+          stop: holding.stop,
+          units: unitsFromInput(Number(row.qty) || 0, holding.assetClass),
+        })
+      : undefined
+  const gateBlocks = !!gate && gate.decision !== 'go' && !gateAck
+
   function add() {
     const result = parseTransaction(row, holding, txns)
     if (!result.ok) return setError(result.error)
+    if (gateBlocks) return
     const buy = result.tx.type === 'buy'
+    if (gate) addJournal({ date: row.date, tag: 'entry', text: gateNote(gate, f), holdingId: holding.id })
+    setGateAck(false)
     const entryId = account
       ? addEntry({ type: buy ? 'expense' : 'income', amount: cashOf(result.tx), category: INVEST, date: row.date, note: t(buy ? 'tx.note.buy' : 'tx.note.sell', { s: holding.symbol }), account })
       : undefined
@@ -334,7 +427,12 @@ function Transactions({ holding, txns, account: initialAccount }: TransactionsPr
         <div className="col-span-2">
           <AccountPicker label={t(row.type === 'buy' ? 'form.paidFrom' : 'form.paidTo')} value={account} onChange={setAccount} />
         </div>
-        <Button type="button" variant="outline" className="col-span-2" onClick={add}>
+        {gate && (
+          <div className="col-span-2">
+            <GatePanel gate={gate} ack={{ checked: gateAck, onChange: setGateAck }} />
+          </div>
+        )}
+        <Button type="button" variant="outline" className="col-span-2" onClick={add} disabled={gateBlocks}>
           {t('tx.add')}
         </Button>
       </div>

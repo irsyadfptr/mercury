@@ -59,6 +59,11 @@ export function holdingToForm(h: Holding | undefined, today: string, txns: reado
     paper: h?.paper ?? false,
     stop: h?.stop?.toString() ?? '',
     target: h?.target?.toString() ?? '',
+    setup: h?.setup ?? '',
+    thesis: h?.thesis ?? '',
+    invalidation: h?.invalidation ?? '',
+    reviewBy: h?.reviewBy ?? '',
+    exitReason: h?.exitReason ?? '',
     price,
     qty: '',
     buyPrice: '',
@@ -107,6 +112,19 @@ export function formToHolding(v: HoldingFormValues, existing: Holding | undefine
     // Stop and target only mean something for trades.
     stop: v.group === 'trading' ? parseOptional(v.stop) : undefined,
     target: v.group === 'trading' ? parseOptional(v.target) : undefined,
+    // Trade memory: only for trades; initialStop and signalId are kept as they were (set by the store and the scanner).
+    ...(v.group === 'trading'
+      ? {
+          setup: v.setup || undefined,
+          thesis: v.thesis.trim() || undefined,
+          invalidation: v.invalidation.trim() || undefined,
+          reviewBy: v.reviewBy || undefined,
+          exitReason: v.exitReason || undefined,
+          initialStop: existing?.initialStop,
+          signalId: existing?.signalId,
+          gate: existing?.gate,
+        }
+      : {}),
     manualPrice,
     manualPriceAt: manualPrice == null ? undefined : priceChanged ? nowIso : existing?.manualPriceAt,
   }
