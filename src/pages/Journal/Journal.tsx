@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, Label, fieldClass } from '@/components/ui-bits'
@@ -10,12 +10,51 @@ import { routeParam } from '@/routes'
 import { useStore } from '@/store'
 import type { Holding, JournalTag } from '@/types'
 import { useNow } from '@/useNow'
+import { SignalsView } from './Signals'
+import { TradesView } from './Trades'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const ALL = ''
 
+/** Notes (the journal), Trades (trade memory + review) and Signals (scanner signal postmortem). */
+const VIEWS = ['notes', 'trades', 'signals'] as const
+type View = (typeof VIEWS)[number]
+const VIEW_KEY = 'mercury.journal.view'
+/** '#/journal?view=trades' wins; a prefilled note ('?tag=…') opens Notes; else the last view used. */
+function initialView(): View {
+  const asked = routeParam('view')
+  if (asked && (VIEWS as readonly string[]).includes(asked)) return asked as View
+  if (routeParam('tag') || routeParam('holding')) return 'notes'
+  try {
+    const saved = localStorage.getItem(VIEW_KEY)
+    if (saved && (VIEWS as readonly string[]).includes(saved)) return saved as View
+  } catch {
+    // Storage blocked: start on Notes.
+  }
+  return 'notes'
+}
+
 export function Journal() {
   const { t } = useI18n()
+  const [view, setView] = useState(initialView)
+  // A link to '#/journal?view=…' while the Journal is already open (e.g. a Dashboard quest in another tab) still switches.
+  useEffect(() => {
+    const follow = () => {
+      const asked = routeParam('view')
+      if (asked && (VIEWS as readonly string[]).includes(asked)) setView(asked as View)
+      else if (routeParam('tag') || routeParam('holding')) setView('notes')
+    }
+    window.addEventListener('hashchange', follow)
+    return () => window.removeEventListener('hashchange', follow)
+  }, [])
+  const pickView = (v: View) => {
+    setView(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      // Storage blocked: the choice lasts this visit only.
+    }
+  }
   const journal = useStore((s) => s.journal)
   const holdings = useStore((s) => s.holdings)
   const today = localDate(useNow())
@@ -35,16 +74,35 @@ export function Journal() {
             <Label>{t('jr.streakLabel')}</Label>
           </div>
         </div>
-        <p className="mt-2 text-sm text-text-muted">{t('jr.intro')}</p>
+        <p className="mt-2 text-sm text-text-muted">{t(`jr.intro.${view}`)}</p>
+        <div role="group" aria-label={t('jr.viewLabel')} className="mt-3 flex w-fit gap-1 rounded-md border border-border p-1">
+          {VIEWS.map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={v === view}
+              onClick={() => pickView(v)}
+              className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${v === view ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
+            >
+              {t(`jr.view.${v}`)}
+            </button>
+          ))}
+        </div>
       </Card>
-      <div className="flex flex-wrap gap-4">
-        <div className="min-w-0 flex-[2_1_320px]">
-          <NewEntry today={today} holdings={sorted} />
+      {view === 'trades' ? (
+        <TradesView />
+      ) : view === 'signals' ? (
+        <SignalsView />
+      ) : (
+        <div className="flex flex-wrap gap-4">
+          <div className="min-w-0 flex-[2_1_320px]">
+            <NewEntry today={today} holdings={sorted} />
+          </div>
+          <div className="min-w-0 flex-[3_1_520px]">
+            <Entries byId={byId} holdings={sorted} />
+          </div>
         </div>
-        <div className="min-w-0 flex-[3_1_520px]">
-          <Entries byId={byId} holdings={sorted} />
-        </div>
-      </div>
+      )}
     </>
   )
 }

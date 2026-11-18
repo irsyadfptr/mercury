@@ -61,6 +61,13 @@ describe('summarize', () => {
     const kinds = quests(s, { tradeLimit: 1, now: NOW }).map((q) => q.kind)
     expect(kinds).toEqual(['overRisk', 'setStop', 'stalePrice', 'stalePrice', 'fxRate', 'backup'])
   })
+
+  it('asks to review an open trade once its review date comes', () => {
+    const due = h({ id: 'tlkm', stop: 2900, manualPrice: 3000, manualPriceAt: '2026-11-12T00:00:00Z', reviewBy: '2026-11-13' })
+    const later = h({ id: 'asii', stop: 4000, manualPrice: 4100, manualPriceAt: '2026-11-12T00:00:00Z', reviewBy: '2026-11-14' })
+    const s = summarize([due, later], [buy('tlkm', 100, 3000), buy('asii', 100, 4100)], undefined, NOW)
+    expect(quests(s, { tradeLimit: 100, now: NOW, lastExportAt: '2026-11-12T00:00:00Z' })).toEqual([{ kind: 'review', holding: due, since: '2026-11-13' }])
+  })
 })
 
 describe('game math', () => {

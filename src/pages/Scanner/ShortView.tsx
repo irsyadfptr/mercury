@@ -12,7 +12,13 @@ import { loadCoinList } from '@/market/cryptoList'
 import { fetchHistory, fetchHourly, IdxFetchError, type IdxError } from '@/market/idx'
 import { to4h, toMonthly, toWeekly, type Bar } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
-import { idxMood, MOOD_DEFENSIVE, moodSeries, type IdxMood } from '@/market/mood'
+import { MOOD_DEFENSIVE } from '@/market/mood'
+import { marketMood, marketMoodSeries, type MarketMood } from '@/market/marketMood'
+import type { RegimeExtras } from '@/market/cryptoRegime'
+import { fetchRegimeExtras } from '@/market/cryptoRegimeData'
+import { trackScan } from '@/market/signalTrack'
+import { signalId } from '@/market/signalLog'
+import { addDays, REVIEW_DAYS } from '@/domain/tradeMemory'
 import { saveShortLog } from '@/market/scanLog'
 import { clearShortCache, loadShort, type ShortData } from '@/market/shortData'
 import {
@@ -69,7 +75,10 @@ interface Scan {
   /** Size of the list before watched tickers were added. */
   base: number
   index?: Bar[]
+  /** Crypto only: funding and dominance for mood v2. */
+  extras?: RegimeExtras
 }
+const moodRows = (rows: readonly Row[]) => rows.map((r) => ({ symbol: r.symbol, bars: r.data.daily }))
 // Kept outside React so scans survive page switches during a visit.
 const lastScan: Partial<Record<string, Scan>> = {}
 
@@ -99,6 +108,7 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
     frameCache.clear()
     const baseList = mk === 'idx' ? LQ45 : (await loadCoinList(cgKey)).coins
     const list = withWatched(baseList, watch)
+    const extras = mk === 'crypto' ? fetchRegimeExtras(baseList, cgKey) : undefined
     const base = baseList.length
     const rows: ScanRow[] = []
     let index: Bar[] | undefined
@@ -123,14 +133,21 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
       }
     }
     await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
-    publish({ rows: [...rows], running: false, list, base, index })
-    // Saved for the Dashboard alert: buy signals only, none while the mood is Defensive.
+    const more = await extras
+    publish({ rows: [...rows], running: false, list, base, index, extras: more })
     const ok = rows.filter(isRow)
-    const defensive = idxMood(index ?? [], ok.map((r) => r.data.daily))?.light === 'red'
-    const signals = defensive
-      ? []
-      : ok.flatMap((r) => (r.check.signal && r.check.stop !== undefined && r.check.target !== undefined ? [{ symbol: r.symbol, time: r.check.time, entry: r.check.entry, stop: r.check.stop, target: r.check.target }] : []))
-    saveShortLog(mk, styleId, { scannedAt: Date.now(), signals })
+    const mood = marketMood(mk, index, moodRows(ok), more)
+    const defensive = mood?.light === 'red'
+    const all = ok.flatMap((r) => (r.check.signal && r.check.stop !== undefined && r.check.target !== undefined ? [{ symbol: r.symbol, time: r.check.time, entry: r.check.entry, stop: r.check.stop, target: r.check.target }] : []))
+    // Saved for the Dashboard alert: buy signals only, none while the mood is Defensive.
+    saveShortLog(mk, styleId, { scannedAt: Date.now(), signals: defensive ? [] : all })
+    // Signal postmortem: all signals (paused ones flagged), followed up on the bars the rules trade on.
+    trackScan(
+      mk,
+      styleId,
+      all.map((x) => ({ ...x, market: mk, style: styleId, paused: defensive, mood: mood?.score })),
+      ok.map((r) => ({ symbol: r.symbol, bars: r.data.entry })),
+    )
   }
 
   useEffect(() => {
@@ -140,8 +157,8 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
 
   const done = scan && !scan.running
   const ok = useMemo(() => (scan?.rows.filter(isRow) ?? []), [scan])
-  const mood = useMemo(() => (done ? idxMood(scan.index ?? [], ok.map((r) => r.data.daily)) : undefined), [done, scan, ok])
-  const series = useMemo(() => (done ? moodSeries(scan.index ?? [], ok.map((r) => r.data.daily)) : undefined), [done, scan, ok])
+  const mood = useMemo(() => (done ? marketMood(mk, scan.index, moodRows(ok), scan.extras) : undefined), [done, scan, ok, mk])
+  const series = useMemo(() => (done ? marketMoodSeries(mk, scan.index, moodRows(ok)) : undefined), [done, scan, ok, mk])
   const defensive = mood?.light === 'red'
   const skip = useMemo(() => (series ? (d: string) => (series.get(d) ?? 100) < MOOD_DEFENSIVE : undefined), [series])
 
@@ -156,7 +173,7 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
   )
 }
 
-function MoodLine({ mk, mood, running }: { mk: ShortMarket; mood?: IdxMood; running: boolean }) {
+function MoodLine({ mk, mood, running }: { mk: ShortMarket; mood?: MarketMood; running: boolean }) {
   const { t, num } = useI18n()
   const cls = mood?.light === 'red' ? 'text-down' : mood?.light === 'yellow' ? 'text-warn-text' : 'text-up'
   return (
@@ -489,6 +506,9 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
       manualPrice: c.close,
       manualPriceAt: now,
       note: t('short.paperNote', { s: t(`short.style.${styleId}`), score: c.score, total: c.rules.length, n: STYLES[styleId].holdDays[mk] }),
+      setup: styleId,
+      signalId: signalId({ market: mk, style: styleId, symbol: row.symbol, time: c.time }),
+      reviewBy: addDays(now.slice(0, 10), REVIEW_DAYS[styleId]),
     })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
     location.hash = href('portfolio')

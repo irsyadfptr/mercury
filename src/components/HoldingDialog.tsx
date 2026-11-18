@@ -15,12 +15,13 @@ import {
   validateHoldingForm,
 } from '@/domain/holdingForm'
 import { position } from '@/domain/positions'
-import { ASSET_CLASSES, INVEST } from '@/domain/schema'
+import { ASSET_CLASSES, EXIT_REASONS, INVEST, SETUPS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { useStore } from '@/store'
 import type {
   AssetClass,
   Currency,
+  ExitReason,
   FormError,
   Group,
   Holding,
@@ -29,6 +30,7 @@ import type {
   HoldingFormProps,
   HoldingFormValues,
   Key,
+  Setup,
   Transaction,
   TransactionFormValues,
   TransactionsProps,
@@ -174,6 +176,45 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
               {t('form.paper')}
             </label>
           </div>
+        )}
+
+        {values.group === 'trading' && (
+          <fieldset className="grid grid-cols-2 gap-3 rounded-lg bg-surface-2 p-3">
+            <legend className="sr-only">{t('tm.title')}</legend>
+            <Label className="col-span-2">{t('tm.title')}</Label>
+            <Field label={t('tm.setup')}>
+              <select className={fieldClass} value={values.setup} onChange={(e) => set('setup', e.target.value as Setup | '')}>
+                <option value="">{t('tm.setup.none')}</option>
+                {SETUPS.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`tm.setup.${s}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('tm.reviewBy')} hint={t('tm.reviewByHint')}>
+              <input className={fieldClass} type="date" value={values.reviewBy} onChange={(e) => set('reviewBy', e.target.value)} />
+            </Field>
+            <Field label={t('tm.thesis')} hint={t('tm.thesisHint')} className="col-span-2">
+              <textarea className={`${fieldClass} h-auto min-h-16 py-1.5`} value={values.thesis} onChange={(e) => set('thesis', e.target.value)} maxLength={500} />
+            </Field>
+            <Field label={t('tm.invalidation')} hint={t('tm.invalidationHint')} className="col-span-2">
+              <input className={fieldClass} value={values.invalidation} onChange={(e) => set('invalidation', e.target.value)} maxLength={200} />
+            </Field>
+            {existing && own.some((x) => x.type === 'sell') && (
+              <Field label={t('tm.exitReason')} hint={t('tm.exitReasonHint')}>
+                <select className={fieldClass} value={values.exitReason} onChange={(e) => set('exitReason', e.target.value as ExitReason | '')}>
+                  <option value="">{t('tm.setup.none')}</option>
+                  {EXIT_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`tm.exit.${r}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {existing?.initialStop !== undefined && <p className="col-span-2 text-xs text-text-muted">{t('tm.initialStop', { p: String(existing.initialStop) })}</p>}
+          </fieldset>
         )}
 
         <Field label={t(amountMode ? 'form.currentValue' : 'form.price')} hint={t(amountMode ? 'form.currentValueHint' : 'form.priceHint')} error={errorText('price')}>

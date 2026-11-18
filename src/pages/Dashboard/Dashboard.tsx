@@ -459,6 +459,8 @@ function describeQuest(q: Quest, f: I18n): QuestView {
       return { label: f.t('quest.backup'), tag: q.days == null ? f.t('quest.backupNever') : f.t('quest.backupAge', { d: q.days }), route: 'settings' }
     case 'fxRate':
       return { label: f.t('quest.fxRate'), tag: '', route: 'settings' }
+    case 'review':
+      return { label: f.t('quest.review', { s: q.holding.symbol }), tag: f.day(q.since), route: 'journal', params: { view: 'trades' } }
   }
 }
 

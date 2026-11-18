@@ -1,8 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PortfolioActions, PortfolioData, PortfolioSyncMeta } from '@/types'
+import type { NewHolding, PortfolioActions, PortfolioData, PortfolioSyncMeta } from '@/types'
 // The journal is part of PortfolioData: it syncs through the Journal tab with the portfolio.
 import { SCHEMA_VERSION } from './domain/schema'
+
+/**
+ * Trade memory: the first stop a trade gets is kept as its initial stop, so later stop moves don't change its R.
+ * (A trade saved before this existed takes the stop it has on its next edit.)
+ */
+const withInitialStop = <T extends NewHolding>(h: T): T => (h.group === 'trading' && h.initialStop === undefined && h.stop !== undefined ? { ...h, initialStop: h.stop } : h)
 
 /** Every user edit stamps changedAt, so the Sheet sync knows this device has something to push. */
 const touched = () => ({ changedAt: new Date().toISOString() })
@@ -15,10 +21,10 @@ export const useStore = create<PortfolioData & PortfolioSyncMeta & PortfolioActi
       dividends: [],
       addHolding: (h) => {
         const id = crypto.randomUUID()
-        set((s) => ({ holdings: [...s.holdings, { ...h, id, createdAt: new Date().toISOString() }], ...touched() }))
+        set((s) => ({ holdings: [...s.holdings, { ...withInitialStop(h), id, createdAt: new Date().toISOString() }], ...touched() }))
         return id
       },
-      updateHolding: (id, patch) => set((s) => ({ holdings: s.holdings.map((h) => (h.id === id ? { ...h, ...patch } : h)), ...touched() })),
+      updateHolding: (id, patch) => set((s) => ({ holdings: s.holdings.map((h) => (h.id === id ? withInitialStop({ ...h, ...patch }) : h)), ...touched() })),
       removeHolding: (id) =>
         set((s) => ({
           holdings: s.holdings.filter((h) => h.id !== id),

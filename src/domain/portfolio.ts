@@ -20,6 +20,7 @@ import type {
   TypeGroup,
   Valuation,
 } from '@/types'
+import { localDate } from './cashflow'
 import { position } from './positions'
 import { ASSET_CLASSES, LIQUIDITY } from './schema'
 
@@ -190,6 +191,8 @@ export function quests(s: Summary, opts: QuestOptions): Quest[] {
     if (r.v.quantity === 0) continue
     if (r.risk.kind === 'noStop') out.push({ kind: 'setStop', holding: r.holding })
     if (r.risk.kind === 'ok' && r.risk.pct > opts.tradeLimit) out.push({ kind: 'overRisk', holding: r.holding, pct: r.risk.pct })
+    // Trade memory: an open trade past its review date (by default the rules' time stop).
+    if (r.holding.group === 'trading' && r.holding.reviewBy && r.holding.reviewBy <= localDate(opts.now)) out.push({ kind: 'review', holding: r.holding, since: r.holding.reviewBy })
     const age = daysSince(r.holding.manualPriceAt)
     if (age == null || age > STALE_PRICE_DAYS) out.push({ kind: 'stalePrice', holding: r.holding, days: age })
   }

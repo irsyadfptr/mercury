@@ -16,6 +16,11 @@ const isoDate = z.iso.datetime()
 // shortcut: plain JS numbers for money and quantities (fine to ~15 significant digits); switch to a decimal lib if rounding shows up in totals.
 const amount = z.number().finite().nonnegative()
 
+/** Where a trade came from: the scanner's rules by holding time, or your own idea. */
+export const SETUPS = ['swing', 'month', 'week', 'other'] as const
+/** Why a trade was closed. */
+export const EXIT_REASONS = ['stop', 'target', 'time', 'invalidated', 'manual'] as const
+
 export const Holding = z.object({
   id,
   assetClass: AssetClass,
@@ -36,6 +41,21 @@ export const Holding = z.object({
   /** Trading group only. Price levels in the holding's currency. */
   stop: amount.optional(),
   target: amount.optional(),
+  // ---- Trade memory (trading group; idea from the trader-memory-core skill) ----
+  /** Which rules found the trade: the scanner's swing (3–6 months), ≤ 1 month or ≤ 1 week rules, or your own idea. */
+  setup: z.enum(SETUPS).optional(),
+  /** Why you are in the trade. */
+  thesis: z.string().trim().optional(),
+  /** What would prove the thesis wrong (besides the stop). */
+  invalidation: z.string().trim().optional(),
+  /** Date to re-check the trade (by default the rules' time stop), yyyy-mm-dd. */
+  reviewBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Stop when the trade was opened. Kept when the stop moves, so results can be measured in R. */
+  initialStop: amount.optional(),
+  /** Why the trade was closed. */
+  exitReason: z.enum(EXIT_REASONS).optional(),
+  /** Scanner signal the trade came from (src/market/signalLog.ts id). */
+  signalId: z.string().optional(),
   /** Manually entered price per unit, for assets with no price feed (funds, gold) or until feeds exist. */
   manualPrice: amount.optional(),
   manualPriceAt: isoDate.optional(),

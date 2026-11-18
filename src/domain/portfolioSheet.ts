@@ -20,6 +20,13 @@ export const HOLDING_COLUMNS: readonly ColumnSpec[] = [
   ['createdAt', 'string'],
   ['note', 'string'],
   ['byAmount', 'boolean'],
+  ['setup', 'string'],
+  ['thesis', 'string'],
+  ['invalidation', 'string'],
+  ['reviewBy', 'date'],
+  ['initialStop', 'number'],
+  ['exitReason', 'string'],
+  ['signalId', 'string'],
 ]
 
 export const TRANSACTION_COLUMNS: readonly ColumnSpec[] = [

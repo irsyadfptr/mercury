@@ -49,3 +49,12 @@ describe('deepseek response', () => {
     expect(errorKind(500)).toBe('failed')
   })
 })
+
+describe('coach mode', () => {
+  it('reviews the process and never asks for a call', () => {
+    const [system, user] = buildMessages('Trade review', ['Closed trades: 3'], 'en', undefined, 'coach')
+    expect(system.content).toContain('Never recommend buying, selling')
+    expect(system.content).not.toContain('master trader')
+    expect(user.content).toBe('Trade review\nClosed trades: 3')
+  })
+})

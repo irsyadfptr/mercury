@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AiError, buildMessages, explain, MAX_QUESTION, type ExplainError } from '@/ai/deepseek'
+import { AiError, buildMessages, explain, MAX_QUESTION, type AiMode, type ExplainError } from '@/ai/deepseek'
 import { Button } from '@/components/ui/button'
 import { Label, fieldClass } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
@@ -16,10 +16,10 @@ const extras = new Map<string, Promise<string[]>>()
  * its reply. `extra` fetches more facts on the first click (e.g. fresh checks per holding); they are reused for the session.
  * Each answer stands alone; there is no chat memory.
  */
-export function Explain({ title, facts, extra }: { title: string; facts: string[]; extra?: () => Promise<string[]> }) {
+export function Explain({ title, facts, extra, mode }: { title: string; facts: string[]; extra?: () => Promise<string[]>; mode?: AiMode }) {
   const { t, lang } = useI18n()
   const key = useSettings((s) => s.deepseekKey)
-  const cacheKey = `${lang}\n${title}\n${facts.join('\n')}`
+  const cacheKey = `${mode ?? 'trader'}\n${lang}\n${title}\n${facts.join('\n')}`
   const [state, setLocal] = useState<State>(() => replies.get(cacheKey) ?? { status: 'idle' })
   const [question, setQuestion] = useState('')
   // A new check (or language) shows that one's reply, if any.
@@ -39,7 +39,7 @@ export function Explain({ title, facts, extra }: { title: string; facts: string[
         if (!extras.has(cacheKey)) extras.set(cacheKey, extra())
         more = await extras.get(cacheKey)!.catch(() => (extras.delete(cacheKey), []))
       }
-      setState({ status: 'done', text: await explain(key, buildMessages(title, [...facts, ...more], lang, q)), question: q })
+      setState({ status: 'done', text: await explain(key, buildMessages(title, [...facts, ...more], lang, q, mode)), question: q })
     } catch (e) {
       setState({ status: 'error', error: e instanceof AiError ? e.kind : 'failed' })
     }
