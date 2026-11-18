@@ -331,3 +331,10 @@ Long-term page → Crypto (src/market/cryptoFundamentals.ts scoring, src/market/
 - Sources: CoinGecko `/coins/markets` (top 250, symbol → largest coin) and `/coins/{id}` (developer_data); DefiLlama `/v2/chains` (matched by gecko_id), else `/protocols`, `/summary/fees/{slug}?dataType=dailyFees|dailyRevenue`, `/v2/historicalChainTvl/{chain}`; Binance first daily candle (listing age) and 365 daily candles.
 - **Field names are from memory, not yet checked against live responses** (the docs weren't reachable from the build sandbox). Parsing is lenient: a wrong name shows as unknown, never an error. Check on a real run, especially DefiLlama fees for chains and CoinGecko developer data (often empty).
 - Meme and payment coins have no DefiLlama entry: Usage shows unknown.
+
+## Watchlist (2026-11-18)
+
+- Settings `watchlist` {idx, crypto} (upper-case tickers, max 20 per market; src/watchlist.ts). Default crypto: HYPE (user's request).
+- Watched tickers are added to every scan (swing and short-term) after the normal list, marked ★; the ☆/★ button on a ticker check adds or removes them. Crypto watchlist coins also show in the Dashboard price list.
+- HYPE has only been on Binance since about late September 2026, so its MA200 rules (and the 60-day expected range until ~late November) show "not enough history" for now: it can't pass the trend rules until roughly April 2027.
+- Crypto fundamentals first real run (ETH, 2026-11-18): 13 of 14 known; CoinGecko developer data (commits) empty, as expected. DefiLlama chain, fees, revenue and TVL history all parsed.

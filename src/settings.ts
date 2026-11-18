@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ResolvedTheme, SettingsState, SettingsValues, ThemePref } from '@/types'
 
-export const DEFAULT_SETTINGS: SettingsValues = { lang: 'en', theme: 'system', heatLimit: 6, tradeLimit: 1 }
+export const DEFAULT_SETTINGS: SettingsValues = { lang: 'en', theme: 'system', heatLimit: 6, tradeLimit: 1, watchlist: { idx: [], crypto: ['HYPE'] } }
 
 export const useSettings = create<SettingsState>()(
   persist(
@@ -25,6 +25,7 @@ export const useSettings = create<SettingsState>()(
         monthlyBudget,
         categoryBudgets,
         privacy,
+        watchlist,
       }),
     },
   ),

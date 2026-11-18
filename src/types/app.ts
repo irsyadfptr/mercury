@@ -32,6 +32,8 @@ export interface SettingsValues {
   categoryBudgets?: Record<string, number>
   /** Hide money amounts (shown as •••••) until switched off. */
   privacy?: boolean
+  /** Tickers always added to the Scanner's scans, per market (upper case). */
+  watchlist?: { idx: string[]; crypto: string[] }
 }
 
 export interface SettingsState extends SettingsValues {
