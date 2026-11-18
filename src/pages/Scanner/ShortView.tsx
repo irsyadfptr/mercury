@@ -35,6 +35,8 @@ import { useStore } from '@/store'
 import type { I18n, Key } from '@/types'
 import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
+import { WatchButton } from '@/components/WatchButton'
+import { useWatchlist, withWatched } from '@/watchlist'
 import { ChartPanel } from './ChartPanel'
 import { ArbNote, ExpectedRange } from './RiskNotes'
 import { frameCache } from './frameCache'
@@ -62,6 +64,8 @@ interface Scan {
   rows: ScanRow[]
   running: boolean
   list: readonly string[]
+  /** Size of the list before watched tickers were added. */
+  base: number
   index?: Bar[]
 }
 // Kept outside React so scans survive page switches during a visit.
@@ -86,14 +90,17 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
   const [scan, setScanState] = useState(lastScan[key])
   const publish = (s: Scan) => setScanState((lastScan[key] = s))
   const [pick, setPick] = useState<string>()
+  const watch = useWatchlist(mk).list
 
   const start = async () => {
     clearShortCache()
     frameCache.clear()
-    const list = mk === 'idx' ? LQ45 : (await loadCoinList(cgKey)).coins
+    const baseList = mk === 'idx' ? LQ45 : (await loadCoinList(cgKey)).coins
+    const list = withWatched(baseList, watch)
+    const base = baseList.length
     const rows: ScanRow[] = []
     let index: Bar[] | undefined
-    publish({ rows, running: true, list })
+    publish({ rows, running: true, list, base })
     try {
       index = mk === 'idx' ? (await fetchHistory(INDEX.idx)).bars : (await fetchCryptoHistory(INDEX.crypto)).bars
     } catch {
@@ -110,11 +117,11 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
         } catch (e) {
           rows.push({ symbol, error: errorOf(e) })
         }
-        publish({ rows: [...rows], running: true, list, index })
+        publish({ rows: [...rows], running: true, list, base, index })
       }
     }
     await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, worker))
-    publish({ rows: [...rows], running: false, list, index })
+    publish({ rows: [...rows], running: false, list, base, index })
     // Saved for the Dashboard alert: buy signals only, none while the mood is Defensive.
     const ok = rows.filter(isRow)
     const defensive = idxMood(index ?? [], ok.map((r) => r.data.daily))?.light === 'red'
@@ -179,8 +186,9 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
   const failed = scan?.rows.filter((r) => !isRow(r)) ?? []
   const missing = failed.find((r) => 'error' in r && r.error === 'idx-missing')
   const buys = rows.filter((r) => r.status === 'buy').length
-  const listName = mk === 'idx' ? 'LQ45' : `Top ${scan?.list.length ?? 50}`
+  const listName = mk === 'idx' ? 'LQ45' : `Top ${scan?.base ?? 50}`
   const columns: Key[] = ['scan.ticker', 'scan.score', 'short.col.status', 'short.col.entry', 'scan.stop', 'short.col.target']
+  const watched = useWatchlist(mk).list
   const badge: Record<Status, 'paper' | 'warn' | 'neutral'> = { buy: 'paper', paused: 'warn', wait: 'neutral', none: 'neutral' }
 
   return (
@@ -214,6 +222,7 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
                     <button type="button" onClick={() => onPick(r.symbol)} className="font-mono underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                       {r.symbol}
                     </button>
+                    {watched.includes(r.symbol) && <span className="ml-1 text-warn-text" title={t('watch.on')}>★</span>}
                   </td>
                   <td className="px-2 py-1.5 font-mono">
                     {r.check.score}/{r.check.rules.length}
@@ -232,7 +241,9 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
         </div>
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
-      <p className="mt-3 text-xs text-text-muted">{t('short.tableNote')}</p>
+      <p className="mt-3 text-xs text-text-muted">
+        {t('short.tableNote')} {watched.length > 0 && t('watch.inScan', { s: watched.join(', ') })}
+      </p>
     </Card>
   )
 }
@@ -343,7 +354,10 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="font-display text-4xl leading-none">{row.symbol}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-display text-4xl leading-none">{row.symbol}</span>
+            <WatchButton market={mk} symbol={row.symbol} />
+          </div>
           <div className="text-sm text-text-muted">
             {row.data.name ? `${row.data.name} · ` : ''}
             {price(c.close)} · {t('short.lastBar', { f: frame, d: when(c.time) })}

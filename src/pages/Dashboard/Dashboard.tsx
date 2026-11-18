@@ -269,6 +269,7 @@ function HeatCard({ heat }: { heat: number }) {
 function MoodCard() {
   const { t, locale, num, change } = useI18n()
   const { mood, prices, at, status, hasKey, refresh } = useCryptoMarket()
+  const watched = useSettings((x) => x.watchlist?.crypto)
   const tone = mood && moodColor(mood.value)
   const extreme = mood != null && (mood.value < 25 || mood.value > 75)
   return (
@@ -302,7 +303,7 @@ function MoodCard() {
           {mood && <Segments items={moodBar(mood.value)} height={14} label={`${t('mood.title')} ${mood.value} / 100: ${mood.sentiment}`} />}
           {prices && (
             <ul aria-label={t('mood.prices')} className="flex flex-col gap-1 border-t border-border pt-2">
-              {WATCHLIST.map((sym) => {
+              {[...new Set([...WATCHLIST, ...(watched ?? []).map((x) => x.toLowerCase())])].map((sym) => {
                 const p = prices[sym]
                 if (p?.usd == null) return null
                 const ch = p.usd_24h_change ?? 0

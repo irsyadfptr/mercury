@@ -20,6 +20,7 @@ let cache: MarketState = { status: 'idle' }
 /** Live crypto prices (written into each crypto holding's price) and crypto fear & greed. */
 export function useCryptoMarket() {
   const key = useSettings((s) => s.coingeckoKey) || ENV_KEY
+  const watched = useSettings((s) => s.watchlist?.crypto)
   const [state, setState] = useState(cache)
   const update = (s: MarketState) => setState((cache = s))
 
@@ -28,7 +29,7 @@ export function useCryptoMarket() {
     update({ ...cache, status: 'loading' })
     try {
       const { holdings, updateHolding } = useStore.getState()
-      const symbols = [...new Set([...WATCHLIST, ...holdings.filter((h) => h.assetClass === 'crypto').map((h) => h.symbol.toLowerCase())])]
+      const symbols = [...new Set([...WATCHLIST, ...(watched ?? []).map((x) => x.toLowerCase()), ...holdings.filter((h) => h.assetClass === 'crypto').map((h) => h.symbol.toLowerCase())])]
       const [prices, mood] = await Promise.all([fetchPrices(symbols, key), fetchMood(key)])
       const at = new Date().toISOString()
       for (const [id, price] of Object.entries(pricesFor(holdings, prices))) updateHolding(id, { manualPrice: price, manualPriceAt: at })
@@ -36,7 +37,7 @@ export function useCryptoMarket() {
     } catch {
       update({ ...cache, status: 'error' })
     }
-  }, [key])
+  }, [key, watched])
 
   useEffect(() => {
     if (key && !(cache.at && Date.now() - cache.at < MIN_GAP_MS)) void refresh()

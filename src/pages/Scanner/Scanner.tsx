@@ -20,6 +20,8 @@ import { useSummary } from '@/useSummary'
 import { ChartPanel, type Timeframe } from './ChartPanel'
 import { ArbNote, ExpectedRange } from './RiskNotes'
 import { ShortView } from './ShortView'
+import { WatchButton } from '@/components/WatchButton'
+import { useWatchlist, withWatched } from '@/watchlist'
 
 const TIME_STOP_DAYS = 56 // ~8 weeks (NOTES.md)
 const SCAN_CONCURRENCY = 4
@@ -209,7 +211,11 @@ const withCoins = (m: Market, c: CoinList | undefined): Market =>
 function MarketView({ m: base }: { m: Market }) {
   const cgKey = useSettings((s) => s.coingeckoKey) || ENV_KEY
   const [coins, setCoins] = useState(() => (base.id === 'crypto' ? (lastCoins ?? cachedCoinList()) : undefined))
-  const m = useMemo(() => withCoins(base, coins), [base, coins])
+  const watch = useWatchlist(base.id).list
+  const m = useMemo(() => {
+    const mm = withCoins(base, coins)
+    return { ...mm, list: withWatched(mm.list, watch) }
+  }, [base, coins, watch])
   const [check, setCheckState] = useState(lastCheck[m.id])
   const setCheck = (l: Load) => setCheckState((lastCheck[m.id] = l))
   const run = async (symbol: string) => {
@@ -231,7 +237,7 @@ function MarketView({ m: base }: { m: Market }) {
     if (m.id === 'crypto') {
       const c = await loadCoinList(cgKey)
       setCoins((lastCoins = c))
-      list = c.coins
+      list = withWatched(c.coins, watch)
     }
     try {
       index = (await m.fetch(m.index)).bars
@@ -500,7 +506,10 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="font-display text-4xl leading-none">{r.symbol}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-display text-4xl leading-none">{r.symbol}</span>
+            <WatchButton market={m.id} symbol={r.symbol} />
+          </div>
           <div className="text-sm text-text-muted">
             {r.name} · {price(c.close)} · {day(last)}
           </div>
@@ -648,6 +657,7 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
   const list = (xs: string[]) => (xs.length ? xs.join(', ') : '—')
   const u = { u: m.listName }
   const columns: Key[] = ['scan.ticker', 'scan.score', 'scan.close', 'scan.buyZone', 'scan.stop', 'scan.target2']
+  const watched = useWatchlist(m.id).list
 
   return (
     <Card>
@@ -693,6 +703,7 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
                     <button type="button" onClick={() => onPick(r.symbol)} className="font-mono underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                       {r.symbol}
                     </button>
+                    {watched.includes(r.symbol) && <span className="ml-1 text-warn-text" title={t('watch.on')}>★</span>}
                   </td>
                   <td className="px-2 py-1.5 font-mono">
                     {r.check.score}/{r.check.rules.length} {r.check.score === r.check.rules.length && !defensive && <Badge tone="paper">{t('scan.pass')}</Badge>}
@@ -715,7 +726,9 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
         </div>
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
-      <p className="mt-3 text-xs text-text-muted">{t(m.listNote)}</p>
+      <p className="mt-3 text-xs text-text-muted">
+        {t(m.listNote)} {watched.length > 0 && t('watch.inScan', { s: watched.join(', ') })}
+      </p>
     </Card>
   )
 }

@@ -14,3 +14,10 @@ describe('pickTopCoins', () => {
   })
   it('stops at n', () => expect(pickTopCoins([m('btc', 'Bitcoin'), m('eth', 'Ethereum')], binance, 1)).toEqual(['BTC']))
 })
+
+describe('watchlist', () => {
+  it('adds watched tickers missing from the list, at the end, without duplicates', async () => {
+    const { withWatched } = await import('@/watchlist')
+    expect(withWatched(['BTC', 'ETH'], ['HYPE', 'ETH'])).toEqual(['BTC', 'ETH', 'HYPE'])
+  })
+})
