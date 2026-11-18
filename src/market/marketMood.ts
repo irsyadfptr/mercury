@@ -35,3 +35,28 @@ export function marketMood(market: MoodMarket, index: readonly Bar[] | undefined
 /** Mood score as of each past date (crypto: the price-only parts; see cryptoMoodSeries). */
 export const marketMoodSeries = (market: MoodMarket, index: readonly Bar[] | undefined, rows: readonly MoodInput[]): Map<string, number> =>
   market === 'idx' ? moodSeries(index ?? [], rows.map((r) => r.bars)) : cryptoMoodSeries(index ?? [], alts(rows))
+
+// ---- Last mood per market, for the pre-trade gate (which runs outside the Scanner) ----
+
+export interface SavedMood {
+  score: number
+  light: MoodLight
+  /** Local date of the scan, yyyy-mm-dd. */
+  date: string
+}
+const moodKey = (m: MoodMarket) => `mercury.mood.${m}`
+export function saveMood(market: MoodMarket, mood: MarketMood | undefined, date: string) {
+  if (!mood) return
+  try {
+    localStorage.setItem(moodKey(market), JSON.stringify({ score: mood.score, light: mood.light, date } satisfies SavedMood))
+  } catch {
+    // Storage blocked: the gate shows the mood as unknown.
+  }
+}
+export function loadMood(market: MoodMarket): SavedMood | undefined {
+  try {
+    return (JSON.parse(localStorage.getItem(moodKey(market)) ?? 'null') as SavedMood | null) ?? undefined
+  } catch {
+    return undefined
+  }
+}

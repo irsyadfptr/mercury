@@ -13,7 +13,11 @@ import { fetchHistory, fetchHourly, IdxFetchError, type IdxError } from '@/marke
 import { to4h, toMonthly, toWeekly, type Bar } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
 import { MOOD_DEFENSIVE } from '@/market/mood'
-import { marketMood, marketMoodSeries, type MarketMood } from '@/market/marketMood'
+import { marketMood, marketMoodSeries, saveMood, type MarketMood } from '@/market/marketMood'
+import { useGate } from '@/useGate'
+import { firstProblem, gateNote } from '@/components/gateText'
+import { localDate } from '@/domain/cashflow'
+
 import type { RegimeExtras } from '@/market/cryptoRegime'
 import { fetchRegimeExtras } from '@/market/cryptoRegimeData'
 import { trackScan } from '@/market/signalTrack'
@@ -137,6 +141,7 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
     publish({ rows: [...rows], running: false, list, base, index, extras: more })
     const ok = rows.filter(isRow)
     const mood = marketMood(mk, index, moodRows(ok), more)
+    saveMood(mk, mood, localDate(Date.now()))
     const defensive = mood?.light === 'red'
     const all = ok.flatMap((r) => (r.check.signal && r.check.stop !== undefined && r.check.target !== undefined ? [{ symbol: r.symbol, time: r.check.time, entry: r.check.entry, stop: r.check.stop, target: r.check.target }] : []))
     // Saved for the Dashboard alert: buy signals only, none while the mood is Defensive.
@@ -488,7 +493,20 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
   const crypto = mk === 'crypto'
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
-  const why = !c.signal ? t('short.paper.noSignal') : defensive ? t('paper.defensive') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
+  const runGate = useGate()
+  const addJournal = useStore((s) => s.addJournal)
+  const gate = runGate({ paper: true, assetClass: crypto ? 'crypto' : 'idx_stock', currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
+  const why = !c.signal
+    ? t('short.paper.noSignal')
+    : defensive
+      ? t('paper.defensive')
+      : crypto && !usdIdr
+        ? t('paper.needFx')
+        : units === 0
+          ? t('paper.tooSmall')
+          : gate.decision !== 'go'
+            ? firstProblem(gate, f)
+            : undefined
   const p = priceOf(mk, f)(c.entry)
 
   const add = () => {
@@ -509,7 +527,9 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
       setup: styleId,
       signalId: signalId({ market: mk, style: styleId, symbol: row.symbol, time: c.time }),
       reviewBy: addDays(now.slice(0, 10), REVIEW_DAYS[styleId]),
+      gate: gate.decision,
     })
+    addJournal({ date: localDate(Date.now()), tag: 'entry', text: gateNote(gate, f), holdingId: id })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
     location.hash = href('portfolio')
   }

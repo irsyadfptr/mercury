@@ -11,6 +11,8 @@ import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/s
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
+import { useBreakers } from '@/useGate'
+import type { Breaker } from '@/domain/circuitBreaker'
 import { useSettings } from '@/settings'
 import type { AllocationItem, Bill, Holding, I18n, JournalEntry, Quest, RiskStatus, Row, Summary, Transaction } from '@/types'
 import { WATCHLIST } from '@/market/coingecko'
@@ -464,6 +466,23 @@ function describeQuest(q: Quest, f: I18n): QuestView {
   }
 }
 
+/** The circuit breaker, when it stops new entries (real first). */
+function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>): QuestView[] {
+  return (['real', 'paper'] as const).flatMap((side) => {
+    const x = b[side]
+    if (x.status === 'allowed') return []
+    const until = x.rules.map((r) => r.resumes).filter((d): d is string => !!d).sort().at(-1)
+    return [
+      {
+        label: f.t(`quest.breaker.${side}`, { s: f.t(`cb.status.${x.status}`) }),
+        tag: until ? f.t('quest.breakerUntil', { d: f.day(until) }) : f.t('quest.breakerFix'),
+        route: 'journal' as const,
+        params: { view: 'trades' },
+      },
+    ]
+  })
+}
+
 /** New setups from each market's last scan vs the one before (the Scanner records them). */
 function scanAlerts(f: I18n): QuestView[] {
   return (['idx', 'crypto'] as const).flatMap((m) => {
@@ -533,7 +552,8 @@ function Quests({ summary }: { summary: Summary }) {
   const { holdings, transactions, journal } = useStore()
   const today = localDate(now)
   const streak = journalStreak(journal, today)
-  const list = [...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
+  const breakers = useBreakers()
+  const list = [...breakerAlerts(f, breakers),...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')}>

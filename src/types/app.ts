@@ -1,4 +1,5 @@
 import type { en } from '@/i18n'
+import type { BreakerSettings } from '@/domain/circuitBreaker'
 import type { ROUTES } from '@/routes'
 import type { Account, Backup, Bill, CashEntry, CustomCategory, Dividend, Goal, Holding, JournalEntry, NewCashEntry, NewHolding, NewJournalEntry, NewTransaction, Transaction } from './domain'
 
@@ -34,6 +35,8 @@ export interface SettingsValues {
   privacy?: boolean
   /** Tickers always added to the Scanner's scans, per market (upper case). */
   watchlist?: { idx: string[]; crypto: string[] }
+  /** Circuit breaker and pre-trade gate limits; unset = the defaults (src/domain/circuitBreaker.ts). */
+  breaker?: BreakerSettings
 }
 
 export interface SettingsState extends SettingsValues {

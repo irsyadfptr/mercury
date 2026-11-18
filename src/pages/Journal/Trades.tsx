@@ -14,6 +14,7 @@ import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import type { HoldingDialogTarget, Holding, I18n, Key, Transaction } from '@/types'
 import { useNow } from '@/useNow'
+import { BreakerCard } from './BreakerCard'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const PERIODS: readonly ReviewPeriod[] = ['week', 'month', 'all']
@@ -43,6 +44,7 @@ export function TradesView() {
 
   return (
     <>
+      <BreakerCard />
       <Card>
         <CardTitle icon="chest" aside={t('tm.openCount', { n: open.length })}>
           {t('tm.openTitle')}
@@ -153,6 +155,7 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
     `Risk limit per trade: ${tradeLimit}% of net worth${s.halfKelly !== undefined ? `; half-Kelly from these trades: ${num(s.halfKelly, 2)}%` : ''}`,
     ...s.bySetup.map((g) => `Setup ${g.key}: ${g.n} trades, win ${num(g.winRate)}%, avg ${signed(f, g.avgR)}R`),
     ...s.byExit.map((g) => `Exit reason ${g.key}: ${g.n} trades, win ${num(g.winRate)}%, avg ${signed(f, g.avgR)}R`),
+    ...s.byGate.map((g) => `Pre-trade gate ${g.key === 'noGo' ? 'NO-GO (recorded as a rule break)' : g.key}: ${g.n} trades, win ${num(g.winRate)}%, avg ${signed(f, g.avgR)}R`),
     ...trades.slice(0, 15).map((x) => {
       const e = excursions.get(x.key)
       const lesson = journal.some((j) => j.holdingId === x.holding.id && (j.tag === 'lesson' || j.tag === 'exit') && j.date >= x.exitDate)
@@ -201,9 +204,10 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
             {s.halfKelly !== undefined ? t('tr.kelly', { k: num(s.halfKelly, 2), n: s.rCount, limit: tradeLimit }) : t('tr.kellyWait', { n: s.rCount, min: KELLY_MIN })}
           </p>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Breakdown title={t('tr.bySetup')} rows={s.bySetup} name={(k) => t(`tm.setup.${k}` as Key)} />
             <Breakdown title={t('tr.byExit')} rows={s.byExit} name={(k) => t(k === 'unknown' ? 'tr.exitUnknown' : (`tm.exit.${k}` as Key))} />
+            <Breakdown title={t('tr.byGate')} rows={s.byGate} name={(k) => t(k === 'unknown' ? 'tr.gateUnknown' : (`gate.${k}` as Key))} />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

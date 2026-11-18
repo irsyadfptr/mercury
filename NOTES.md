@@ -352,3 +352,13 @@ Ported from github.com/tradermonty/claude-trading-skills (MIT) as TypeScript in 
   - Funding: `fapi.binance.com/fapi/v1/premiumIndex`. **Browser CORS not yet confirmed on a real run** (sandbox can't reach it); a failure only leaves that part out.
 - Not done from the review: drawdown circuit breaker, pre-trade gate, IHSG distribution days / FTD, Rules-test robustness, new setups (VCP, momentum burst).
 - Known: `binance.test.ts` "steps keep 5 significant digits" fails on float noise (0.000009999… vs 0.00001); it fails without these changes too.
+
+## Circuit breaker and pre-trade gate (2026-11-18)
+
+From the drawdown-circuit-breaker and pre-trade-discipline-gate skills (tradermonty/claude-trading-skills, MIT).
+
+- **Circuit breaker** (src/domain/circuitBreaker.ts): realized P/L of the trading group (every sell, average cost, fees in) as % of net worth. Halted after −2% today (until tomorrow), −5% this week from Monday (until next Monday), −8% this month (until the 1st); Cooldown after 2 losing round trips in a row (loss day + 1). A USD sell this month without a USD/IDR rate halts (fails closed, as the skill does). **Real and paper are judged separately.** Limits in Settings → Circuit breaker (`breaker`, unset = defaults). Shown on Journal → Trades and as a Dashboard alert. It only stops new entries; it never closes anything.
+- **Pre-trade gate** (src/domain/preTradeGate.ts, useGate.ts, components/GatePanel.tsx): checks thesis written, stop below entry, risk at stop ≤ per-trade limit, heat after the trade ≤ heat limit, no sell at a loss in the last `revengeDays` (1, partial sells count), market mood not Defensive (last scan's mood, saved per market in `mercury.mood.<market>`, unknown if older than 3 days), breaker allowed. Any fail = NO-GO; any unknown = REVIEW; else GO.
+  - Where: new trading holdings and buys added to a trading holding (HoldingDialog), and the Scanner paper-trade buttons (swing and short-term).
+  - **Decision (2026-11-18):** Scanner paper trades need GO. A real trade can still be recorded on REVIEW / NO-GO after ticking "checked myself" / "record anyway as a rule break", because the app records trades already placed at the broker; blocking would make the records wrong. Each gated entry writes an Entry journal note with the decision and the failed checks, and the holding keeps `gate` (Sheet column), so the trade review shows results by gate decision.
+  - Not built from the skill: the approved-rules ledger and the two-week rule experiment.

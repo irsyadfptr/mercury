@@ -12,7 +12,11 @@ import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError 
 import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
 import { MOOD_DEFENSIVE, type MoodLight } from '@/market/mood'
-import { marketMood, marketMoodSeries, type MarketMood } from '@/market/marketMood'
+import { marketMood, marketMoodSeries, saveMood, type MarketMood } from '@/market/marketMood'
+import { useGate } from '@/useGate'
+import { firstProblem, gateNote } from '@/components/gateText'
+import { localDate } from '@/domain/cashflow'
+
 import type { RegimeExtras } from '@/market/cryptoRegime'
 import { fetchRegimeExtras } from '@/market/cryptoRegimeData'
 import { trackScan } from '@/market/signalTrack'
@@ -280,6 +284,7 @@ function MarketView({ m: base }: { m: Market }) {
       const date = ok.map((r) => r.bars[r.bars.length - 1].time).sort().at(-1)!
       const pick = (f: (c: Check) => boolean) => ok.filter((r) => f(r.check)).map((r) => r.symbol).sort()
       const mood = marketMood(m.id, index, moodRows(ok), more)
+      saveMood(m.id, mood, localDate(Date.now()))
       const defensive = mood?.light === 'red'
       const passing = defensive ? [] : pick((c) => c.score === c.rules.length)
       saveScanLog(recordScan(loadScanLog(m.id), { date, passing, inZone: pick((c) => c.zone === 'in') }), m.id)
@@ -643,7 +648,22 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   // Net worth is in rupiah; crypto prices are in USDT (≈ USD), so convert the capital first.
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
-  const why = c.zone !== 'in' ? t('paper.notInZone') : defensive ? t('paper.defensive') : crypto && !usdIdr ? t('paper.needFx') : units === 0 ? t('paper.tooSmall') : undefined
+  // Pre-trade gate (paper side): a Scanner signal is its own written plan, so only risk, heat, revenge, mood and breaker count.
+  const runGate = useGate()
+  const addJournal = useStore((s) => s.addJournal)
+  const gate = runGate({ paper: true, assetClass: crypto ? 'crypto' : 'idx_stock', currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
+  const why =
+    c.zone !== 'in'
+      ? t('paper.notInZone')
+      : defensive
+        ? t('paper.defensive')
+        : crypto && !usdIdr
+          ? t('paper.needFx')
+          : units === 0
+            ? t('paper.tooSmall')
+            : gate.decision !== 'go'
+              ? firstProblem(gate, f)
+              : undefined
   const p = m.price(f, c.entry)
 
   const add = () => {
@@ -664,7 +684,9 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
       setup: 'swing',
       signalId: signalId({ market: m.id, style: 'swing', symbol: r.symbol, time: r.bars[r.bars.length - 1].time }),
       reviewBy: addDays(now.slice(0, 10), REVIEW_DAYS.swing),
+      gate: gate.decision,
     })
+    addJournal({ date: localDate(Date.now()), tag: 'entry', text: gateNote(gate, f), holdingId: id })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
     location.hash = href('portfolio')
   }

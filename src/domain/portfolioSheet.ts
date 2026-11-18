@@ -27,6 +27,7 @@ export const HOLDING_COLUMNS: readonly ColumnSpec[] = [
   ['initialStop', 'number'],
   ['exitReason', 'string'],
   ['signalId', 'string'],
+  ['gate', 'string'],
 ]
 
 export const TRANSACTION_COLUMNS: readonly ColumnSpec[] = [

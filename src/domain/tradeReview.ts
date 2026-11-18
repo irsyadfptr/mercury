@@ -130,6 +130,8 @@ export interface ReviewStats {
   halfKelly?: number
   bySetup: GroupStats[]
   byExit: GroupStats[]
+  /** By the pre-trade gate's decision at entry: did trades that broke a rule do worse? */
+  byGate: GroupStats[]
 }
 
 /** Fewer trades than this is too small a sample for a Kelly figure (position-sizer and backtest-expert both say 30+). */
@@ -192,6 +194,7 @@ export function reviewStats(trades: readonly ClosedTrade[]): ReviewStats {
     halfKelly,
     bySetup: group(trades, (t) => t.setup),
     byExit: group(trades, (t) => t.exitReason ?? 'unknown'),
+    byGate: group(trades, (t) => t.holding.gate ?? 'unknown'),
   }
 }
 

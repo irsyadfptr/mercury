@@ -20,6 +20,8 @@ const amount = z.number().finite().nonnegative()
 export const SETUPS = ['swing', 'month', 'week', 'other'] as const
 /** Why a trade was closed. */
 export const EXIT_REASONS = ['stop', 'target', 'time', 'invalidated', 'manual'] as const
+/** Pre-trade gate decisions: every check passed, something unknown was reviewed, or a rule was broken. */
+export const GATE_DECISIONS = ['go', 'review', 'noGo'] as const
 
 export const Holding = z.object({
   id,
@@ -54,6 +56,8 @@ export const Holding = z.object({
   initialStop: amount.optional(),
   /** Why the trade was closed. */
   exitReason: z.enum(EXIT_REASONS).optional(),
+  /** The pre-trade gate's decision when the trade was opened (src/domain/preTradeGate.ts). */
+  gate: z.enum(GATE_DECISIONS).optional(),
   /** Scanner signal the trade came from (src/market/signalLog.ts id). */
   signalId: z.string().optional(),
   /** Manually entered price per unit, for assets with no price feed (funds, gold) or until feeds exist. */

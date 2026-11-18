@@ -122,6 +122,7 @@ export function formToHolding(v: HoldingFormValues, existing: Holding | undefine
           exitReason: v.exitReason || undefined,
           initialStop: existing?.initialStop,
           signalId: existing?.signalId,
+          gate: existing?.gate,
         }
       : {}),
     manualPrice,
