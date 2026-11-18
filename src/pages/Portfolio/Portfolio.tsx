@@ -44,7 +44,7 @@ export function Portfolio() {
             <Card key={g} aria-label={t(`pf.${g}`)}>
               <CardTitle aside={money(summary.byGroup[g])}>{t(`pf.${g}`)}</CardTitle>
               <RarityKey />
-              <HoldingRows rows={summary.rows.filter((r) => r.holding.group === g)} onEdit={(holdingId) => setDialog({ mode: 'edit', holdingId })} scores={scores} />
+              <HoldingRows rows={summary.rows.filter((r) => r.holding.group === g && r.v.quantity > 0)} onEdit={(holdingId) => setDialog({ mode: 'edit', holdingId })} scores={scores} />
             </Card>
           ))}
         </div>
@@ -127,7 +127,6 @@ function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
   const { holding: h, v, risk, daysHeld } = row
   const lt = h.group === 'investing' && h.assetClass === 'idx_stock' ? scores[h.symbol.toUpperCase()] : undefined
   const r = rarity(daysHeld)
-  const closed = v.quantity === 0
   // USD holding without a rate: show its own-currency value instead of a wrong IDR number.
   const value = Number.isFinite(v.valueIdr) ? money(v.valueIdr) : `$${qty(Math.round(v.marketValue * 100) / 100)}`
 
@@ -155,8 +154,7 @@ function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
             </Badge>
           )}
           {risk.kind === 'noStop' && <Badge tone="warn">{t('badge.noStop')}</Badge>}
-          {v.priceSource === 'cost' && !closed && <Badge tone="neutral">{t('pf.atCost')}</Badge>}
-          {closed && <Badge tone="neutral">{t('pf.closed')}</Badge>}
+          {v.priceSource === 'cost' && <Badge tone="neutral">{t('pf.atCost')}</Badge>}
         </span>
       </span>
       <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />

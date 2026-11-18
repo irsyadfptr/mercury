@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { factLine } from '@/ai/deepseek'
+import { Explain } from '@/components/Explain'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
@@ -408,6 +410,19 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         </div>
         <PaperTrade mk={mk} styleId={styleId} row={row} defensive={defensive} />
       </div>
+      <Explain
+        title={`${row.symbol}${row.data.name ? ` (${row.data.name})` : ''} ${mk === 'idx' ? 'IDX stock' : 'crypto'} short-term setup check (hold up to ${style.holdDays[mk]} days), ${c.score}/${c.rules.length} rules pass, status: ${status}, last ${frame} bar ${when(c.time)}`}
+        facts={[
+          ...c.rules.map((r) => factLine(r.pass, t(`short.rule.${r.id}`, { n: style.trendMa, a: style.fastMa, b: style.slowMa, f: frame }), detail[r.id])),
+          `${t('short.col.entry')}: ${price(c.entry)} · ${t('scan.stop')}: ${price(c.stop)}${c.risk !== undefined ? ` (−${pct(c.risk / c.entry)})` : ''} · ${t('short.col.target')}: ${price(c.target)}${c.target !== undefined ? ` (+${pct((c.target - c.entry) / c.entry)})` : ''}`,
+          `${t('scan.timeStop')}: ${day(timeStop.toISOString().slice(0, 10))}`,
+          `${t('short.bt.title', { m: months })}: ${
+            bt.trades.length === 0
+              ? t('bt.none')
+              : `${t('bt.summary', { n: bt.trades.length, win: num(bt.winRate!), r: `${bt.avgR! >= 0 ? '+' : '−'}${num(Math.abs(bt.avgR!), 2)}` })}${bt.trades.length < MIN_TRADES ? ` ${t('bt.small')}` : ''}`
+          } (${t('short.bt.rules', { b: pct(rules.fees.buy), s: pct(rules.fees.sell) })})`,
+        ]}
+      />
 
       <ShortChart mk={mk} styleId={styleId} row={row} levels={levels} />
     </div>

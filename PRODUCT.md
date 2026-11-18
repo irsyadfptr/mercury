@@ -20,7 +20,7 @@ One place to see the whole portfolio in IDR, find and check swing setups held 3â
 
 ## Positioning
 
-Code calculates every number (prices, indicators, scores, risk). The AI reads those numbers and gives its opinion and recommendation, labelled as opinion, never new figures. Mixes IDX stocks, crypto and Indonesian funds/gold in one view, with IDX rules (ARA/ARB, lots) built in.
+Code calculates every number (prices, indicators, scores, risk). The AI reads those numbers and, as a master trader, gives a call and its own levels (buy zone, stop, targets, size), each of its numbers marked "~" and labelled as opinion. Mixes IDX stocks, crypto and Indonesian funds/gold in one view, with IDX rules (ARA/ARB, lots) built in.
 
 ## Operating Context
 
@@ -40,7 +40,7 @@ No real portfolio data in the repo. Demo data must be labelled as sample data.
 
 ## Product Principles
 
-1. Numbers come from code, never from AI. AI opinions are labelled as opinions.
+1. The app's numbers come from code. AI numbers are marked "~" and labelled as opinion.
 2. Risk before reward: show stop, position size and portfolio heat before upside.
 3. Paper trading is the default for anything new.
 4. The user owns their data: local storage, export anytime, no account.
