@@ -1,3 +1,4 @@
+import { LT_LOW_SCORE } from '@/market/scoreLog'
 import type { Summary } from '@/types'
 
 const pct = (n: number) => `${n.toFixed(1)}%`
@@ -19,6 +20,7 @@ export function portfolioFacts(s: Summary, heatLimit: number, tradeLimit: number
     `Investing (long-term) ${share(s.byGroup.investing)} · Trading (3–6 month swings) ${share(s.byGroup.trading)}`,
     `By asset class: ${classes.join(' · ')}`,
     `Portfolio heat (loss if every trade's stop hits, % of net worth): ${pct(s.heat)} against a ${pct(heatLimit)} limit; limit per trade ${pct(tradeLimit)}`,
+    `The user's written rules: trading = 3–6 month swings that exit at the stop, or after ~8 weeks (56 days) with no progress, risking at most the per-trade limit; investing = long-term holds of businesses with a long-term score of at least ${LT_LOW_SCORE}/15 (below that is weak).`,
     `Holdings (${held.length}), largest first:`,
     ...held.map((r) => {
       const h = r.holding

@@ -7,25 +7,39 @@ import { useSettings } from '@/settings'
 
 type State = { status: 'idle' } | { status: 'loading' } | { status: 'error'; error: ExplainError } | { status: 'done'; text: string; question?: string }
 
+// Kept outside React so replies survive page switches until the app is reloaded (no repeat cost for the same facts).
+const replies = new Map<string, State>()
+const extras = new Map<string, Promise<string[]>>()
+
 /**
  * "Explain" button and "Ask" field: send the page's already-computed facts (plus the user's question) to DeepSeek and show
- * its plain-language reply. Each answer stands alone; there is no chat memory.
+ * its reply. `extra` fetches more facts on the first click (e.g. fresh checks per holding); they are reused for the session.
+ * Each answer stands alone; there is no chat memory.
  */
-export function Explain({ title, facts }: { title: string; facts: string[] }) {
+export function Explain({ title, facts, extra }: { title: string; facts: string[]; extra?: () => Promise<string[]> }) {
   const { t, lang } = useI18n()
   const key = useSettings((s) => s.deepseekKey)
-  const [state, setState] = useState<State>({ status: 'idle' })
+  const cacheKey = `${lang}\n${title}\n${facts.join('\n')}`
+  const [state, setLocal] = useState<State>(() => replies.get(cacheKey) ?? { status: 'idle' })
   const [question, setQuestion] = useState('')
-  const factsKey = `${title}\n${facts.join('\n')}`
-  // A new check (or language) makes the old reply stale.
-  useEffect(() => setState({ status: 'idle' }), [factsKey, lang])
+  // A new check (or language) shows that one's reply, if any.
+  useEffect(() => setLocal(replies.get(cacheKey) ?? { status: 'idle' }), [cacheKey])
 
   if (!key) return <p className="text-xs text-text-muted">{t('ai.needKey')}</p>
 
+  const setState = (s: State) => {
+    if (s.status === 'done') replies.set(cacheKey, s)
+    setLocal(s)
+  }
   const run = async (q?: string) => {
     setState({ status: 'loading' })
     try {
-      setState({ status: 'done', text: await explain(key, buildMessages(title, facts, lang, q)), question: q })
+      let more: string[] = []
+      if (extra) {
+        if (!extras.has(cacheKey)) extras.set(cacheKey, extra())
+        more = await extras.get(cacheKey)!.catch(() => (extras.delete(cacheKey), []))
+      }
+      setState({ status: 'done', text: await explain(key, buildMessages(title, [...facts, ...more], lang, q)), question: q })
     } catch (e) {
       setState({ status: 'error', error: e instanceof AiError ? e.kind : 'failed' })
     }
@@ -42,7 +56,7 @@ export function Explain({ title, facts }: { title: string; facts: string[] }) {
       <div className="flex items-center justify-between gap-2">
         <Label>{t('ai.title')}</Label>
         <Button variant="outline" size="sm" onClick={() => void run()} disabled={loading}>
-          {t(loading ? 'ai.loading' : state.status === 'done' && !state.question ? 'ai.again' : 'ai.explain')}
+          {t(loading ? (extra ? 'ai.checking' : 'ai.loading') : state.status === 'done' && !state.question ? 'ai.again' : 'ai.explain')}
         </Button>
       </div>
       {state.status === 'error' && <p className="text-sm text-down">{t(`ai.error.${state.error}`)}</p>}

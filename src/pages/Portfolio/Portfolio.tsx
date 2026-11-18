@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { holdingChecks } from '@/ai/holdingChecks'
 import { portfolioFacts } from '@/ai/portfolioFacts'
 import { Explain } from '@/components/Explain'
 import { Button } from '@/components/ui/button'
@@ -69,7 +70,11 @@ function PortfolioReview() {
     <Card>
       <CardTitle icon="chest">{t('ai.review')}</CardTitle>
       <p className="mb-3 text-xs text-text-muted">{t('ai.reviewSends')}</p>
-      <Explain title="Personal portfolio review (all numbers are % of net worth or % profit/loss; amounts in rupiah are not shared)" facts={facts} />
+      <Explain
+        title="Personal portfolio review (all numbers are % of net worth or % profit/loss; amounts in rupiah are not shared)"
+        facts={facts}
+        extra={() => holdingChecks(summary.rows)}
+      />
     </Card>
   )
 }

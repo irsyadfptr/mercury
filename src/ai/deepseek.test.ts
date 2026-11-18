@@ -8,11 +8,12 @@ describe('deepseek prompt', () => {
     expect(factLine(null, 'Beta', 'no data')).toMatch(/^\? unknown/)
   })
 
-  it('sends the facts verbatim and forbids advice and new numbers', () => {
+  it('sends the facts verbatim, allows an opinion but forbids new numbers', () => {
     const [system, user] = buildMessages('BBCA long-term score 9/15', ['a', 'b'], 'en')
     expect(system.role).toBe('system')
-    expect(system.content).toMatch(/Never compute/)
-    expect(system.content).toMatch(/Never say buy, sell or hold/)
+    expect(system.content).toMatch(/never compute new figures/)
+    expect(system.content).toMatch(/clear recommendation/)
+    expect(system.content).toMatch(/not licensed advice/)
     expect(system.content).toMatch(/Reply in English/)
     expect(user).toEqual({ role: 'user', content: 'BBCA long-term score 9/15\na\nb' })
   })
@@ -20,7 +21,7 @@ describe('deepseek prompt', () => {
   it('answers a question from the same facts, trimmed and capped', () => {
     const [system, user] = buildMessages('PTBA 14/15', ['a'], 'en', `  why is the current ratio failing?  ${'x'.repeat(400)}`)
     expect(system.content).toMatch(/Answer the user's question/)
-    expect(system.content).toMatch(/cannot advise/)
+    expect(system.content).toMatch(/say what is missing/)
     expect(user.content.startsWith('PTBA 14/15\na\n\nQuestion: why is the current ratio failing?')).toBe(true)
     expect(user.content.length).toBe('PTBA 14/15\na\n\nQuestion: '.length + 300)
     expect(buildMessages('x', ['a'], 'en', '   ')[1].content).toBe('x\na')
