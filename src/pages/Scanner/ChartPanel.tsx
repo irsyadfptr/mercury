@@ -3,6 +3,7 @@ import { Label } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
 import type { Bar } from '@/market/indicators'
 import { analyzePatterns, type Bias, type PatternAnalysis } from '@/market/patterns'
+import { waveCount, type WaveCount } from '@/market/waves'
 import type { Key } from '@/types'
 import { frameCache } from './frameCache'
 import { PriceChart, type ChartLevels, type Focus } from './PriceChart'
@@ -49,6 +50,7 @@ export function ChartPanel({
   const [status, setStatus] = useState<Partial<Record<Timeframe, 'loading' | 'error'>>>({})
   const [, rerender] = useState(0)
   const [showPatterns, setShowPatterns] = useState(true)
+  const [showWaves, setShowWaves] = useState(false)
   const [focus, setFocus] = useState<Focus>()
 
   const pick = (next: Timeframe) => {
@@ -72,6 +74,7 @@ export function ChartPanel({
   }, [])
   const bars = tf === '1d' ? daily : frameCache.get(`${cacheKey}:${tf}`)
   const patterns = useMemo(() => (bars && bars.length > 0 ? analyzePatterns(bars) : undefined), [bars])
+  const wave = useMemo(() => (showWaves && bars && bars.length > 0 ? waveCount(bars) : undefined), [bars, showWaves])
   const labels = useCallback((id: string) => t(`pat.short.${id}` as Key), [t])
   const toggleFocus = (f: Focus) => setFocus((cur) => (cur && f && cur.kind === f.kind && cur.key === f.key ? undefined : f))
 
@@ -91,10 +94,16 @@ export function ChartPanel({
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
-          {t('pat.toggle')}
-        </label>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
+            {t('pat.toggle')}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showWaves} onChange={(e) => setShowWaves(e.target.checked)} className="accent-[var(--accent)]" />
+            {t('wave.toggle')}
+          </label>
+        </div>
       </div>
       {tf !== initialTf && <p className="text-xs text-text-muted">{t(levelsNote)}</p>}
 
@@ -112,8 +121,10 @@ export function ChartPanel({
           patterns={showPatterns ? patterns : undefined}
           focus={showPatterns ? focus : undefined}
           labels={labels}
+          wave={wave}
         />
       )}
+      {showWaves && bars && <WavePanel wave={wave} price={price} />}
       {showPatterns && bars && patterns && <PatternList bars={bars} patterns={patterns} price={price} focus={focus} onFocus={toggleFocus} />}
     </div>
   )
@@ -186,6 +197,55 @@ function PatternList({
         </ul>
       )}
       <p className="text-xs text-text-muted">{t('pat.note')}</p>
+    </div>
+  )
+}
+
+const GUIDE_RANGE: Record<string, string> = {
+  w2Retrace: '0.382–0.786',
+  w3Extended: '≥ 1.618',
+  w4Retrace: '0.236–0.5',
+  alternation: '',
+  w5Equality: '0.618–1.618',
+}
+
+/** The Elliott wave count in words: where price is in the count, the Fibonacci levels for the wave running, what breaks it. */
+function WavePanel({ wave, price }: { wave: WaveCount | undefined; price: (n: number | undefined) => string }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{t('wave.title')}</Label>
+      {!wave ? (
+        <p className="text-sm text-text-muted">{t('wave.none')}</p>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm">
+          <p>
+            <span className={`font-label text-[11px] uppercase ${wave.dir === 'up' ? 'text-up' : 'text-down'}`}>
+              {wave.dir === 'up' ? '▲' : '▼'} {t(wave.dir === 'up' ? 'wave.dirUp' : 'wave.dirDown')}
+            </span>{' '}
+            {t('wave.inWave', { w: wave.current })}{' '}
+            <span className="text-text-muted">
+              ({wave.currentDir === 'up' ? '▲' : '▼'} {t(`wave.phase.${wave.current}` as Key)})
+            </span>
+          </p>
+          <p className="font-mono text-xs">
+            {t(/[35C]/.test(wave.current) ? 'wave.targets' : 'wave.zone')}: {wave.levels.map((l) => `${price(l.price)} (${l.ref})`).join(' · ')}
+          </p>
+          <p className="font-mono text-xs text-warn-text">{t('wave.invalid', { p: price(wave.invalidation) })}</p>
+          {wave.guidelines.length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-xs">
+              {wave.guidelines.map((g) => (
+                <li key={g.id} className={g.met ? '' : 'text-text-muted'}>
+                  {g.met ? '✓' : '✗'} {t(`wave.g.${g.id}`)}
+                  {g.id !== 'alternation' && <span className="font-mono"> · {g.ratio.toFixed(2)} ({GUIDE_RANGE[g.id]})</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-text-muted">{t('wave.degree', { n: wave.degree })}</p>
+        </div>
+      )}
+      <p className="text-xs text-text-muted">{t('wave.note')}</p>
     </div>
   )
 }
