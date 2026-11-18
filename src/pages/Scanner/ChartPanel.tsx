@@ -3,9 +3,11 @@ import { Label } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
 import type { Bar } from '@/market/indicators'
 import { analyzePatterns, type Bias, type PatternAnalysis } from '@/market/patterns'
+import { analyzeWaves } from '@/market/waves'
 import type { Key } from '@/types'
 import { frameCache } from './frameCache'
 import { PriceChart, type ChartLevels, type Focus } from './PriceChart'
+import { WavePanel } from './WavePanel'
 
 const TIMEFRAMES = ['1h', '4h', '1d', '1w', '1M'] as const
 export type Timeframe = (typeof TIMEFRAMES)[number]
@@ -49,6 +51,7 @@ export function ChartPanel({
   const [status, setStatus] = useState<Partial<Record<Timeframe, 'loading' | 'error'>>>({})
   const [, rerender] = useState(0)
   const [showPatterns, setShowPatterns] = useState(true)
+  const [showWaves, setShowWaves] = useState(false)
   const [focus, setFocus] = useState<Focus>()
 
   const pick = (next: Timeframe) => {
@@ -72,6 +75,7 @@ export function ChartPanel({
   }, [])
   const bars = tf === '1d' ? daily : frameCache.get(`${cacheKey}:${tf}`)
   const patterns = useMemo(() => (bars && bars.length > 0 ? analyzePatterns(bars) : undefined), [bars])
+  const waves = useMemo(() => (showWaves && bars && bars.length > 0 ? analyzeWaves(bars) : undefined), [bars, showWaves])
   const labels = useCallback((id: string) => t(`pat.short.${id}` as Key), [t])
   const toggleFocus = (f: Focus) => setFocus((cur) => (cur && f && cur.kind === f.kind && cur.key === f.key ? undefined : f))
 
@@ -91,10 +95,16 @@ export function ChartPanel({
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
-          {t('pat.toggle')}
-        </label>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showPatterns} onChange={(e) => setShowPatterns(e.target.checked)} className="accent-[var(--accent)]" />
+            {t('pat.toggle')}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showWaves} onChange={(e) => setShowWaves(e.target.checked)} className="accent-[var(--accent)]" />
+            {t('wave.toggle')}
+          </label>
+        </div>
       </div>
       {tf !== initialTf && <p className="text-xs text-text-muted">{t(levelsNote)}</p>}
 
@@ -112,8 +122,10 @@ export function ChartPanel({
           patterns={showPatterns ? patterns : undefined}
           focus={showPatterns ? focus : undefined}
           labels={labels}
+          wave={waves?.primary}
         />
       )}
+      {showWaves && bars && waves && <WavePanel analysis={waves} price={price} close={bars[bars.length - 1].close} symbol={symbol} tf={t(`chart.tf.${tf}`)} />}
       {showPatterns && bars && patterns && <PatternList bars={bars} patterns={patterns} price={price} focus={focus} onFocus={toggleFocus} />}
     </div>
   )

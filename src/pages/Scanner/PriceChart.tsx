@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef } from 'react'
 import { sma, type Bar } from '@/market/indicators'
 import type { Bias, ChartPattern, PatternAnalysis } from '@/market/patterns'
+import type { WaveCount } from '@/market/waves'
 import { useSettings } from '@/settings'
 
 /** Price levels drawn as dashed lines: an optional buy zone, a stop and any targets. */
@@ -55,6 +56,7 @@ export function PriceChart({
   patterns,
   focus,
   labels,
+  wave,
 }: {
   bars: Bar[]
   levels: ChartLevels
@@ -66,6 +68,8 @@ export function PriceChart({
   focus?: Focus
   /** Pattern or candle id → the short text shown on the chart. */
   labels?: (id: string) => string
+  /** Elliott wave count: drawn as a labelled line through the wave ends, with its Fibonacci levels and invalidation price. */
+  wave?: WaveCount
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const theme = useSettings((s) => s.theme)
@@ -88,7 +92,7 @@ export function PriceChart({
       layout: { background: { color: 'transparent' }, textColor: text, fontFamily: 'Geist Mono Variable, monospace' },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border },
-      timeScale: { borderColor: border, timeVisible: intraday, secondsVisible: false },
+      timeScale: { borderColor: border, timeVisible: intraday, secondsVisible: false, rightOffset: wave ? 8 : 0 },
     })
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: up,
@@ -102,7 +106,9 @@ export function PriceChart({
       autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
         const r = base()
         if (!r?.priceRange || focusCandle) return r
-        const extra: (number | undefined)[] = focusChart ? [focusChart.trigger, focusChart.target] : [levels.stop, ...levels.targets.map((x) => x.price)]
+        const extra: (number | undefined)[] = focusChart
+          ? [focusChart.trigger, focusChart.target]
+          : [levels.stop, ...levels.targets.map((x) => x.price), wave?.invalidation, ...(wave?.levels.slice(0, 2).map((x) => x.price) ?? [])]
         const known = extra.filter((v): v is number => v !== undefined)
         const { minValue, maxValue } = r.priceRange
         return { ...r, priceRange: { minValue: Math.min(minValue, ...known), maxValue: Math.max(maxValue, ...known) } }
@@ -143,9 +149,32 @@ export function PriceChart({
       for (const x of levels.targets) line(x.price, x.title, up)
     }
 
+    const markers: SeriesMarker<Time>[] = []
+    if (wave && !focused) {
+      // Wave ends joined by a line (impulse solid, correction dashed), each labelled with its wave and price: above a high, below
+      // a low. The last point, in brackets, is still moving.
+      const color = wave.dir === 'up' ? up : down
+      const seg = (from: number, to: number, style: LineStyle) => {
+        const pts = wave.points.slice(from, to + 1)
+        if (pts.length < 2) return
+        chart
+          .addSeries(LineSeries, { color: alpha(color, 0.9), lineWidth: 2, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true })
+          .setData(pts.map((pt) => ({ time: at(pt.i), value: pt.price })))
+      }
+      seg(0, 5, LineStyle.Solid)
+      seg(5, 8, LineStyle.Dashed)
+      const digits = Math.max(0, -Math.floor(Math.log10(step)))
+      wave.points.forEach((pt, k) => {
+        const high = k === 0 ? pt.price >= wave.points[1].price : pt.price >= wave.points[k - 1].price
+        const tag = k === wave.points.length - 1 ? `(${pt.label})` : pt.label
+        markers.push({ time: at(pt.i), position: high ? 'aboveBar' : 'belowBar', shape: 'circle', color, text: `${tag} ${pt.price.toFixed(digits)}`, size: 0 })
+      })
+      line(wave.invalidation, labels?.('waveInvalid') ?? 'invalid', warn, LineStyle.Dotted)
+      if (wave.cap !== undefined) line(wave.cap, labels?.('waveCap') ?? 'W5 cap', warn, LineStyle.Dotted)
+      for (const l of wave.levels) line(l.price, `${l.k} ${l.of}${l.hit ? ' ✓' : ''}`, muted, LineStyle.SparseDotted)
+    }
     if (patterns) {
       const tone: Record<Bias, string> = { bull: up, bear: down, neutral: warn }
-      const markers: SeriesMarker<Time>[] = []
       const draw = (p: ChartPattern, bold: boolean) => {
         const color = bold ? tone[p.bias] : alpha(tone[p.bias], p.status === 'reached' ? 0.45 : 0.75)
         const opts = { color, lineWidth: (bold ? 2 : 1) as 1 | 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: bold }
@@ -177,9 +206,9 @@ export function PriceChart({
         for (const c of patterns.candles)
           markers.push({ time: at(c.i), position: c.bias === 'bear' ? 'aboveBar' : 'belowBar', shape: c.bias === 'bear' ? 'arrowDown' : 'arrowUp', color: tone[c.bias], size: 0.7 })
       }
-      // Markers must be in time order.
-      createSeriesMarkers(candles, markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)))
     }
+    // Markers must be in time order.
+    if (markers.length > 0) createSeriesMarkers(candles, markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)))
 
     // Zoom: to the picked pattern with some context, else the latest VISIBLE_BARS (MAs still use the history behind them).
     const n = bars.length
@@ -189,9 +218,9 @@ export function PriceChart({
       chart.timeScale().setVisibleLogicalRange({ from: p.points[0].i - FOCUS_PAD, to: Math.min(n + 2, last + FOCUS_PAD) })
     } else if (focusCandle) {
       chart.timeScale().setVisibleLogicalRange({ from: focusCandle.i - 40, to: Math.min(n + 2, focusCandle.i + 20) })
-    } else if (n > VISIBLE_BARS) chart.timeScale().setVisibleLogicalRange({ from: n - VISIBLE_BARS, to: n })
+    } else if (n > VISIBLE_BARS) chart.timeScale().setVisibleLogicalRange({ from: n - VISIBLE_BARS, to: n + (wave ? 8 : 0) })
     return () => chart.remove()
-  }, [bars, levels, theme, step, zoneBand, patterns, focus, labels])
+  }, [bars, levels, theme, step, zoneBand, patterns, focus, labels, wave])
 
   return <div ref={ref} role="img" aria-label={label} className="h-[320px] w-full" />
 }
