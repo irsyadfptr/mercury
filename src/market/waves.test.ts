@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Bar } from './indicators'
-import { labelCount, waveCount, zigzag } from './waves'
+import { analyzeWaves, labelCount, waveCount, zigzag } from './waves'
 
 /** Bars from a list of closes: open = previous close, high/low 0.5 beyond the body. */
 function fromCloses(closes: number[]): Bar[] {
@@ -78,5 +78,69 @@ describe('waveCount', () => {
   })
   it('returns undefined for too little history', () => {
     expect(waveCount(fromCloses([1, 2, 3]))).toBeUndefined()
+  })
+})
+
+describe('numbers', () => {
+  it('measures every wave against its usual reference', () => {
+    const c = labelCount(pts([100, 130, 112, 170, 155, 185, 168]), 1, 2)!
+    expect(c.waves.map((w) => w.label)).toEqual(['1', '2', '3', '4', '5', 'A'])
+    expect(c.waves[0].change).toBeCloseTo(0.3)
+    expect(c.waves[1].ratio).toEqual({ value: expect.closeTo(0.6), of: 'W1' })
+    expect(c.waves[2].ratio!.value).toBeCloseTo(58 / 30)
+    expect(c.waves[3].ratio).toEqual({ value: expect.closeTo(15 / 58), of: 'W3' })
+    expect(c.waves[5].ratio).toEqual({ value: expect.closeTo(17 / 85), of: 'W1-5' })
+    expect(c.waves[5].running).toBe(true)
+    expect(c.waves[0].bars).toBe(8)
+  })
+  it('confidence counts the guidelines met out of five', () => {
+    expect(labelCount(pts([100, 130, 112, 170, 155, 185, 168]), 1, 2)!.confidence).toBe(1)
+    expect(labelCount(pts([100, 130, 112, 125]), 1, 2)!.confidence).toBeCloseTo(0.2)
+  })
+  it('marks levels the running wave already reached', () => {
+    const c = labelCount(pts([100, 130, 112, 165]), 1, 2)!
+    expect(c.levels.map((l) => l.hit)).toEqual([true, true, false])
+  })
+  it('caps wave 5 when wave 3 is shorter than wave 1', () => {
+    const c = labelCount(pts([100, 140, 120, 155, 145, 150]), 1, 2)!
+    expect(c.current).toBe('5')
+    expect(c.cap).toBeCloseTo(180)
+    expect(c.levels.every((l) => l.price < 180)).toBe(true)
+  })
+  it('drops wave-4 levels inside wave 1', () => {
+    const c = labelCount(pts([100, 130, 112, 140, 136]), 1, 2)!
+    expect(c.levels.every((l) => l.price > 130)).toBe(true)
+  })
+})
+
+describe('plan', () => {
+  it('wave 3: from the close to the first target not hit, stop at wave 0', () => {
+    const c = labelCount(pts([100, 130, 112, 125]), 1, 2, 125)!
+    expect(c.plan).toMatchObject({ kind: 'now', entry: 125, stop: 100, target: 142 })
+    expect(c.plan!.rr).toBeCloseTo(17 / 25)
+  })
+  it('wave 4: from the middle zone level to wave 5 = wave 1', () => {
+    const c = labelCount(pts([100, 130, 112, 170, 160]), 1, 2, 160)!
+    const entry = 170 - 0.382 * 58
+    expect(c.plan).toMatchObject({ kind: 'zone', stop: 130 })
+    expect(c.plan!.entry).toBeCloseTo(entry)
+    expect(c.plan!.target).toBeCloseTo(entry + 30)
+  })
+  it('down impulse plans a short', () => {
+    const c = labelCount(pts([200, 170, 185, 160]), -1, 2, 160)!
+    expect(c.plan!.stop).toBe(200)
+    expect(c.plan!.target).toBeLessThan(160)
+    expect(c.plan!.risk).toBeGreaterThan(0)
+  })
+  it('none in a correction', () => {
+    expect(labelCount(pts([100, 130, 112, 170, 155, 185, 168]), 1, 2)!.plan).toBeUndefined()
+  })
+})
+
+describe('analyzeWaves', () => {
+  it('the alternate reads differently from the primary', () => {
+    const a = analyzeWaves(fromCloses(legs([140, 125, 100, 130, 112, 170, 155, 185, 168])))
+    expect(a.primary).toBeDefined()
+    if (a.alternate) expect(a.alternate.dir !== a.primary!.dir || a.alternate.current !== a.primary!.current).toBe(true)
   })
 })

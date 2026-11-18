@@ -92,7 +92,7 @@ export function PriceChart({
       layout: { background: { color: 'transparent' }, textColor: text, fontFamily: 'Geist Mono Variable, monospace' },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border },
-      timeScale: { borderColor: border, timeVisible: intraday, secondsVisible: false, rightOffset: wave ? 4 : 0 },
+      timeScale: { borderColor: border, timeVisible: intraday, secondsVisible: false, rightOffset: wave ? 8 : 0 },
     })
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: up,
@@ -151,18 +151,27 @@ export function PriceChart({
 
     const markers: SeriesMarker<Time>[] = []
     if (wave && !focused) {
-      // Wave ends joined by a line; the label sits above a high and below a low. The last point is still moving.
+      // Wave ends joined by a line (impulse solid, correction dashed), each labelled with its wave and price: above a high, below
+      // a low. The last point, in brackets, is still moving.
       const color = wave.dir === 'up' ? up : down
-      chart
-        .addSeries(LineSeries, { color: alpha(color, 0.9), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true })
-        .setData(wave.points.map((pt) => ({ time: at(pt.i), value: pt.price })))
+      const seg = (from: number, to: number, style: LineStyle) => {
+        const pts = wave.points.slice(from, to + 1)
+        if (pts.length < 2) return
+        chart
+          .addSeries(LineSeries, { color: alpha(color, 0.9), lineWidth: 2, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true })
+          .setData(pts.map((pt) => ({ time: at(pt.i), value: pt.price })))
+      }
+      seg(0, 5, LineStyle.Solid)
+      seg(5, 8, LineStyle.Dashed)
+      const digits = Math.max(0, -Math.floor(Math.log10(step)))
       wave.points.forEach((pt, k) => {
         const high = k === 0 ? pt.price >= wave.points[1].price : pt.price >= wave.points[k - 1].price
-        const text = k === wave.points.length - 1 ? `(${pt.label})` : pt.label
-        markers.push({ time: at(pt.i), position: high ? 'aboveBar' : 'belowBar', shape: 'circle', color, text, size: 0 })
+        const tag = k === wave.points.length - 1 ? `(${pt.label})` : pt.label
+        markers.push({ time: at(pt.i), position: high ? 'aboveBar' : 'belowBar', shape: 'circle', color, text: `${tag} ${pt.price.toFixed(digits)}`, size: 0 })
       })
       line(wave.invalidation, labels?.('waveInvalid') ?? 'invalid', warn, LineStyle.Dotted)
-      for (const l of wave.levels) line(l.price, l.ref, muted, LineStyle.SparseDotted)
+      if (wave.cap !== undefined) line(wave.cap, labels?.('waveCap') ?? 'W5 cap', warn, LineStyle.Dotted)
+      for (const l of wave.levels) line(l.price, `${l.k} ${l.of}${l.hit ? ' ✓' : ''}`, muted, LineStyle.SparseDotted)
     }
     if (patterns) {
       const tone: Record<Bias, string> = { bull: up, bear: down, neutral: warn }
@@ -209,7 +218,7 @@ export function PriceChart({
       chart.timeScale().setVisibleLogicalRange({ from: p.points[0].i - FOCUS_PAD, to: Math.min(n + 2, last + FOCUS_PAD) })
     } else if (focusCandle) {
       chart.timeScale().setVisibleLogicalRange({ from: focusCandle.i - 40, to: Math.min(n + 2, focusCandle.i + 20) })
-    } else if (n > VISIBLE_BARS) chart.timeScale().setVisibleLogicalRange({ from: n - VISIBLE_BARS, to: n + (wave ? 4 : 0) })
+    } else if (n > VISIBLE_BARS) chart.timeScale().setVisibleLogicalRange({ from: n - VISIBLE_BARS, to: n + (wave ? 8 : 0) })
     return () => chart.remove()
   }, [bars, levels, theme, step, zoneBand, patterns, focus, labels, wave])
 
