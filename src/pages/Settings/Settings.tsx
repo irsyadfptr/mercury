@@ -40,6 +40,7 @@ export function Settings() {
         <Preferences />
         <RiskLimits />
         <MarketData />
+        <AiSettings />
         <CashflowSettings />
         <PhoneApp />
         <Backup />
@@ -195,6 +196,21 @@ function MarketData() {
       </CardTitle>
       <Field label={t('set.cgKey')} hint={t('set.cgKeyHint')}>
         <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={coingeckoKey ?? ''} onChange={(e) => set({ coingeckoKey: e.target.value.trim() || undefined })} />
+      </Field>
+    </Card>
+  )
+}
+
+function AiSettings() {
+  const { t } = useI18n()
+  const { deepseekKey, set } = useSettings()
+  return (
+    <Card>
+      <CardTitle icon="chartUp" aside={t(deepseekKey ? 'set.keyActive' : 'set.keyMissing')}>
+        {t('set.ai')}
+      </CardTitle>
+      <Field label={t('set.dsKey')} hint={t('set.dsKeyHint')}>
+        <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={deepseekKey ?? ''} onChange={(e) => set({ deepseekKey: e.target.value.trim() || undefined })} />
       </Field>
     </Card>
   )

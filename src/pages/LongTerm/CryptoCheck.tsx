@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react'
+import { factLine } from '@/ai/deepseek'
+import { Explain } from '@/components/Explain'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
@@ -151,6 +153,13 @@ function Result({ data, score: s }: { data: CryptoFundamentals; score: CryptoSco
         ))}
       </div>
       <ExpectedRange daily={data.daily} horizons={[7, 30, 90]} price={price} />
+      <Explain
+        title={`${data.symbol} (${data.name}) crypto long-term score ${s.total}/${s.max}, ${s.known} of ${s.max} metrics have data`}
+        facts={s.parts.flatMap((p) => [
+          `${t(`cryf.part.${p.id}`)} ${p.score}/${p.metrics.length}`,
+          ...p.metrics.map((m) => factLine(m.pass, t(`cryf.m.${m.id}`), `${m.value === null ? t('lt.noData') : show(f, m.id, m.value)} (${limitText(f, m)})`)),
+        ])}
+      />
       <p className="text-xs text-text-muted">{t('cryf.note')}</p>
     </div>
   )

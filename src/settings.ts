@@ -13,13 +13,14 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'mercury.settings',
-      partialize: ({ lang, theme, heatLimit, tradeLimit, usdIdr, coingeckoKey, lastExportAt, monthlyBudget, categoryBudgets, privacy }): SettingsValues => ({
+      partialize: ({ lang, theme, heatLimit, tradeLimit, usdIdr, coingeckoKey, deepseekKey, lastExportAt, monthlyBudget, categoryBudgets, privacy }): SettingsValues => ({
         lang,
         theme,
         heatLimit,
         tradeLimit,
         usdIdr,
         coingeckoKey,
+        deepseekKey,
         lastExportAt,
         monthlyBudget,
         categoryBudgets,

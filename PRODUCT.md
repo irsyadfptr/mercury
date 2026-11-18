@@ -25,7 +25,7 @@ Code calculates every number (prices, indicators, scores, risk). AI only reads, 
 ## Operating Context
 
 - Used on a laptop, both daytime (market hours) and evenings (after IDX close, 16:00 WIB). Follows the OS light/dark setting.
-- v1 is manual entry. Prices from idx CLI (local only) and CoinGecko Demo API (BYOK).
+- v1 is manual entry. Prices from idx CLI (local only) and CoinGecko Demo API (BYOK). AI summaries from the DeepSeek API (BYOK).
 - Data lives in the browser (localStorage) with JSON export/import.
 
 ## Capabilities and Constraints

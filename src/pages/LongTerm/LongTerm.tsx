@@ -1,3 +1,5 @@
+import { factLine } from '@/ai/deepseek'
+import { Explain } from '@/components/Explain'
 import { useReducer, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
@@ -220,6 +222,13 @@ function CheckResult({ row }: { row: Scored }) {
           </div>
         ))}
       </div>
+      <Explain
+        title={`${row.symbol} (${row.name}) IDX stock long-term score ${s.total}/15, ${s.known} of 15 metrics have data`}
+        facts={s.parts.flatMap((p) => [
+          `${t(`lt.part.${p.id}`)} ${p.score}/5`,
+          ...p.metrics.map((m) => factLine(m.pass, t(`lt.m.${m.id}`), `${m.value === null ? t('lt.noData') : show(f, m.id, m.value)} (${limitText(f, m)})`)),
+        ])}
+      />
       <p className="text-xs text-text-muted">{t('lt.note')}</p>
     </div>
   )

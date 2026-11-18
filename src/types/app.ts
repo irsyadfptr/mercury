@@ -23,6 +23,8 @@ export interface SettingsValues {
   usdIdr?: number
   /** CoinGecko Demo API key (BYOK). Stays in this browser. */
   coingeckoKey?: string
+  /** DeepSeek API key (BYOK) for AI summaries. Stays in this browser. */
+  deepseekKey?: string
   lastExportAt?: string
   /** Monthly spending budget in rupiah; unset = no budget bar. */
   monthlyBudget?: number

@@ -1,3 +1,5 @@
+import { factLine } from '@/ai/deepseek'
+import { Explain } from '@/components/Explain'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
@@ -562,6 +564,22 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         </div>
         <PaperTrade m={m} r={r} defensive={filter.defensive} />
       </div>
+      <Explain
+        title={`${r.symbol} (${r.name}) ${m.id === 'idx' ? 'IDX stock' : 'crypto'} swing setup check (3–6 month hold), ${c.score}/${c.rules.length} rules pass, close ${price(c.close)} on ${last}`}
+        facts={[
+          ...c.rules.map((rule) => factLine(rule.pass, t(`rule.${rule.id}`), detail[rule.id])),
+          ...(filter.defensive ? [t('mood.idx.redWarning', moodVars(m))] : []),
+          `${t('scan.buyZone')}: ${c.refZone ? `${price(c.refZone.low)}–${price(c.refZone.high)}` : '—'} (${c.zone})`,
+          `${t('scan.stop')}: ${price(c.stop)}${c.risk !== undefined ? ` (−${num((c.risk / c.entry) * 100, 1)}% from entry ${price(c.entry)})` : ''}`,
+          `${t('scan.target2')}: ${price(c.target2)} · ${t('scan.target3')}: ${price(c.target3)}`,
+          `${t('scan.timeStop')}: ${day(timeStop.toISOString().slice(0, 10))}`,
+          `${t('bt.title', { y: years })}: ${
+            bt.trades.length === 0
+              ? t('bt.none')
+              : `${t('bt.summary', { n: bt.trades.length, win: num(bt.winRate!), r: `${bt.avgR! >= 0 ? '+' : '−'}${num(Math.abs(bt.avgR!), 2)}` })}${bt.trades.length < MIN_TRADES ? ` ${t('bt.small')}` : ''}`
+          }`,
+        ]}
+      />
 
       <ChartPanel
         symbol={r.symbol}

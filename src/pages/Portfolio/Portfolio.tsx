@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { portfolioFacts } from '@/ai/portfolioFacts'
+import { Explain } from '@/components/Explain'
 import { Button } from '@/components/ui/button'
 import { HoldingDialog } from '@/components/HoldingDialog'
 import { SyncBar } from '@/components/SyncBar'
@@ -45,13 +47,30 @@ export function Portfolio() {
             </Card>
           ))}
         </div>
-        <div className="min-w-0 flex-[2_1_320px]">
+        <div className="flex min-w-0 flex-[2_1_320px] flex-col gap-4">
           <SizeCalculator netWorth={summary.netWorth} />
+          <PortfolioReview />
         </div>
       </div>
 
       <HoldingDialog target={dialog} onClose={() => setDialog({ mode: 'closed' })} />
     </>
+  )
+}
+
+/** AI review of the whole portfolio. Sends percentages only (see portfolioFacts); hidden in privacy mode. */
+function PortfolioReview() {
+  const { t } = useI18n()
+  const summary = useSummary()
+  const { heatLimit, tradeLimit, privacy } = useSettings()
+  const facts = portfolioFacts(summary, heatLimit, tradeLimit)
+  if (privacy || !facts.length) return null
+  return (
+    <Card>
+      <CardTitle icon="chest">{t('ai.review')}</CardTitle>
+      <p className="mb-3 text-xs text-text-muted">{t('ai.reviewSends')}</p>
+      <Explain title="Personal portfolio review (all numbers are % of net worth or % profit/loss; amounts in rupiah are not shared)" facts={facts} />
+    </Card>
   )
 }
 

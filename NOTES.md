@@ -6,7 +6,7 @@ Personal AI-assisted app for investing and swing trading. Started 2026-11-09.
 
 - **Users:** personal use, laptop only, runs on localhost. Later: a public deploy without a backend, where each user brings their own API keys (BYOK).
 - **Trading style:** swing / position trades held **3–6 months**, plus **daily trades** (decided 2026-11-14, paper first), and long-term investing checked by fundamentals. Astrology is display only, never part of a score.
-- **AI:** built into the app through the API (BYOK), not as Claude skills.
+- **AI:** built into the app through the API (BYOK), not as Claude skills. Provider: **DeepSeek** (decided 2026-11-18; Claude Pro doesn't include API access).
 - **Rule:** code calculates every number (prices, indicators, scores, risk). AI only reads, summarises and explains. No AI-made "buy %".
 - **Storage:** browser localStorage, with JSON export/import from day one. Each deployed user's data stays in their own browser.
 - **Current platforms:** Bibit (funds), Stockbit (IDX stocks), Binance (crypto). v1 = manual entry. Imports can come later.
@@ -58,7 +58,7 @@ Personal AI-assisted app for investing and swing trading. Started 2026-11-09.
 - **Deploy (no backend):** `vite build` static files to Vercel Hobby, Cloudflare Pages, Netlify or GitHub Pages (all free).
   - IDX and Yahoo features are local-only, because the deployed site can't run idx and Yahoo blocks browser calls. A free Cloudflare Worker could proxy them later.
   - Browser calls to CoinGecko work with the user's own Demo key (BYOK).
-  - Browser calls to the Claude API need the header `anthropic-dangerous-direct-browser-access: true`.
+  - Browser calls to the DeepSeek API work (CORS preflight allows any origin with `authorization, content-type`, checked 2026-11-18).
 
 ## Build order
 
@@ -66,7 +66,7 @@ Personal AI-assisted app for investing and swing trading. Started 2026-11-09.
 2. Crypto prices + crypto fear & greed (CoinGecko; works when deployed too).
 3. IDX ticker check + scanner (idx, local).
 4. Journal + paper trades.
-5. AI layer (BYOK): sentiment summaries, signal explanations, portfolio review.
+5. AI layer (BYOK, DeepSeek): signal explanations and portfolio review (done 2026-11-18); sentiment summaries later.
 6. US stocks / ETFs.
 7. Alerts + scheduled after-close run.
 
@@ -261,7 +261,7 @@ Page **Long-term** (`#/longterm`, src/pages/LongTerm). Scoring is pure code in s
 
 Suggested order: commit → tick sizes + ARB warning → achievements → scheduled after-close run → AI layer.
 
-- **AI layer (step 5): provider undecided.** The user wants a free option and is looking at DeepSeek instead of a paid Claude API key (Claude Pro does not include API access). Before choosing, check the current free tier/pricing and whether the API allows browser calls (CORS), since the deployed site has no backend. Idea: one OpenAI-compatible client with base URL, key and model in Settings, so the provider can change later. Rule unchanged: code calculates every number; AI only explains, in a block labelled "AI summary".
+- **AI layer (step 5), first slice done 2026-11-18: DeepSeek.** Key in Settings → AI summaries (`deepseekKey`, stays in the browser). src/ai/deepseek.ts calls `https://api.deepseek.com/chat/completions` (model `deepseek-flash` = V4.1 Flash with `thinking: {type: 'disabled'}`, OpenAI-compatible) straight from the browser; URL and model are fixed (only the key is a setting). `deepseek-chat` was retired 2026-07-24. Price (2026-11-18): $0.30/M input, $1.20/M output at peak (01–04 and 06–10 UTC on weekdays = 08–11 and 13–17 WIB), half off-peak; one call ≈ 1,000 in + 300 out tokens ≈ $0.0007, so ~600 calls/month ≈ $0.40. An **Explain** button (src/components/Explain.tsx) on the Scanner ticker check, the IDX Long-term check and the Crypto check sends the lines the page already shows (pass/fail, values, thresholds, levels, backtest) and shows the reply in an "AI summary" block, with an **Ask** field for a free question answered from the same facts (≤ 300 chars, no chat memory) marked "can be wrong, not advice". The system prompt forbids new numbers and buy/sell/hold. On the check pages only the check's facts are sent. **Portfolio review** (Portfolio page, right column): src/ai/portfolioFacts.ts sends percentages only (share of net worth, P/L %, class/group split, heat vs limit, stop risk %, days held, holding names; no rupiah, quantities or prices) and is hidden in privacy mode. Not done: sentiment summaries.
 - Risk: tick-size rounding, ARB warning on stops, fees in the backtest, pre-entry checks (ex-dividend, earnings, rights issues).
 - Rules: no setting has an edge after fees yet; crypto may need its own settings; "longer MA buy zone" untested.
 - Data: foreign flow in the IDX mood, bandarmology, LQ45 review each Feb/Aug, confirm idx `close` is split-adjusted, US stocks/ETF source (step 6), Antam gold price, imports from Bibit/Stockbit/Binance.
