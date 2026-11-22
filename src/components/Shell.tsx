@@ -2,7 +2,7 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { href, NAV_ROUTES } from '@/routes'
 import { useSettings } from '@/settings'
-import type { Key, Lang, ShellProps, ThemePref } from '@/types'
+import type { Key, Lang, Route, ShellProps, ThemePref } from '@/types'
 import { PixelIcon } from './PixelIcon'
 
 const THEME_ORDER: readonly ThemePref[] = ['system', 'light', 'dark']
@@ -14,17 +14,22 @@ const nextTheme = (t: ThemePref): ThemePref => THEME_ORDER[(THEME_ORDER.indexOf(
 const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-label text-[11px] uppercase hover:border-primary', focusRing)
 
+/** Pages drawn in the playful skin (.play-skin in index.css). */
+const PLAY_ROUTES: readonly Route[] = ['cashflow', 'dashboard']
+
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
+  // Pages with the playful skin; the header follows it there so the page reads as one.
+  const play = PLAY_ROUTES.includes(route)
   const theme = useSettings((s) => s.theme)
   const privacy = useSettings((s) => !!s.privacy)
   const set = useSettings((s) => s.set)
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1180px] flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-border bg-surface px-3.5 py-2.5">
+      <header className={cn('flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-border bg-surface px-3.5 py-2.5', play && 'play-header')}>
         <a href={href('dashboard')} className={cn('flex items-center gap-2.5 rounded-md', focusRing)}>
-          <PixelIcon name="coin" size={24} />
+          <PixelIcon name="coin" size={24} className={play ? 'coin-spin' : undefined} />
           <span className="font-display text-3xl leading-none">MERCURY</span>
         </a>
         <nav aria-label="Main" className="flex flex-wrap gap-1">
@@ -32,6 +37,7 @@ export function Shell({ route, children }: ShellProps) {
             <a
               key={r}
               href={href(r)}
+              data-tone={play && r === route ? 'gold' : undefined}
               aria-current={r === route ? 'page' : undefined}
               className={cn(
                 'rounded-md px-2.5 py-1.5 font-label text-xs uppercase',

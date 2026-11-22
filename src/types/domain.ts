@@ -339,3 +339,18 @@ export interface ParsedRows {
   /** Rows that were given a new id and/or createdAt; row = index in the rows passed in. */
   filled: { row: number; id: string; createdAt: string }[]
 }
+
+/** Safe to spend per day for the rest of the month (see safeToSpend). */
+export interface SafeToSpend {
+  /** What the pool starts from: the monthly budget, or this month's income when no budget is set. */
+  base: 'budget' | 'income'
+  /** Budget (or income) − spent before today − bills still to pay this month; negative = already over. */
+  pool: number
+  /** pool ÷ days left (today included), floored, never below 0. */
+  perDay: number
+  spentToday: number
+  /** perDay − spentToday; negative = over today's share. */
+  leftToday: number
+  daysLeft: number
+  billsLeft: number
+}

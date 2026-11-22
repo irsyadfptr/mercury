@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -66,5 +66,47 @@ describe('mood gauge', () => {
     expect(bar.filter((s) => s.bg !== COLOR.empty)).toHaveLength(7)
     expect(bar[0].bg).toBe(COLOR.fireRed)
     expect(moodBar(150, 20).every((s) => s.bg !== COLOR.empty)).toBe(true)
+  })
+})
+
+describe('shareCells', () => {
+  it('always fills exactly n cells, in order, by largest remainder', () => {
+    const cells = shareCells([
+      { category: 'a', amount: 1 },
+      { category: 'b', amount: 1 },
+      { category: 'c', amount: 1 },
+    ])
+    expect(cells).toHaveLength(100)
+    expect(cells.filter((c) => c === 'a')).toHaveLength(34)
+    expect(cells.slice(0, 34).every((c) => c === 'a')).toBe(true)
+  })
+  it('adds up to n when many cells are rounded up', () => {
+    const amounts = [3500, 1200, 700, 450, 320, 185, 150, 115]
+    expect(shareCells(amounts.map((amount, i) => ({ category: String(i), amount })))).toHaveLength(100)
+  })
+  it('gives a tiny category no cell and nothing spent no cells', () => {
+    expect(shareCells([{ category: 'a', amount: 1000 }, { category: 'b', amount: 1 }]).includes('b')).toBe(false)
+    expect(shareCells([])).toEqual([])
+  })
+})
+
+describe('spendLevel', () => {
+  it('shades by rank so one big day does not flatten the rest', () => {
+    const level = spendLevel([10, 20, 30, 3_500_000])
+    expect([0, 10, 20, 30, 3_500_000].map(level)).toEqual([0, 1, 2, 3, 4])
+  })
+  it('is 0 with no spending days', () => expect(spendLevel([])(5)).toBe(0))
+})
+
+describe('tradeTrack', () => {
+  it('places stop, entry, price and target from 0 to 100', () => {
+    expect(tradeTrack(100, 110, 90, 140)).toEqual({ stop: 0, entry: 20, now: 40, target: 100 })
+  })
+  it('pads the open end without a stop or target', () => {
+    const t = tradeTrack(100, 120)
+    expect(t.stop).toBeUndefined()
+    expect(t.entry).toBeGreaterThan(0)
+    expect(t.now).toBeLessThan(100)
+    expect(t.now).toBeGreaterThan(t.entry)
   })
 })

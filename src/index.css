@@ -167,8 +167,128 @@
 @keyframes flick { to { transform: scale(0.92, 1.12); } }
 .glow { animation: glow 1.2s ease-in-out infinite alternate; }
 @keyframes glow { from { opacity: 0.55; } }
+/* Where-it-went pixels drop in column by column (delay set inline). */
+.pixel-pop { animation: pixel-pop 0.24s steps(3) both; }
+@keyframes pixel-pop { from { transform: scale(0); } }
+/*
+ * Add button: a gold pixel block with stepped 8-bit corners, ink outline, bevel and a hard shadow. It bobs in steps,
+ * a shine sweeps across now and then and two sparkles twinkle; hover wiggles, press squashes it onto its shadow.
+ */
+.pixel-block {
+  --s: 4px;
+  clip-path: polygon(
+    calc(var(--s) * 2) 0, calc(100% - var(--s) * 2) 0, calc(100% - var(--s) * 2) var(--s), calc(100% - var(--s)) var(--s),
+    calc(100% - var(--s)) calc(var(--s) * 2), 100% calc(var(--s) * 2), 100% calc(100% - var(--s) * 2),
+    calc(100% - var(--s)) calc(100% - var(--s) * 2), calc(100% - var(--s)) calc(100% - var(--s)),
+    calc(100% - var(--s) * 2) calc(100% - var(--s)), calc(100% - var(--s) * 2) 100%, calc(var(--s) * 2) 100%,
+    calc(var(--s) * 2) calc(100% - var(--s)), var(--s) calc(100% - var(--s)), var(--s) calc(100% - var(--s) * 2),
+    0 calc(100% - var(--s) * 2), 0 calc(var(--s) * 2), var(--s) calc(var(--s) * 2), var(--s) var(--s), calc(var(--s) * 2) var(--s)
+  );
+}
+.fab { --ink: oklch(0.24 0.03 275); }
+.fab-shadow { background: var(--fab-drop, oklch(0.2 0.02 275 / 0.35)); transform: translateY(6px); }
+/* Night: a light rim and a gold-tinted drop, so the block doesn't sink into the dark page. */
+[data-theme="dark"] .fab { --fab-rim: oklch(0.95 0.01 280); --fab-drop: oklch(0.76 0.18 55 / 0.35); }
+.fab-body { background: var(--fab-rim, var(--ink)); animation: fab-bob 1.4s steps(2) infinite alternate; transition: transform 0.08s steps(2); }
+.fab-face {
+  --s: 3px;
+  background:
+    linear-gradient(var(--fire-orange), var(--fire-orange)) bottom / 100% 6px no-repeat,
+    linear-gradient(var(--fire-yellow), var(--fire-yellow));
+  overflow: hidden;
+}
+/* Highlight pixels in the top-left corner, like light on a bevel. */
+.fab-face::before {
+  content: ''; position: absolute; left: 6px; top: 6px; width: 4px; height: 4px; background: white;
+  box-shadow: 4px 0 white, 0 4px white;
+}
+/* The shine: a pixel-wide band that crosses the face every few seconds. */
+.fab-face::after {
+  content: ''; position: absolute; inset: -20% auto -20% -40%; width: 10px; background: rgb(255 255 255 / 0.7);
+  transform: skewX(-20deg); animation: fab-shine 3.6s steps(8) infinite;
+}
+.fab-spark { position: absolute; width: 4px; height: 4px; background: var(--fire-yellow); box-shadow: 0 0 0 1px var(--ink); animation: fab-twinkle 1.8s steps(2) infinite; }
+.fab-spark:nth-of-type(2) { animation-delay: -0.9s; width: 3px; height: 3px; }
+.fab:hover .fab-body { animation: fab-wiggle 0.36s steps(2) infinite alternate; }
+.fab:active .fab-body { animation: none; transform: translateY(6px) scale(1.06, 0.9); }
+.fab-enter { animation: fab-enter 0.4s steps(4) both; }
+@keyframes fab-bob { to { transform: translateY(-3px); } }
+@keyframes fab-wiggle { from { transform: translateY(-3px) rotate(-5deg); } to { transform: translateY(-3px) rotate(5deg); } }
+@keyframes fab-shine { 0%, 70% { left: -40%; } 100% { left: 130%; } }
+@keyframes fab-twinkle { 50% { opacity: 0; transform: scale(0.4); } }
+@keyframes fab-enter { from { transform: translateY(120%) scale(0.6); } 70% { transform: translateY(-12%) scale(1.05); } }
+/*
+ * The playful skin (scoped to .play-skin; Cashflow and Dashboard): each card has its own colour (data-tone) for a tinted face, a chunky
+ * ink outline with a hard offset shadow, a pixel stripe along the top and its icon in a coloured badge. Behind the
+ * cards, scattered pixel confetti.
+ */
+.play-skin { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); }
+[data-theme="dark"] .play-skin { --play-ink: oklch(0.1 0.02 280); }
+[data-tone="gold"] { --tone: oklch(0.86 0.15 92); }
+[data-tone="pink"] { --tone: oklch(0.74 0.16 355); }
+[data-tone="green"] { --tone: oklch(0.76 0.17 150); }
+[data-tone="red"] { --tone: oklch(0.68 0.19 28); }
+[data-tone="purple"] { --tone: oklch(0.68 0.17 305); }
+[data-tone="blue"] { --tone: oklch(0.72 0.13 240); }
+[data-tone="teal"] { --tone: oklch(0.78 0.12 190); }
+[data-tone="orange"] { --tone: oklch(0.77 0.16 55); }
+[data-tone="lime"] { --tone: oklch(0.86 0.17 125); }
+.play-skin section[data-tone] {
+  position: relative;
+  padding-top: 26px;
+  border: 2px solid var(--play-ink);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tone) 11%, var(--surface));
+  box-shadow: 4px 5px 0 var(--play-ink);
+}
+[data-theme="dark"] .play-skin section[data-tone] { border-color: color-mix(in srgb, var(--tone) 55%, var(--bg)); background: color-mix(in srgb, var(--tone) 9%, var(--surface)); }
+.play-skin section[data-tone]::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; border-radius: 11px 11px 0 0;
+  border-bottom: 2px solid var(--play-ink);
+  background: repeating-linear-gradient(90deg, var(--tone) 0 10px, color-mix(in srgb, var(--tone) 55%, white) 10px 20px);
+}
+[data-theme="dark"] .play-skin section[data-tone]::before { border-bottom-color: color-mix(in srgb, var(--tone) 55%, var(--bg)); }
+.play-skin section[data-tone] h2 { text-shadow: 2px 2px 0 color-mix(in srgb, var(--tone) 70%, transparent); }
+.play-skin section[data-tone] h2 > svg:first-child {
+  box-sizing: content-box; padding: 5px; border-radius: 8px;
+  background: var(--tone); border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink);
+  transform: rotate(-6deg);
+}
+.play-skin section[data-tone] h2 > svg:first-child path { fill: var(--on-tone); }
+.play-skin section[data-tone] .bg-surface-2 { background: color-mix(in srgb, var(--tone) 20%, var(--surface)); }
+/* Panels inside a card (data-part, e.g. the parts of total money) tint their tiles with their own colour. */
+.play-skin section[data-tone] [data-part] .bg-surface-2 { background: color-mix(in srgb, var(--tone) 26%, var(--surface)); }
+.play-skin section[data-tone]:hover h2 > svg:first-child { animation: badge-wiggle 0.3s steps(2) 2; }
+@keyframes badge-wiggle { 50% { transform: rotate(6deg) scale(1.1); } }
+/* Pixel confetti behind the page (fixed, so it doesn't scroll with long lists). */
+.play-confetti {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.35;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' shape-rendering='crispEdges'%3E%3Crect x='160' y='72' width='10' height='10' fill='%23f5c84c'/%3E%3Crect x='24' y='32' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='184' y='24' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='16' y='40' width='10' height='10' fill='%235cc98a'/%3E%3Crect x='208' y='32' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='40' y='216' width='6' height='6' fill='%23f39a4a'/%3E%3Crect x='56' y='112' width='6' height='6' fill='%234fc7c0'/%3E%3Crect x='200' y='24' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='16' y='64' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='208' y='72' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='152' y='88' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='96' y='184' width='6' height='6' fill='%235cc98a'/%3E%3Crect x='32' y='24' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='248' y='216' width='8' height='8' fill='%23f39a4a'/%3E%3Crect x='232' y='232' width='8' height='8' fill='%234fc7c0'/%3E%3Crect x='152' y='120' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='120' y='40' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='264' y='248' width='8' height='8' fill='%23f07fae'/%3E%3C/svg%3E") 0 0 / 280px 280px repeat;
+}
+[data-theme="dark"] .play-confetti { opacity: 0.22; }
+/*
+ * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, MERCURY with an offset
+ * shadow, and chunky nav chips that light up soft gold on hover (the current page is a gold block).
+ */
+.play-header { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); position: relative; border: 2px solid var(--play-ink) !important; border-radius: 14px !important; box-shadow: 4px 5px 0 var(--play-ink); }
+[data-theme="dark"] .play-header { --play-ink: oklch(0.1 0.02 280); border-color: oklch(0.45 0.05 280) !important; }
+.play-header .font-display { text-shadow: 2px 2px 0 oklch(0.86 0.15 92); }
+.play-header nav a { border: 2px solid transparent; transition: transform 0.12s steps(2), background 0.12s; }
+.play-header nav a:hover { background: color-mix(in srgb, oklch(0.86 0.15 92) 45%, var(--surface)) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); transform: translateY(-2px) rotate(-2deg); }
+.play-header nav a[aria-current="page"] { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 3px 0 var(--play-ink); }
+.play-header nav a[aria-current="page"]:hover { transform: none; }
+.play-header nav ~ div button { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }
+.play-header nav ~ div button:active { transform: translate(2px, 2px); box-shadow: none; }
+[data-theme="dark"] .play-header nav a[aria-current="page"], [data-theme="dark"] .play-header nav ~ div button { border-color: oklch(0.45 0.05 280); }
+
+/* A coin that turns, beside "Money now". */
+.coin-spin { animation: coin-spin 1.6s steps(4) infinite; }
+@keyframes coin-spin { 50% { transform: scaleX(0.15); } }
+/* Hearts: the one about to be lost beats. */
+.heart-beat { animation: heart-beat 0.8s steps(2) infinite alternate; }
+@keyframes heart-beat { to { transform: scale(1.18); } }
 @media (prefers-reduced-motion: reduce) {
-  .flame, .glow { animation: none; }
+  .flame, .glow, .pixel-pop, .coin-spin, .heart-beat, .play-skin section[data-tone]:hover h2 > svg:first-child, .fab-body, .fab-face::after, .fab-spark, .fab-enter, .fab:hover .fab-body { animation: none; }
 }
 
 @layer base {

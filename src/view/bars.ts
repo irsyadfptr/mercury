@@ -68,3 +68,44 @@ export function moodBar(value: number, n = 20): Segment[] {
   const filled = Math.round((Math.min(100, Math.max(0, value)) / 100) * n)
   return range(n).map((i) => ({ bg: i < filled ? moodColor(((i + 0.5) / n) * 100) : COLOR.empty }))
 }
+
+/**
+ * Pixel grid for "where it went": n cells shared out by amount (largest remainder, so they always add up to n), in
+ * the order given. A category too small for one cell gets none; empty when nothing was spent.
+ */
+export function shareCells(totals: readonly { category: string; amount: number }[], n = 100): string[] {
+  const sum = totals.reduce((s, x) => s + Math.max(0, x.amount), 0)
+  if (sum <= 0) return []
+  const exact = totals.map((x) => (Math.max(0, x.amount) / sum) * n)
+  const counts = exact.map(Math.floor)
+  const byRemainder = range(totals.length).sort((a, b) => exact[b] - counts[b] - (exact[a] - counts[a]))
+  const missing = n - counts.reduce((s, c) => s + c, 0)
+  for (let i = 0; i < missing; i++) counts[byRemainder[i]]++
+  return totals.flatMap((x, i) => Array<string>(counts[i]).fill(x.category))
+}
+
+/**
+ * Calendar shading: 1–4 by where an amount falls among the month's spending days (quartiles), 0 for nothing spent.
+ * Ranks, not the raw scale, so one big day (rent) doesn't wash every other day out to the lightest step.
+ */
+export function spendLevel(amounts: readonly number[]): (amount: number) => number {
+  const sorted = amounts.filter((a) => a > 0).sort((a, b) => a - b)
+  return (amount) => {
+    if (amount <= 0 || !sorted.length) return 0
+    const below = sorted.filter((a) => a < amount).length
+    return Math.min(4, 1 + Math.floor((below / sorted.length) * 4))
+  }
+}
+
+/**
+ * A running trade on one line from stop to target: where the stop, entry, current price and target sit, as 0–100 %
+ * of the line. Without a stop or target, the line ends a little past the lowest or highest of the other prices.
+ */
+export function tradeTrack(entry: number, now: number, stop?: number, target?: number): { stop?: number; entry: number; now: number; target?: number } {
+  const known = [entry, now, ...(stop ? [stop] : []), ...(target ? [target] : [])]
+  const span = Math.max(...known) - Math.min(...known) || Math.abs(entry) * 0.1 || 1
+  const lo = stop ?? Math.min(...known) - span * 0.1
+  const hi = target ?? Math.max(...known) + span * 0.1
+  const at = (p: number) => Math.min(100, Math.max(0, ((p - lo) / (hi - lo || 1)) * 100))
+  return { stop: stop ? at(stop) : undefined, entry: at(entry), now: at(now), target: target ? at(target) : undefined }
+}

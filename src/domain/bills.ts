@@ -24,11 +24,11 @@ export function nextMonthly(dueDate: string): string {
  * Active bills due within BILL_REMIND_DAYS (or overdue), and expected income at least INCOME_LATE_DAYS late;
  * soonest first. days < 0 = overdue / late.
  */
-export function billsDue(bills: readonly Bill[], today: string): BillDue[] {
+export function billsDue(bills: readonly Bill[], today: string, remindDays = BILL_REMIND_DAYS): BillDue[] {
   return bills
     .filter((b) => !b.archived)
     .map((bill) => ({ bill, days: dayNumber(bill.dueDate) - dayNumber(today) }))
-    .filter((d) => (d.bill.income ? d.days <= -INCOME_LATE_DAYS : d.days <= BILL_REMIND_DAYS))
+    .filter((d) => (d.bill.income ? d.days <= -INCOME_LATE_DAYS : d.days <= remindDays))
     .sort((a, b) => a.days - b.days)
 }
 

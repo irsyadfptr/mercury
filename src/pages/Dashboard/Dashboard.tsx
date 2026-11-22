@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
 import { useCashflow } from '@/cashflowStore'
@@ -6,15 +6,17 @@ import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
 import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
-import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
+import { heatTier, level, quests, speedOf, winnersLosers } from '@/domain/portfolio'
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
+import { AccountChips, DueBills } from '@/pages/Cashflow/MoneyNow'
+import { SafeSpend } from '@/pages/Cashflow/SafeSpend'
 import { href } from '@/routes'
 import { useBreakers } from '@/useGate'
 import type { Breaker } from '@/domain/circuitBreaker'
 import { useSettings } from '@/settings'
-import type { AllocationItem, Bill, Holding, I18n, JournalEntry, Quest, RiskStatus, Row, Summary, Transaction } from '@/types'
+import type { AllocationItem, Bill, CashEntry, Holding, I18n, JournalEntry, PixelIconName, Quest, RiskStatus, Row, Summary, Transaction } from '@/types'
 import { WATCHLIST } from '@/market/coingecko'
 import { exitLessonsDue, journalStreak } from '@/domain/journal'
 import { useStore } from '@/store'
@@ -24,34 +26,102 @@ import { useNow } from '@/useNow'
 import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, tradeTrack, xpBar } from '@/view/bars'
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { QuestView, StatTile } from './Dashboard.types'
 
+/**
+ * The daily glance, most-needed first: what you're worth and where it is (accounts, investing, running trades), what
+ * to do today (quests), what you can spend today and how the month is going, then where the money sits and the heat,
+ * winners and losers, and the market's mood.
+ * Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
+ */
 export function Dashboard() {
   const summary = useSummary()
-  // Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
+  const { entries } = useCashEntries()
+  const today = localDate(useNow())
   const hasHoldings = summary.rows.length > 0
   return (
-    <>
-      <Hero summary={summary} />
-      <MonthCard />
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
+      <Hero summary={summary} entries={entries} today={today} />
+      <Quests summary={summary} />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2">
+        <SafeSpend entries={entries} today={today} />
+        <MonthCard />
+      </div>
       {!hasHoldings && <EmptyDashboard />}
+      {hasHoldings && (
+        <div className="flex flex-wrap gap-4">
+          <Inventory summary={summary} />
+          <HeatCard heat={summary.heat} />
+        </div>
+      )}
       <div className="flex flex-wrap gap-4">
-        {hasHoldings && <HeatCard heat={summary.heat} />}
-        {hasHoldings && <TradeRisk rows={summary.rows} />}
+        {hasHoldings && <WinnersLosers rows={summary.rows} />}
         <MoodCard />
       </div>
-      {hasHoldings && <Inventory summary={summary} />}
-      <Quests summary={summary} />
-    </>
+    </div>
+  )
+}
+
+// ---- Winners and losers ----
+
+/** Best and worst open holdings by unrealized %, with a bar sized against the biggest move shown. */
+function WinnersLosers({ rows }: { rows: readonly Row[] }) {
+  const { t, compact, num } = useI18n()
+  const { winners, losers } = winnersLosers(rows)
+  const max = Math.max(1, ...[...winners, ...losers].map((r) => Math.abs(r.v.unrealizedPct)))
+  const list = (title: string, items: Row[], up: boolean) => (
+    <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-1.5">
+      <Label className="flex items-center gap-1.5">
+        <PixelIcon name={up ? 'arrowUp' : 'arrowDown'} size={12} color={up ? COLOR.up : COLOR.down} />
+        {title}
+      </Label>
+      {!items.length && <p className="text-sm text-text-muted">{t(up ? 'wl.noWinners' : 'wl.noLosers')}</p>}
+      <ul className="flex flex-col gap-1.5">
+        {items.map((r) => (
+          <li key={r.holding.id}>
+            <a href={href('portfolio')} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold">{r.holding.symbol}</span>
+                <span className="font-display text-xl leading-none" style={{ color: up ? COLOR.up : COLOR.down }}>
+                  {up ? '▲' : '▼'}
+                  {num(Math.abs(r.v.unrealizedPct), 1)}%
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-2 flex-1 overflow-hidden rounded bg-empty">
+                  <span className="block h-full rounded" style={{ width: `${(Math.abs(r.v.unrealizedPct) / max) * 100}%`, background: up ? COLOR.up : COLOR.down }} />
+                </span>
+                <span className="font-mono text-xs text-text-muted">
+                  {up ? '+' : '−'}
+                  {compact(Math.abs(r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)))}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+  return (
+    <Card aria-label={t('wl.title')} data-tone="teal" className="min-w-0 flex-[3_1_460px]">
+      <CardTitle icon="chartUp" aside={t('wl.sub')}>
+        {t('wl.title')}
+      </CardTitle>
+      <div className="flex flex-wrap gap-4">
+        {list(t('wl.winners'), winners, true)}
+        {list(t('wl.losers'), losers, false)}
+      </div>
+    </Card>
   )
 }
 
 function EmptyDashboard() {
   const { t } = useI18n()
   return (
-    <Card className="flex flex-col items-center gap-3 py-8 text-center">
+    <Card data-tone="gold" className="flex flex-col items-center gap-3 py-8 text-center">
       <PixelIcon name="chest" size={40} />
       <h2 className="font-display text-3xl leading-none uppercase">{t('empty.title')}</h2>
       <p className="text-text-muted">{t('empty.body')}</p>
@@ -119,22 +189,48 @@ function statTiles(s: Summary, heatLimit: number, f: I18n): StatTile[] {
 
 const LEVEL_UP_SOON = 0.9
 
-function Hero({ summary }: { summary: Summary }) {
+/** One part of total money inside the hero: a tinted panel with its own colour, icon, label and amount. */
+function Part({ tone, icon, label, value, aside, children }: { tone: string; icon: PixelIconName; label: string; value: number; aside?: ReactNode; children?: ReactNode }) {
+  const { compact } = useI18n()
+  return (
+    <div data-tone={tone} data-part className="flex min-w-0 flex-col gap-2 rounded-xl border-2 p-3" style={{ background: 'color-mix(in srgb, var(--tone) 16%, var(--surface))', borderColor: 'color-mix(in srgb, var(--tone) 60%, var(--surface))' }}>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="flex items-center gap-2">
+          <span className="grid size-7 place-items-center rounded-md border-2 border-text" style={{ background: 'var(--tone)' }}>
+            <PixelIcon name={icon} size={14} color="oklch(0.24 0.03 275)" />
+          </span>
+          <Label className="text-text">{label}</Label>
+        </span>
+        {aside && <span className="font-label text-[11px] uppercase">{aside}</span>}
+      </div>
+      <span className="font-display text-[32px] leading-none" style={{ color: value < 0 ? COLOR.down : undefined }}>
+        {value < 0 ? '−' : ''}
+        {compact(Math.abs(value))}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+function Hero({ summary, entries, today }: { summary: Summary; entries: readonly CashEntry[]; today: string }) {
   const f = useI18n()
   const { t, compact } = f
   const heatLimit = useSettings((x) => x.heatLimit)
-  const { entries } = useCashEntries()
   const accounts = useCashflow((s) => s.accounts)
   // Net worth = holdings + money in accounts. Heat and position sizing stay on holdings (trading capital).
   const cash = accountsTotal(accounts, entries)
   const total = summary.netWorth + cash
   const shown = useCountUp(total)
   const lv = level(total)
+  const { trades, pnl: tradePnl } = tradeTotals(summary.rows)
+  const investing = summary.rows.filter((r) => r.holding.group === 'investing' && r.v.quantity > 0)
+  const investingPnl = investing.filter((r) => r.v.priceSource !== 'cost').reduce((sum, r) => sum + idrPnl(r), 0)
   const xpPct = Math.round(lv.xp * 100)
 
   return (
-    <Card aria-label={t('dash.netWorth')} className="flex flex-wrap gap-4">
-      <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-2">
+    // Phone: number, then the parts, then the stat tiles. Wide: number and tiles side by side, the parts below.
+    <Card aria-label={t('dash.netWorth')} data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2.5">
           <Label>{t('dash.netWorth')}</Label>
           <span className="rounded-md bg-primary px-2 py-0.5 font-label text-[11px] font-bold text-primary-foreground shadow-[0_2px_0_var(--accent-deep)]">
@@ -148,22 +244,6 @@ function Hero({ summary }: { summary: Summary }) {
             {f.amount(shown)}
           </span>
         </div>
-        {/* Total money = accounts (cashflow) + investing holdings + running trades. */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: t('dash.partAccounts'), value: cash },
-            { label: t('dash.partInvesting'), value: summary.byGroup.investing },
-            { label: t('dash.partTrading'), value: summary.byGroup.trading },
-          ].map((x) => (
-            <div key={x.label} className="flex flex-col gap-0.5 rounded-md border border-border px-2.5 py-1.5">
-              <Label>{x.label}</Label>
-              <span className="font-mono text-sm font-medium" style={{ color: x.value < 0 ? COLOR.down : undefined }}>
-                {x.value < 0 ? '−' : ''}
-                {compact(Math.abs(x.value))}
-              </span>
-            </div>
-          ))}
-        </div>
         {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
         <div className="flex flex-col gap-1.5 pt-1.5">
           <div className="flex justify-between gap-2">
@@ -173,7 +253,7 @@ function Hero({ summary }: { summary: Summary }) {
           <Segments items={xpBar(lv.xp)} height={14} label={`${t('dash.level')} ${lv.level}: ${xpPct}%`} />
         </div>
       </div>
-      <div className="grid flex-[2_1_300px] grid-cols-2 gap-2">
+      <div className="order-last grid grid-cols-2 gap-2 lg:order-none">
         {statTiles(summary, heatLimit, f).map((x) => (
           <div key={x.label} className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
             <Label>{x.label}</Label>
@@ -183,6 +263,45 @@ function Hero({ summary }: { summary: Summary }) {
             <span className="text-[11px] text-text-muted">{x.sub}</span>
           </div>
         ))}
+      </div>
+      {/* Total money = accounts (Cashflow) + investing holdings + running trades, each in its own panel. */}
+      <div className="flex flex-col gap-3 lg:col-span-2 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
+          <Part tone="gold" icon="coin" label={t('dash.partAccounts')} value={cash}>
+            <AccountChips entries={entries} />
+            <DueBills today={today} />
+          </Part>
+          <Part
+            tone="blue"
+            icon="chest"
+            label={t('dash.partInvesting')}
+            value={summary.byGroup.investing}
+            aside={
+              investing.length > 0 && (
+                <span style={{ color: signColor(investingPnl) }}>
+                  {t('dash.holdings', { n: investing.length })} · {investingPnl >= 0 ? '+' : '−'}
+                  {compact(Math.abs(investingPnl))}
+                </span>
+              )
+            }
+          />
+        </div>
+        <Part
+          tone="purple"
+          icon="chartUp"
+          label={t('dash.partTrading')}
+          value={summary.byGroup.trading}
+          aside={
+            trades.length > 0 && (
+              <span style={{ color: signColor(tradePnl) }}>
+                {t('run.count', { n: trades.length })} · {tradePnl >= 0 ? '+' : '−'}
+                {compact(Math.abs(tradePnl))}
+              </span>
+            )
+          }
+        >
+          <TradeList rows={summary.rows} />
+        </Part>
       </div>
     </Card>
   )
@@ -200,7 +319,7 @@ function MonthCard() {
   const signed = (n: number) => `${n >= 0 ? '+' : '−'}${compact(Math.abs(n))}`
 
   return (
-    <Card aria-label={t('dash.month', { month: month(s.month) })} className="flex flex-wrap items-center gap-4">
+    <Card aria-label={t('dash.month', { month: month(s.month) })} data-tone={s.net >= 0 ? 'green' : 'red'} className="flex flex-wrap items-center gap-4">
       <div className="flex min-w-0 flex-[3_1_320px] flex-col gap-1.5">
         <div className="flex flex-wrap justify-between gap-2">
           <Label>{t('dash.month', { month: month(s.month) })}</Label>
@@ -243,7 +362,7 @@ function HeatCard({ heat }: { heat: number }) {
   const tierLabel = t(`heat.${tier}`)
 
   return (
-    <Card aria-label={t('heat.title')} className="flex min-w-0 flex-[2_1_340px] flex-col gap-3" style={hot ? { background: COLOR.fireSoft, borderColor: COLOR.fireEdge } : undefined}>
+    <Card aria-label={t('heat.title')} data-tone="red" className="flex min-w-0 flex-[2_1_340px] flex-col gap-3" style={hot ? { background: COLOR.fireSoft, borderColor: COLOR.fireEdge } : undefined}>
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-3xl leading-none uppercase">{t('heat.title')}</h2>
         <span className={`rounded-md px-2 py-0.5 font-label text-[11px] uppercase ${flames ? 'bg-fire-red text-white' : 'bg-surface-2 text-text-muted'}`}>{tierLabel}</span>
@@ -277,6 +396,7 @@ function MoodCard() {
   return (
     <Card
       aria-label={t('mood.title')}
+      data-tone="lime"
       className="flex min-w-0 flex-[1_1_240px] flex-col gap-3"
       // Pops off the page without tinting the surface: zone-coloured thick border, hard pixel drop shadow, soft halo.
       style={tone ? { border: `2px solid ${tone}`, boxShadow: `0 5px 0 ${tone}, 0 0 28px color-mix(in oklch, ${tone} 40%, transparent)` } : undefined}
@@ -352,34 +472,80 @@ function riskNote(status: RiskStatus, limit: number, f: I18n): string {
 
 const isAlarming = (s: RiskStatus) => s.kind === 'noStop' || s.kind === 'over'
 
-function TradeRisk({ rows }: { rows: readonly Row[] }) {
-  const f = useI18n()
-  const limit = useSettings((x) => x.tradeLimit)
-  const bars = rows.flatMap(({ holding, risk }) => {
-    const bar = riskBar(risk, limit)
-    return bar ? [{ holding, ...bar, note: riskNote(bar.status, limit, f) }] : []
-  })
+/** Open trades (Trading group): how many, and their gain or loss together in rupiah (priced ones only). */
+function tradeTotals(rows: readonly Row[]) {
+  const trades = rows.filter((r) => r.holding.group === 'trading' && r.v.quantity > 0)
+  const pnl = trades.filter((r) => r.v.priceSource !== 'cost').reduce((sum, r) => sum + idrPnl(r), 0)
+  return { trades, pnl }
+}
 
+/** A holding's unrealized gain or loss in rupiah. */
+const idrPnl = (r: Row) => r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)
+
+/**
+ * Open trades, one row each: gain or loss so far, a line from stop to target with the entry and today's price on it,
+ * days held, and the trade's risk against the per-trade limit (what the old Trade risk card showed).
+ */
+function TradeList({ rows }: { rows: readonly Row[] }) {
+  const f = useI18n()
+  const { t, num, compact } = f
+  const limit = useSettings((x) => x.tradeLimit)
+  const { trades } = tradeTotals(rows)
+  const price = (n: number) => num(n, n < 10 ? 4 : 0)
+  if (!trades.length) return <p className="text-sm text-text-muted">{t('risk.empty')}</p>
   return (
-    <Card aria-label={f.t('risk.title')} className="min-w-0 flex-[3_1_460px]">
-      <CardTitle icon="heart" aside={f.t('risk.limit', { n: limit })}>
-        {f.t('risk.title')}
-      </CardTitle>
-      {!bars.length && <p className="text-sm text-text-muted">{f.t('risk.empty')}</p>}
-      {bars.map(({ holding, status, segments, note }) => (
-        <div key={holding.id} className="flex flex-col gap-1.5 border-t border-border py-2.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-semibold">
-              {holding.symbol} {holding.paper && <span className="font-label text-[11px] text-accent-text uppercase">· {f.t('badge.paper')}</span>}
-            </span>
-            <span className="font-label text-[11px] uppercase" style={{ color: isAlarming(status) ? COLOR.down : COLOR.muted }}>
-              {note}
-            </span>
-          </div>
-          <Segments items={segments} label={`${holding.symbol}: ${note}`} />
-        </div>
-      ))}
-    </Card>
+      <ul className="flex flex-col gap-2">
+        {trades.map((r) => {
+          const { holding: h, v } = r
+          const priced = v.priceSource !== 'cost'
+          const up = v.unrealized >= 0
+          const track = tradeTrack(v.avgCost, v.price, h.stop, h.target)
+          const bar = riskBar(r.risk, limit)
+          // Without a stop the left label already says so; the risk note would repeat it.
+          const note = bar && bar.status.kind !== 'noStop' ? riskNote(bar.status, limit, f) : undefined
+          const from = Math.min(track.entry, track.now)
+          return (
+            <li key={h.id}>
+              <a href={href('portfolio')} className="flex flex-col gap-2 rounded-lg bg-surface-2 px-3 py-2.5 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold">
+                    {h.symbol} {h.paper && <span className="font-label text-[11px] text-accent-text uppercase">· {t('badge.paper')}</span>}
+                    <span className="ml-1.5 font-label text-[11px] text-text-muted uppercase">{t('run.days', { d: r.daysHeld })}</span>
+                  </span>
+                  {priced ? (
+                    <span className="flex items-baseline gap-1.5" style={{ color: up ? COLOR.up : COLOR.down }}>
+                      <span className="font-display text-xl leading-none">
+                        {up ? '▲' : '▼'}
+                        {num(Math.abs(v.unrealizedPct), 1)}%
+                      </span>
+                      <span className="font-mono text-xs">
+                        {up ? '+' : '−'}
+                        {compact(Math.abs(idrPnl(r)))}
+                      </span>
+                    </span>
+                  ) : (
+                    <Label>{t('run.noPrice')}</Label>
+                  )}
+                </span>
+                {/* Stop ──── entry ▓▓▓ now ──── target */}
+                <span role="img" aria-label={t('run.trackLabel', { stop: h.stop ? price(h.stop) : '—', entry: price(v.avgCost), now: price(v.price), target: h.target ? price(h.target) : '—' })} className="relative mx-1.5 block h-3">
+                  <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded bg-empty" />
+                  <span className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded" style={{ left: `${from}%`, width: `${Math.abs(track.now - track.entry)}%`, background: up ? COLOR.up : COLOR.down }} />
+                  {track.stop !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.stop}%`, background: COLOR.down }} />}
+                  {track.target !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.target}%`, background: COLOR.up }} />}
+                  <span className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-text-muted" style={{ left: `${track.entry}%` }} />
+                  <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface" style={{ left: `${track.now}%`, background: up ? COLOR.up : COLOR.down }} />
+                </span>
+                <span className="flex justify-between gap-2 font-label text-[10px] uppercase">
+                  <span style={{ color: h.stop ? COLOR.down : COLOR.muted }}>{h.stop ? t('run.stop', { p: price(h.stop) }) : t('run.noStop')}</span>
+                  {note && <span style={{ color: bar && isAlarming(bar.status) ? COLOR.down : COLOR.muted }}>{note}</span>}
+                  <span style={{ color: h.target ? COLOR.up : COLOR.muted }}>{h.target ? t('run.target', { p: price(h.target) }) : t('run.noTarget')}</span>
+                </span>
+              </a>
+            </li>
+          )
+        })}
+      </ul>
   )
 }
 
@@ -393,11 +559,11 @@ function Inventory({ summary }: { summary: Summary }) {
   const description = items.map((i) => `${t(`class.${i.assetClass}`)} ${num(i.pct, 0)}%`).join(', ')
 
   return (
-    <Card aria-label={t('inv.title')}>
+    <Card aria-label={t('inv.title')} data-tone="blue" className="min-w-0 flex-[3_1_480px]">
       <CardTitle icon="chest" aside={t('inv.speed')}>
         {t('inv.title')}
       </CardTitle>
-      <div role="img" aria-label={description} className="flex h-[230px] gap-2">
+      <div role="img" aria-label={description} className="flex h-[250px] gap-2">
         <Tile item={map.first} largest />
         {map.second && (
           <div className="flex min-w-0 flex-col gap-2" style={{ flex: `${map.rightWeight} 1 0` }}>
@@ -429,10 +595,11 @@ function Tile({ item, largest = false }: { item: AllocationItem; largest?: boole
       className="flex min-w-0 flex-col justify-between overflow-hidden rounded-lg p-3 shadow-[inset_0_-4px_0_oklch(0_0_0/0.12)]"
       style={{ flex: `${item.value} 1 0`, background: colors.bg, color: colors.fg }}
     >
-      <span className="truncate font-label text-[11px] uppercase">
+      {/* Never squeezed: on a short tile the amount gives way, not the name. */}
+      <span className="shrink-0 truncate font-label text-[11px] uppercase">
         {t(`class.${item.assetClass}`)} {'★'.repeat(speedOf(item.assetClass))}
       </span>
-      <div>
+      <div className="min-h-0">
         <div className="font-display leading-[0.85]" style={{ fontSize: tileFontSize(item.pct, largest) }}>
           {num(item.pct, 0)}%
         </div>
@@ -556,7 +723,7 @@ function Quests({ summary }: { summary: Summary }) {
   const list = [...breakerAlerts(f, breakers),...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
-    <Card aria-label={f.t('quests.title')}>
+    <Card aria-label={f.t('quests.title')} data-tone="orange">
       <CardTitle
         icon="star"
         aside={

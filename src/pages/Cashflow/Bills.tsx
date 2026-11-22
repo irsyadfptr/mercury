@@ -125,7 +125,7 @@ export function Bills() {
   )
 
   return (
-    <Card aria-label={t('cf.bills')}>
+    <Card aria-label={t('cf.bills')} data-tone="orange">
       <CardTitle icon="receipt">{t('cf.bills')}</CardTitle>
       {!active.length && !draft && <p className="text-sm text-text-muted">{t('cf.noBills')}</p>}
       <ul className="flex flex-col">

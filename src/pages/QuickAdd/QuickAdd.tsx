@@ -28,7 +28,7 @@ const Recognition = (window as unknown as { SpeechRecognition?: new () => Speech
 
 /** Phone-first entry screen: type, amount on a number pad, category tile, day, save. Works offline. */
 export function QuickAdd() {
-  const { t, num, money, compact, category, lang } = useI18n()
+  const { t, num, compact, category, lang } = useI18n()
   const sync = useSheetSync()
   const addEntry = useCashflow((s) => s.addEntry)
   const updateEntry = useCashflow((s) => s.updateEntry)
@@ -57,7 +57,6 @@ export function QuickAdd() {
         }
       : freshDraft('expense', today),
   )
-  const [saved, setSaved] = useState<string>()
   const [listening, setListening] = useState(false)
   const [heard, setHeard] = useState<string>()
   const [voiceError, setVoiceError] = useState(false)
@@ -67,7 +66,6 @@ export function QuickAdd() {
   const transfer = draft.type === TRANSFER
   const categories = draft.type === TRANSFER ? [] : categoriesFor(draft.type, customCategories, entries)
   const active = accounts.filter((a) => !a.archived)
-  const nameOf = (id?: string) => accounts.find((a) => a.id === id)?.name ?? ''
   const canSave = amount > 0 && (transfer ? !!draft.toAccount && draft.toAccount !== draft.account : draft.category !== undefined)
   const update = (patch: Partial<QuickAddDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const press = (key: PadKey) => setDraft((d) => ({ ...d, digits: padInput(d.digits, key) }))
@@ -82,15 +80,11 @@ export function QuickAdd() {
       location.hash = href('cashflow')
       return
     }
-    if (transfer) {
-      addEntry({ type: TRANSFER, amount, category: TRANSFER, date: draft.date, note, account: draft.account, toAccount: draft.toAccount })
-      setSaved(t('add.savedTransfer', { amount: money(amount), from: nameOf(draft.account), to: nameOf(draft.toAccount) }))
-    } else if (draft.category) {
-      addEntry({ type: draft.type, amount, category: draft.category, date: draft.date, note, account: draft.account })
-      setSaved(t('add.saved', { amount: money(amount), category: category(draft.category) }))
-    }
-    setDraft(freshDraft(draft.type, today, draft.account))
-    setHeard(undefined)
+    // Back to Cashflow, which shows what was saved with "Add another" and Undo.
+    const id = transfer
+      ? addEntry({ type: TRANSFER, amount, category: TRANSFER, date: draft.date, note, account: draft.account, toAccount: draft.toAccount })
+      : draft.category && addEntry({ type: draft.type, amount, category: draft.category, date: draft.date, note, account: draft.account })
+    if (id) location.hash = href('cashflow', { added: id })
   }
 
   /** Fills the form from what was heard; the user still checks it and taps Save. */
@@ -359,11 +353,6 @@ export function QuickAdd() {
       >
         {t('add.save')}
       </Button>
-      {saved && (
-        <p role="status" className="text-center text-sm text-text-muted">
-          ✓ {saved}
-        </p>
-      )}
     </div>
   )
 }

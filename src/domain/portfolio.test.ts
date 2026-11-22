@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byType, daysHeld, heatTier, level, positionSize, quests, rarity, sizeQuote, summarize } from './portfolio'
+import { byType, daysHeld, heatTier, level, positionSize, quests, rarity, sizeQuote, summarize, winnersLosers } from './portfolio'
 import type { Holding, Transaction } from '@/types'
 
 const NOW = Date.parse('2026-11-13T00:00:00Z')
@@ -39,6 +39,12 @@ describe('summarize', () => {
     expect(s.byGroup).toEqual({ investing: 10_000_000, trading: 40_000_000 })
     expect(s.missingFx.map((x) => x.id)).toEqual(['spy'])
     expect(s.rows.find((r) => r.holding.id === 'btc')?.v.priceSource).toBe('cost')
+  })
+
+  it('picks winners and losers by unrealized %, skipping at-cost and unconverted holdings', () => {
+    const { winners, losers } = winnersLosers(summarize(holdings, txns, undefined, NOW).rows)
+    expect(winners.map((r) => r.holding.id)).toEqual(['bbca'])
+    expect(losers.map((r) => r.holding.id)).toEqual(['adro'])
   })
 
   it('converts USD with a rate', () => {
