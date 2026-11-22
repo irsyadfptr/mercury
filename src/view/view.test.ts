@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, spendLevel, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -96,4 +96,17 @@ describe('spendLevel', () => {
     expect([0, 10, 20, 30, 3_500_000].map(level)).toEqual([0, 1, 2, 3, 4])
   })
   it('is 0 with no spending days', () => expect(spendLevel([])(5)).toBe(0))
+})
+
+describe('tradeTrack', () => {
+  it('places stop, entry, price and target from 0 to 100', () => {
+    expect(tradeTrack(100, 110, 90, 140)).toEqual({ stop: 0, entry: 20, now: 40, target: 100 })
+  })
+  it('pads the open end without a stop or target', () => {
+    const t = tradeTrack(100, 120)
+    expect(t.stop).toBeUndefined()
+    expect(t.entry).toBeGreaterThan(0)
+    expect(t.now).toBeLessThan(100)
+    expect(t.now).toBeGreaterThan(t.entry)
+  })
 })

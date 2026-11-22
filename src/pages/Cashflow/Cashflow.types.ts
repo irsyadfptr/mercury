@@ -5,10 +5,10 @@ export interface MoneyNowProps {
   /** Every entry, all months: balances are all time. */
   entries: readonly CashEntry[]
   today: string
-  /** The sync status line, shown under the total. */
-  sync: ReactNode
-  /** Tapping an account shows its entries. */
-  onPick: (accountId: string) => void
+  /** The sync status line, shown under the total (Cashflow only). */
+  sync?: ReactNode
+  /** Tapping an account shows its entries; without it (Dashboard), it opens Cashflow. */
+  onPick?: (accountId: string) => void
 }
 
 export interface MonthHeroProps {

@@ -96,3 +96,16 @@ export function spendLevel(amounts: readonly number[]): (amount: number) => numb
     return Math.min(4, 1 + Math.floor((below / sorted.length) * 4))
   }
 }
+
+/**
+ * A running trade on one line from stop to target: where the stop, entry, current price and target sit, as 0–100 %
+ * of the line. Without a stop or target, the line ends a little past the lowest or highest of the other prices.
+ */
+export function tradeTrack(entry: number, now: number, stop?: number, target?: number): { stop?: number; entry: number; now: number; target?: number } {
+  const known = [entry, now, ...(stop ? [stop] : []), ...(target ? [target] : [])]
+  const span = Math.max(...known) - Math.min(...known) || Math.abs(entry) * 0.1 || 1
+  const lo = stop ?? Math.min(...known) - span * 0.1
+  const hi = target ?? Math.max(...known) + span * 0.1
+  const at = (p: number) => Math.min(100, Math.max(0, ((p - lo) / (hi - lo || 1)) * 100))
+  return { stop: stop ? at(stop) : undefined, entry: at(entry), now: at(now), target: target ? at(target) : undefined }
+}

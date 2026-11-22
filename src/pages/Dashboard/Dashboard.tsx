@@ -10,6 +10,7 @@ import { heatTier, level, quests, speedOf, winnersLosers } from '@/domain/portfo
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
+import { MoneyNow } from '@/pages/Cashflow/MoneyNow'
 import { SafeSpend } from '@/pages/Cashflow/SafeSpend'
 import { href } from '@/routes'
 import { useBreakers } from '@/useGate'
@@ -25,13 +26,14 @@ import { useNow } from '@/useNow'
 import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from '@/view/bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, tradeTrack, xpBar } from '@/view/bars'
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { QuestView, StatTile } from './Dashboard.types'
 
 /**
- * The daily glance, most-needed first: what you're worth, what to do today (quests), what you can spend today and how
- * the month is going, then trading health, where the money sits, winners and losers, and the market's mood.
+ * The daily glance, most-needed first: what you're worth, the money in your accounts and your running trades, what to
+ * do today (quests), what you can spend today and how the month is going, then where the money sits and the heat,
+ * winners and losers, and the market's mood.
  * Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
  */
 export function Dashboard() {
@@ -43,6 +45,10 @@ export function Dashboard() {
     <div className="play-skin contents">
       <div aria-hidden="true" className="play-confetti" />
       <Hero summary={summary} />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+        <MoneyNow entries={entries} today={today} />
+        <RunningTrades rows={summary.rows} />
+      </div>
       <Quests summary={summary} />
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2">
         <SafeSpend entries={entries} today={today} />
@@ -51,11 +57,10 @@ export function Dashboard() {
       {!hasHoldings && <EmptyDashboard />}
       {hasHoldings && (
         <div className="flex flex-wrap gap-4">
+          <Inventory summary={summary} />
           <HeatCard heat={summary.heat} />
-          <TradeRisk rows={summary.rows} />
         </div>
       )}
-      {hasHoldings && <Inventory summary={summary} />}
       <div className="flex flex-wrap gap-4">
         {hasHoldings && <WinnersLosers rows={summary.rows} />}
         <MoodCard />
@@ -422,33 +427,87 @@ function riskNote(status: RiskStatus, limit: number, f: I18n): string {
 
 const isAlarming = (s: RiskStatus) => s.kind === 'noStop' || s.kind === 'over'
 
-function TradeRisk({ rows }: { rows: readonly Row[] }) {
+/**
+ * Open trades (Trading group), one row each: profit or loss so far, a line from stop to target with the entry and
+ * today's price on it, days held, and the trade's risk against the per-trade limit (as the old Trade risk card did).
+ */
+function RunningTrades({ rows }: { rows: readonly Row[] }) {
   const f = useI18n()
+  const { t, num, compact } = f
   const limit = useSettings((x) => x.tradeLimit)
-  const bars = rows.flatMap(({ holding, risk }) => {
-    const bar = riskBar(risk, limit)
-    return bar ? [{ holding, ...bar, note: riskNote(bar.status, limit, f) }] : []
-  })
+  const trades = rows.filter((r) => r.holding.group === 'trading' && r.v.quantity > 0)
+  const idr = (r: Row) => r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)
+  const total = trades.filter((r) => r.v.priceSource !== 'cost').reduce((sum, r) => sum + idr(r), 0)
+  const price = (n: number) => num(n, n < 10 ? 4 : 0)
 
   return (
-    <Card aria-label={f.t('risk.title')} data-tone="purple" className="min-w-0 flex-[3_1_460px]">
-      <CardTitle icon="heart" aside={f.t('risk.limit', { n: limit })}>
-        {f.t('risk.title')}
+    <Card aria-label={t('run.title')} data-tone="purple" className="min-w-0">
+      <CardTitle
+        icon="chartUp"
+        aside={
+          trades.length > 0 && (
+            <span style={{ color: signColor(total) }}>
+              {t('run.count', { n: trades.length })} · {total >= 0 ? '+' : '−'}
+              {compact(Math.abs(total))}
+            </span>
+          )
+        }
+      >
+        {t('run.title')}
       </CardTitle>
-      {!bars.length && <p className="text-sm text-text-muted">{f.t('risk.empty')}</p>}
-      {bars.map(({ holding, status, segments, note }) => (
-        <div key={holding.id} className="flex flex-col gap-1.5 border-t border-border py-2.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-semibold">
-              {holding.symbol} {holding.paper && <span className="font-label text-[11px] text-accent-text uppercase">· {f.t('badge.paper')}</span>}
-            </span>
-            <span className="font-label text-[11px] uppercase" style={{ color: isAlarming(status) ? COLOR.down : COLOR.muted }}>
-              {note}
-            </span>
-          </div>
-          <Segments items={segments} label={`${holding.symbol}: ${note}`} />
-        </div>
-      ))}
+      {!trades.length && <p className="text-sm text-text-muted">{t('risk.empty')}</p>}
+      <ul className="flex flex-col gap-2">
+        {trades.map((r) => {
+          const { holding: h, v } = r
+          const priced = v.priceSource !== 'cost'
+          const up = v.unrealized >= 0
+          const track = tradeTrack(v.avgCost, v.price, h.stop, h.target)
+          const bar = riskBar(r.risk, limit)
+          // Without a stop the left label already says so; the risk note would repeat it.
+          const note = bar && bar.status.kind !== 'noStop' ? riskNote(bar.status, limit, f) : undefined
+          const from = Math.min(track.entry, track.now)
+          return (
+            <li key={h.id}>
+              <a href={href('portfolio')} className="flex flex-col gap-2 rounded-lg bg-surface-2 px-3 py-2.5 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold">
+                    {h.symbol} {h.paper && <span className="font-label text-[11px] text-accent-text uppercase">· {t('badge.paper')}</span>}
+                    <span className="ml-1.5 font-label text-[11px] text-text-muted uppercase">{t('run.days', { d: r.daysHeld })}</span>
+                  </span>
+                  {priced ? (
+                    <span className="flex items-baseline gap-1.5" style={{ color: up ? COLOR.up : COLOR.down }}>
+                      <span className="font-display text-xl leading-none">
+                        {up ? '▲' : '▼'}
+                        {num(Math.abs(v.unrealizedPct), 1)}%
+                      </span>
+                      <span className="font-mono text-xs">
+                        {up ? '+' : '−'}
+                        {compact(Math.abs(idr(r)))}
+                      </span>
+                    </span>
+                  ) : (
+                    <Label>{t('run.noPrice')}</Label>
+                  )}
+                </span>
+                {/* Stop ──── entry ▓▓▓ now ──── target */}
+                <span role="img" aria-label={t('run.trackLabel', { stop: h.stop ? price(h.stop) : '—', entry: price(v.avgCost), now: price(v.price), target: h.target ? price(h.target) : '—' })} className="relative mx-1.5 block h-3">
+                  <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded bg-empty" />
+                  <span className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded" style={{ left: `${from}%`, width: `${Math.abs(track.now - track.entry)}%`, background: up ? COLOR.up : COLOR.down }} />
+                  {track.stop !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.stop}%`, background: COLOR.down }} />}
+                  {track.target !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.target}%`, background: COLOR.up }} />}
+                  <span className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-text-muted" style={{ left: `${track.entry}%` }} />
+                  <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface" style={{ left: `${track.now}%`, background: up ? COLOR.up : COLOR.down }} />
+                </span>
+                <span className="flex justify-between gap-2 font-label text-[10px] uppercase">
+                  <span style={{ color: h.stop ? COLOR.down : COLOR.muted }}>{h.stop ? t('run.stop', { p: price(h.stop) }) : t('run.noStop')}</span>
+                  {note && <span style={{ color: bar && isAlarming(bar.status) ? COLOR.down : COLOR.muted }}>{note}</span>}
+                  <span style={{ color: h.target ? COLOR.up : COLOR.muted }}>{h.target ? t('run.target', { p: price(h.target) }) : t('run.noTarget')}</span>
+                </span>
+              </a>
+            </li>
+          )
+        })}
+      </ul>
     </Card>
   )
 }
@@ -463,7 +522,7 @@ function Inventory({ summary }: { summary: Summary }) {
   const description = items.map((i) => `${t(`class.${i.assetClass}`)} ${num(i.pct, 0)}%`).join(', ')
 
   return (
-    <Card aria-label={t('inv.title')} data-tone="blue">
+    <Card aria-label={t('inv.title')} data-tone="blue" className="min-w-0 flex-[3_1_480px]">
       <CardTitle icon="chest" aside={t('inv.speed')}>
         {t('inv.title')}
       </CardTitle>
