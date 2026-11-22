@@ -256,6 +256,8 @@
 }
 .play-skin section[data-tone] h2 > svg:first-child path { fill: var(--on-tone); }
 .play-skin section[data-tone] .bg-surface-2 { background: color-mix(in srgb, var(--tone) 20%, var(--surface)); }
+/* Panels inside a card (data-part, e.g. the parts of total money) tint their tiles with their own colour. */
+.play-skin section[data-tone] [data-part] .bg-surface-2 { background: color-mix(in srgb, var(--tone) 26%, var(--surface)); }
 .play-skin section[data-tone]:hover h2 > svg:first-child { animation: badge-wiggle 0.3s steps(2) 2; }
 @keyframes badge-wiggle { 50% { transform: rotate(6deg) scale(1.1); } }
 /* Pixel confetti behind the page (fixed, so it doesn't scroll with long lists). */
