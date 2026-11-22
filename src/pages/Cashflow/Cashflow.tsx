@@ -5,7 +5,7 @@ import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, fieldClass, Label, Segments } from '@/components/ui-bits'
 import { accountBalances, accountsTotal, balanceAdjustment, filterEntries, resolveAccount, runningBalances, validateAccountName } from '@/domain/accounts'
-import { addDays, addMonths, isCashflow, lastMonths, localDate, monthOf, monthSummary } from '@/domain/cashflow'
+import { addDays, addMonths, daysInMonth, isCashflow, lastMonths, localDate, monthOf, monthSummary, sameDaysLastMonth } from '@/domain/cashflow'
 import { ADJUSTMENT, DEFAULT_ACCOUNT_ID, EXPENSE_CATEGORIES, MAX_ACCOUNT_NAME, TRANSFER } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { href, routeParam } from '@/routes'
@@ -16,14 +16,17 @@ import { useSheetSync } from '@/useSheetSync'
 import { useNow } from '@/useNow'
 import { budgetBar, shareCells } from '@/view/bars'
 import { categoryColor, categoryIcon, COLOR, signColor } from '@/view/tokens'
+import { billsDue, dueTag } from '@/domain/bills'
 import { Bills } from './Bills'
 import { Goals, MonthQuest } from './CashGame'
 import { Invest } from './Invest'
+import { SpendCalendar } from './SpendCalendar'
 import type { AccountsProps, BudgetEditorProps, CategoryBarsProps, DayGroup, EntryListProps, MoneyNowProps, MonthHeroProps, SixMonthsProps, SpendingMixProps } from './Cashflow.types'
 
 const MONTHS_SHOWN = 6
 
 const UNDO_MS = 6000
+const UPCOMING_DAYS = 7
 
 export function Cashflow() {
   const { t, money, category } = useI18n()
@@ -75,7 +78,7 @@ export function Cashflow() {
   return (
     <>
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <MoneyNow entries={entries} sync={<SyncBar sync={sync} />} onPick={(account) => setFilter({ text: '', account })} />
+        <MoneyNow entries={entries} today={today} sync={<SyncBar sync={sync} />} onPick={(account) => setFilter({ text: '', account })} />
         <MonthHero
           summary={summary}
           budget={budget}
@@ -89,12 +92,15 @@ export function Cashflow() {
         open, the rest of the month folded), then everything else. Wide: those two sit in the left column, spanning
         every row; the last row is 1fr so a long list never stretches the gaps between the right-hand cards.
       */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[repeat(8,auto)_1fr] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-9 lg:row-start-1">
-          <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[repeat(9,auto)_1fr] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-10 lg:row-start-1">
+          <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} lastMonth={sameDaysLastMonth(entries, month, summary.daysElapsed)} month={month} days={summary.daysElapsed} />
           <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} today={today} fold={isCurrent && !filtering} />
         </div>
         <Side>
+          <SpendCalendar entries={entries} month={month} today={today} />
+        </Side>
+        <Side id="cf-bills">
           <Bills />
         </Side>
         <Side>
@@ -119,8 +125,18 @@ export function Cashflow() {
         </Side>
       </div>
 
+      {/* Room under the last card so the add button never covers it. */}
+      <div aria-hidden="true" className="h-16" />
+      <a
+        href={href('add')}
+        aria-label={t('cf.add')}
+        className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40 flex h-14 min-w-14 items-center justify-center gap-2 rounded-2xl bg-primary px-4 font-label text-primary-foreground uppercase shadow-[0_4px_0_var(--accent-deep),0_8px_20px_rgb(0_0_0/0.25)] transition-transform hover:-translate-y-0.5 focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none active:translate-y-1 active:shadow-[0_0_0_var(--accent-deep)] sm:right-6 sm:bottom-6"
+      >
+        <PixelIcon name="plus" size={20} />
+        <span className="hidden text-xs sm:inline">{t('cf.addShort')}</span>
+      </a>
       {added && !hidden && (
-        <div role="status" className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
+        <div role="status" className="fixed inset-x-4 bottom-[calc(88px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
           <span className="min-w-0 truncate text-sm">
             ✓{' '}
             {added.type === TRANSFER
@@ -145,7 +161,7 @@ export function Cashflow() {
         </div>
       )}
       {hidden && (
-        <div role="status" className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
+        <div role="status" className="fixed inset-x-4 bottom-[calc(88px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
           <span className="min-w-0 truncate text-sm">{t('cf.deleted', { label: hidden.note || category(hidden.category), amount: money(hidden.amount) })}</span>
           <Button size="sm" variant="outline" onClick={() => setHidden(undefined)}>
             {t('cf.undo')}
@@ -157,26 +173,27 @@ export function Cashflow() {
 }
 
 /** A card in the right-hand column on wide screens. */
-function Side({ children }: { children: ReactNode }) {
-  return <div className="min-w-0 lg:col-start-2">{children}</div>
+function Side({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <div id={id} className="min-w-0 scroll-mt-4 lg:col-start-2">
+      {children}
+    </div>
+  )
 }
 
 /** What the active accounts hold right now (all time, any month). Tapping an account shows its entries. */
-function MoneyNow({ entries, sync, onPick }: MoneyNowProps) {
+function MoneyNow({ entries, today, sync, onPick }: MoneyNowProps) {
   const { t, money, amount, compact } = useI18n()
   const accounts = useCashflow((s) => s.accounts)
+  // A week ahead here (the Dashboard quest waits until 3 days), so the money card shows what's coming out soon.
+  const due = billsDue(useCashflow((s) => s.bills), today, UPCOMING_DAYS).slice(0, 3)
   const balances = accountBalances(accounts, entries)
   const total = accountsTotal(accounts, entries)
   const active = accounts.filter((a) => !a.archived)
 
   return (
     <Card aria-label={t('cf.moneyNow')} className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <Label>{t('cf.moneyNow')}</Label>
-        <Button asChild className="shrink-0 font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
-          <a href={href('add')}>{t('cf.add')}</a>
-        </Button>
-      </div>
+      <Label>{t('cf.moneyNow')}</Label>
       <div className="flex items-baseline gap-1.5 leading-[0.8]" style={{ color: total < 0 ? COLOR.down : COLOR.text }}>
         <span className="font-display text-3xl">{total < 0 ? '−' : ''}Rp</span>
         <span className="font-display text-[clamp(48px,12vw,76px)]">{amount(Math.abs(total))}</span>
@@ -195,6 +212,26 @@ function MoneyNow({ entries, sync, onPick }: MoneyNowProps) {
                 <span className="font-mono" style={{ color: balances[a.id] < 0 ? COLOR.down : undefined }}>
                   {balances[a.id] < 0 ? '−' : ''}
                   {compact(Math.abs(balances[a.id]))}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {due.length > 0 && (
+        <ul aria-label={t('cf.bills')} className="flex flex-col gap-1">
+          {due.map(({ bill, days }) => (
+            <li key={bill.id}>
+              <button
+                type="button"
+                onClick={() => document.getElementById('cf-bills')?.scrollIntoView({ behavior: 'smooth' })}
+                className="flex w-full items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-left text-sm hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <PixelIcon name={bill.income ? 'coin' : 'receipt'} size={14} className="shrink-0" />
+                <span className="truncate">{bill.name}</span>
+                {bill.amount && <span className="font-mono text-text-muted">{compact(bill.amount)}</span>}
+                <span className="ml-auto shrink-0 font-label text-[11px] uppercase" style={{ color: days < 0 ? COLOR.down : days <= 1 ? COLOR.fireOrange : COLOR.muted }}>
+                  {dueTag(days, t)}
                 </span>
               </button>
             </li>
@@ -271,14 +308,25 @@ const MIX_ROWS = 5
  * column by column so each category is one block. The legend below is the readable table (icon, name, amount, share
  * or budget); pointing at a row lights up its pixels. "Budgets" edits the monthly limit per category.
  */
-function SpendingMix({ totals, budgets }: SpendingMixProps) {
-  const { t, money, num, category } = useI18n()
+function SpendingMix({ totals, budgets, lastMonth, month: viewed, days }: SpendingMixProps) {
+  const { t, money, num, category, month } = useI18n()
   const [editing, setEditing] = useState(false)
   const [lit, setLit] = useState<string>()
   // Budgeted categories with no spending yet still show, so the limit is visible.
   const rows = [...totals, ...Object.keys(budgets).filter((c) => !totals.some((x) => x.category === c)).map((c) => ({ category: c, amount: 0, pct: 0 }))]
   const cells = shareCells(totals)
   const top = totals[0]
+  const prev = addMonths(viewed, -1)
+  const hasPrev = Object.keys(lastMonth).length > 0
+  // Change vs the same days of last month: more spending is red ▲, less is green ▼.
+  const change = (c: string, amount: number) => {
+    const before = lastMonth[c] ?? 0
+    if (!hasPrev || (!before && !amount)) return undefined
+    if (!before) return { text: t('cmp.new'), color: COLOR.muted }
+    const pct = Math.round(((amount - before) / before) * 100)
+    if (!pct) return { text: '±0%', color: COLOR.muted }
+    return { text: `${pct > 0 ? '▲' : '▼'}${num(Math.abs(pct), 0)}%`, color: pct > 0 ? COLOR.down : COLOR.up }
+  }
   const describe = totals.map((c) => `${category(c.category)} ${num(c.pct, 0)}%`).join(', ')
 
   return (
@@ -305,6 +353,9 @@ function SpendingMix({ totals, budgets }: SpendingMixProps) {
               <span>{t('cf.topShare', { n: num(top.pct, 0), s: category(top.category) })}</span>
             </p>
           )}
+          {hasPrev && (
+            <Label>{days >= daysInMonth(viewed) ? t('cmp.vsMonth', { m: month(prev, true) }) : t('cmp.vsDays', { m: month(prev, true), d: days })}</Label>
+          )}
           {cells.length > 0 && (
             <div role="img" aria-label={describe} className="grid grid-flow-col auto-cols-fr gap-[2px]" style={{ gridTemplateRows: `repeat(${MIX_ROWS}, auto)` }}>
               {cells.map((c, i) => (
@@ -320,6 +371,7 @@ function SpendingMix({ totals, budgets }: SpendingMixProps) {
             {rows.map((c) => {
               const limit = budgets[c.category]
               const over = limit !== undefined && c.amount > limit
+              const delta = change(c.category, c.amount)
               return (
                 <li
                   key={c.category}
@@ -334,8 +386,20 @@ function SpendingMix({ totals, budgets }: SpendingMixProps) {
                   <PixelIcon name={categoryIcon(c.category)} color={categoryColor(c.category)} size={14} className="shrink-0" />
                   <span className="truncate">{category(c.category)}</span>
                   <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
-                  <span className="shrink-0 font-mono" style={{ color: over ? COLOR.down : undefined }}>
-                    {money(c.amount)} <span className="text-text-muted">{limit !== undefined ? `/ ${money(limit)}` : `· ${num(c.pct, 0)}%`}</span>
+                  <span className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="font-mono" style={{ color: over ? COLOR.down : undefined }}>
+                      {money(c.amount)}
+                      {limit !== undefined && <span className="text-text-muted"> / {money(limit)}</span>}
+                    </span>
+                    <span className="font-label text-[10px] text-text-muted uppercase">
+                      {num(c.pct, 0)}%
+                      {delta && (
+                        <>
+                          {' · '}
+                          <span style={{ color: delta.color }}>{delta.text}</span>
+                        </>
+                      )}
+                    </span>
                   </span>
                 </li>
               )

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, spendLevel, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -88,4 +88,12 @@ describe('shareCells', () => {
     expect(shareCells([{ category: 'a', amount: 1000 }, { category: 'b', amount: 1 }]).includes('b')).toBe(false)
     expect(shareCells([])).toEqual([])
   })
+})
+
+describe('spendLevel', () => {
+  it('shades by rank so one big day does not flatten the rest', () => {
+    const level = spendLevel([10, 20, 30, 3_500_000])
+    expect([0, 10, 20, 30, 3_500_000].map(level)).toEqual([0, 1, 2, 3, 4])
+  })
+  it('is 0 with no spending days', () => expect(spendLevel([])(5)).toBe(0))
 })

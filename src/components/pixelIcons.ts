@@ -31,6 +31,7 @@ export const ICONS = {
   laptop: [pix(['........', '.XXXXXX.', '.X....X.', '.X....X.', '.XXXXXX.', 'XXXXXXXX', 'XXXXXXXX', '........'])],
   chartUp: [pix(['.......X', '......XX', '.....X.X', 'X...X...', 'XX.X....', 'X.X.....', 'X.......', 'XXXXXXXX'])],
   plus: [pix(['...XX...', '...XX...', '...XX...', 'XXXXXXXX', 'XXXXXXXX', '...XX...', '...XX...', '...XX...'])],
+  calendar: [pix(['.X....X.', 'XXXXXXXX', 'XXXXXXXX', 'X......X', 'X.X.X.XX', 'X......X', 'X.X.XX.X', 'XXXXXXXX'])],
   tag: [pix(['XXXX....', 'X..XX...', 'X..XXX..', 'XXXXXXX.', '.XXXXXXX', '..XXXXX.', '...XXX..', '....X...'])],
   // Money out / in.
   arrowDown: [pix(['...XX...', '...XX...', '...XX...', '...XX...', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '...XX...'])],

@@ -83,3 +83,16 @@ export function shareCells(totals: readonly { category: string; amount: number }
   for (let i = 0; i < missing; i++) counts[byRemainder[i]]++
   return totals.flatMap((x, i) => Array<string>(counts[i]).fill(x.category))
 }
+
+/**
+ * Calendar shading: 1–4 by where an amount falls among the month's spending days (quartiles), 0 for nothing spent.
+ * Ranks, not the raw scale, so one big day (rent) doesn't wash every other day out to the lightest step.
+ */
+export function spendLevel(amounts: readonly number[]): (amount: number) => number {
+  const sorted = amounts.filter((a) => a > 0).sort((a, b) => a - b)
+  return (amount) => {
+    if (amount <= 0 || !sorted.length) return 0
+    const below = sorted.filter((a) => a < amount).length
+    return Math.min(4, 1 + Math.floor((below / sorted.length) * 4))
+  }
+}

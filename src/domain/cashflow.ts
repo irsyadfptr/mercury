@@ -209,3 +209,24 @@ export function addDays(date: string, delta: number): string {
   d.setUTCDate(d.getUTCDate() + delta)
   return d.toISOString().slice(0, 10)
 }
+
+/**
+ * Spending per category in the month before `month`, over its first `days` days only, so a month in progress is
+ * compared with the same stretch of last month (Nov 1–22 vs Oct 1–22), not with a whole month.
+ */
+export function sameDaysLastMonth(entries: readonly CashEntry[], month: MonthKey, days: number): Record<string, number> {
+  const prev = addMonths(month, -1)
+  const out: Record<string, number> = {}
+  for (const e of entries) {
+    if (monthOf(e.date) !== prev || Number(e.date.slice(8, 10)) > days || !isCashflow(e, 'expense')) continue
+    out[e.category] = (out[e.category] ?? 0) + e.amount
+  }
+  return out
+}
+
+/** Spending per day of `month` (yyyy-mm-dd → rupiah); days with none are left out. */
+export function dailySpend(entries: readonly CashEntry[], month: MonthKey): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const e of entries) if (monthOf(e.date) === month && isCashflow(e, 'expense')) out[e.date] = (out[e.date] ?? 0) + e.amount
+  return out
+}

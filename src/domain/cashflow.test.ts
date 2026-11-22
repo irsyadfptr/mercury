@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CashEntry } from '@/types'
-import { addDays, addMonths, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
+import { addDays, addMonths, dailySpend, sameDaysLastMonth, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
 
 let n = 0
 const e = (date: string, type: CashEntry['type'], amount: number, category: string): CashEntry => ({
@@ -127,5 +127,18 @@ describe('addDays', () => {
   it('crosses month and year ends', () => {
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+})
+
+describe('month comparisons', () => {
+  const at = (date: string, amount: number, category = 'food', type: CashEntry['type'] = 'expense'): CashEntry => ({ id: date + amount, date, type, amount, category, createdAt: '2026-01-01T00:00:00Z' })
+  const list = [at('2026-10-05', 100), at('2026-10-25', 900), at('2026-10-06', 50, 'salary', 'income'), at('2026-11-03', 70), at('2026-11-03', 30, 'transport')]
+  it('compares with the same days of last month only', () => {
+    expect(sameDaysLastMonth(list, '2026-11', 22)).toEqual({ food: 100 })
+    expect(sameDaysLastMonth(list, '2026-11', 30)).toEqual({ food: 1000 })
+  })
+  it('sums spending per day, leaving income out', () => {
+    expect(dailySpend(list, '2026-11')).toEqual({ '2026-11-03': 100 })
+    expect(dailySpend(list, '2026-10')).toEqual({ '2026-10-05': 100, '2026-10-25': 900 })
   })
 })

@@ -4,6 +4,7 @@ import type { Account, CashEntry, CategoryTotal, EntryFilter, MonthSummary, Mont
 export interface MoneyNowProps {
   /** Every entry, all months: balances are all time. */
   entries: readonly CashEntry[]
+  today: string
   /** The sync status line, shown under the total. */
   sync: ReactNode
   /** Tapping an account shows its entries. */
@@ -22,6 +23,11 @@ export interface SpendingMixProps {
   totals: readonly CategoryTotal[]
   /** Limits per category (editable here, stored in Settings). */
   budgets: Record<string, number>
+  /** Spending per category over the same days of the month before, for ▲▼. */
+  lastMonth: Record<string, number>
+  month: string
+  /** Days of `month` covered (all of it for a past month). */
+  days: number
 }
 
 export interface BudgetEditorProps {
