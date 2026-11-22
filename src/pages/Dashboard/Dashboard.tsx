@@ -228,45 +228,44 @@ function Hero({ summary, entries, today }: { summary: Summary; entries: readonly
   const xpPct = Math.round(lv.xp * 100)
 
   return (
-    <Card aria-label={t('dash.netWorth')} data-tone="gold" className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-4">
-        <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Label>{t('dash.netWorth')}</Label>
-            <span className="rounded-md bg-primary px-2 py-0.5 font-label text-[11px] font-bold text-primary-foreground shadow-[0_2px_0_var(--accent-deep)]">
-              {t('dash.level')} {lv.level}
-            </span>
-            {lv.xp >= LEVEL_UP_SOON && <span className="glow font-label text-[11px] text-accent-text uppercase">▲ {t('dash.levelUpSoon')}</span>}
-          </div>
-          <div className="flex items-baseline gap-1.5 leading-[0.8]">
-            <span className="font-display text-4xl text-text-muted">Rp</span>
-            <span className="font-display text-[clamp(56px,9vw,104px)] tabular-nums" aria-live="off">
-              {f.amount(shown)}
-            </span>
-          </div>
-          {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
-          <div className="flex flex-col gap-1.5 pt-1.5">
-            <div className="flex justify-between gap-2">
-              <Label className="text-text">{t('dash.xpTo', { n: lv.level + 1 })}</Label>
-              <Label>{t('dash.xpNote', { amount: compact(lv.next - total), pct: xpPct })}</Label>
-            </div>
-            <Segments items={xpBar(lv.xp)} height={14} label={`${t('dash.level')} ${lv.level}: ${xpPct}%`} />
-          </div>
+    // Phone: number, then the parts, then the stat tiles. Wide: number and tiles side by side, the parts below.
+    <Card aria-label={t('dash.netWorth')} data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Label>{t('dash.netWorth')}</Label>
+          <span className="rounded-md bg-primary px-2 py-0.5 font-label text-[11px] font-bold text-primary-foreground shadow-[0_2px_0_var(--accent-deep)]">
+            {t('dash.level')} {lv.level}
+          </span>
+          {lv.xp >= LEVEL_UP_SOON && <span className="glow font-label text-[11px] text-accent-text uppercase">▲ {t('dash.levelUpSoon')}</span>}
         </div>
-        <div className="grid flex-[2_1_300px] grid-cols-2 gap-2">
-          {statTiles(summary, heatLimit, f).map((x) => (
-            <div key={x.label} className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
-              <Label>{x.label}</Label>
-              <span className="font-display text-[34px] leading-none" style={{ color: x.color }}>
-                {x.value}
-              </span>
-              <span className="text-[11px] text-text-muted">{x.sub}</span>
-            </div>
-          ))}
+        <div className="flex items-baseline gap-1.5 leading-[0.8]">
+          <span className="font-display text-4xl text-text-muted">Rp</span>
+          <span className="font-display text-[clamp(56px,9vw,104px)] tabular-nums" aria-live="off">
+            {f.amount(shown)}
+          </span>
+        </div>
+        {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
+        <div className="flex flex-col gap-1.5 pt-1.5">
+          <div className="flex justify-between gap-2">
+            <Label className="text-text">{t('dash.xpTo', { n: lv.level + 1 })}</Label>
+            <Label>{t('dash.xpNote', { amount: compact(lv.next - total), pct: xpPct })}</Label>
+          </div>
+          <Segments items={xpBar(lv.xp)} height={14} label={`${t('dash.level')} ${lv.level}: ${xpPct}%`} />
         </div>
       </div>
+      <div className="order-last grid grid-cols-2 gap-2 lg:order-none">
+        {statTiles(summary, heatLimit, f).map((x) => (
+          <div key={x.label} className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
+            <Label>{x.label}</Label>
+            <span className="font-display text-[34px] leading-none" style={{ color: x.color }}>
+              {x.value}
+            </span>
+            <span className="text-[11px] text-text-muted">{x.sub}</span>
+          </div>
+        ))}
+      </div>
       {/* Total money = accounts (Cashflow) + investing holdings + running trades, each in its own panel. */}
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+      <div className="flex flex-col gap-3 lg:col-span-2 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
           <Part tone="gold" icon="coin" label={t('dash.partAccounts')} value={cash}>
             <AccountChips entries={entries} />
