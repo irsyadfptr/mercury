@@ -167,8 +167,11 @@
 @keyframes flick { to { transform: scale(0.92, 1.12); } }
 .glow { animation: glow 1.2s ease-in-out infinite alternate; }
 @keyframes glow { from { opacity: 0.55; } }
+/* Where-it-went pixels drop in column by column (delay set inline). */
+.pixel-pop { animation: pixel-pop 0.24s steps(3) both; }
+@keyframes pixel-pop { from { transform: scale(0); } }
 @media (prefers-reduced-motion: reduce) {
-  .flame, .glow { animation: none; }
+  .flame, .glow, .pixel-pop { animation: none; }
 }
 
 @layer base {

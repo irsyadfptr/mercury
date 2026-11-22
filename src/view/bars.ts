@@ -68,3 +68,18 @@ export function moodBar(value: number, n = 20): Segment[] {
   const filled = Math.round((Math.min(100, Math.max(0, value)) / 100) * n)
   return range(n).map((i) => ({ bg: i < filled ? moodColor(((i + 0.5) / n) * 100) : COLOR.empty }))
 }
+
+/**
+ * Pixel grid for "where it went": n cells shared out by amount (largest remainder, so they always add up to n), in
+ * the order given. A category too small for one cell gets none; empty when nothing was spent.
+ */
+export function shareCells(totals: readonly { category: string; amount: number }[], n = 100): string[] {
+  const sum = totals.reduce((s, x) => s + Math.max(0, x.amount), 0)
+  if (sum <= 0) return []
+  const exact = totals.map((x) => (Math.max(0, x.amount) / sum) * n)
+  const counts = exact.map(Math.floor)
+  const byRemainder = range(totals.length).sort((a, b) => exact[b] - counts[b] - (exact[a] - counts[a]))
+  const missing = n - counts.reduce((s, c) => s + c, 0)
+  for (let i = 0; i < missing; i++) counts[byRemainder[i]]++
+  return totals.flatMap((x, i) => Array<string>(counts[i]).fill(x.category))
+}

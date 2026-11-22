@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CashEntry } from '@/types'
-import { addMonths, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
+import { addDays, addMonths, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
 
 let n = 0
 const e = (date: string, type: CashEntry['type'], amount: number, category: string): CashEntry => ({
@@ -120,5 +120,12 @@ describe('number pad', () => {
   it('builds amounts', () => {
     expect(['0', '4', '2', '000', 'back', '5', 'x'].reduce(padInput, '')).toBe('42005')
     expect(padInput('99999999999', '1')).toBe('99999999999')
+  })
+})
+
+describe('addDays', () => {
+  it('crosses month and year ends', () => {
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
   })
 })

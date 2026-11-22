@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -66,5 +66,26 @@ describe('mood gauge', () => {
     expect(bar.filter((s) => s.bg !== COLOR.empty)).toHaveLength(7)
     expect(bar[0].bg).toBe(COLOR.fireRed)
     expect(moodBar(150, 20).every((s) => s.bg !== COLOR.empty)).toBe(true)
+  })
+})
+
+describe('shareCells', () => {
+  it('always fills exactly n cells, in order, by largest remainder', () => {
+    const cells = shareCells([
+      { category: 'a', amount: 1 },
+      { category: 'b', amount: 1 },
+      { category: 'c', amount: 1 },
+    ])
+    expect(cells).toHaveLength(100)
+    expect(cells.filter((c) => c === 'a')).toHaveLength(34)
+    expect(cells.slice(0, 34).every((c) => c === 'a')).toBe(true)
+  })
+  it('adds up to n when many cells are rounded up', () => {
+    const amounts = [3500, 1200, 700, 450, 320, 185, 150, 115]
+    expect(shareCells(amounts.map((amount, i) => ({ category: String(i), amount })))).toHaveLength(100)
+  })
+  it('gives a tiny category no cell and nothing spent no cells', () => {
+    expect(shareCells([{ category: 'a', amount: 1000 }, { category: 'b', amount: 1 }]).includes('b')).toBe(false)
+    expect(shareCells([])).toEqual([])
   })
 })

@@ -202,3 +202,10 @@ export function rowsToEntries(rows: readonly unknown[][], fill?: { newId: () => 
   })
   return { entries, skipped, filled }
 }
+
+/** yyyy-mm-dd plus (or minus) whole days. */
+export function addDays(date: string, delta: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + delta)
+  return d.toISOString().slice(0, 10)
+}

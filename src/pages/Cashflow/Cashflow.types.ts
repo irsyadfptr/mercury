@@ -1,15 +1,38 @@
+import type { ReactNode } from 'react'
 import type { Account, CashEntry, CategoryTotal, EntryFilter, MonthSummary, MonthTotal } from '@/types'
+
+export interface MoneyNowProps {
+  /** Every entry, all months: balances are all time. */
+  entries: readonly CashEntry[]
+  /** The sync status line, shown under the total. */
+  sync: ReactNode
+  /** Tapping an account shows its entries. */
+  onPick: (accountId: string) => void
+}
 
 export interface MonthHeroProps {
   summary: MonthSummary
   budget?: number
+  onPrev: () => void
+  /** Missing on the current month: there is no next one yet. */
+  onNext?: () => void
+}
+
+export interface SpendingMixProps {
+  totals: readonly CategoryTotal[]
+  /** Limits per category (editable here, stored in Settings). */
+  budgets: Record<string, number>
+}
+
+export interface BudgetEditorProps {
+  budgets: Record<string, number>
+  /** Categories to offer besides the built-in spending ones (e.g. custom ones spent on). */
+  extra: readonly string[]
 }
 
 export interface CategoryBarsProps {
   title: string
   totals: readonly CategoryTotal[]
-  /** Spending card only: limits per category (editable here, stored in Settings). */
-  budgets?: Record<string, number>
 }
 
 export interface SixMonthsProps {
@@ -30,6 +53,9 @@ export interface EntryListProps {
   filter: EntryFilter
   onFilter: (f: EntryFilter) => void
   filtering: boolean
+  today: string
+  /** This month, unfiltered: show today and yesterday, fold the rest of the month. */
+  fold: boolean
 }
 
 /** Entries of one calendar day, for the grouped list. */

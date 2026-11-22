@@ -5,7 +5,7 @@ import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, fieldClass, Label, Segments } from '@/components/ui-bits'
 import { accountBalances, accountsTotal, balanceAdjustment, filterEntries, resolveAccount, runningBalances, validateAccountName } from '@/domain/accounts'
-import { addMonths, isCashflow, lastMonths, localDate, monthOf, monthSummary } from '@/domain/cashflow'
+import { addDays, addMonths, isCashflow, lastMonths, localDate, monthOf, monthSummary } from '@/domain/cashflow'
 import { ADJUSTMENT, DEFAULT_ACCOUNT_ID, EXPENSE_CATEGORIES, MAX_ACCOUNT_NAME, TRANSFER } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
@@ -14,19 +14,19 @@ import type { AccountNameError, CashEntry, EntryFilter, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { useSheetSync } from '@/useSheetSync'
 import { useNow } from '@/useNow'
-import { budgetBar } from '@/view/bars'
+import { budgetBar, shareCells } from '@/view/bars'
 import { categoryColor, categoryIcon, COLOR, signColor } from '@/view/tokens'
 import { Bills } from './Bills'
 import { Goals, MonthQuest } from './CashGame'
 import { Invest } from './Invest'
-import type { AccountsProps, CategoryBarsProps, DayGroup, EntryListProps, MonthHeroProps, SixMonthsProps } from './Cashflow.types'
+import type { AccountsProps, BudgetEditorProps, CategoryBarsProps, DayGroup, EntryListProps, MoneyNowProps, MonthHeroProps, SixMonthsProps, SpendingMixProps } from './Cashflow.types'
 
 const MONTHS_SHOWN = 6
 
 const UNDO_MS = 6000
 
 export function Cashflow() {
-  const { t, money, month: monthName, category } = useI18n()
+  const { t, money, category } = useI18n()
   const sync = useSheetSync()
   const { entries: all, pendingIds } = useCashEntries()
   const removeEntry = useCashflow((s) => s.removeEntry)
@@ -63,41 +63,29 @@ export function Cashflow() {
 
   return (
     <>
-      <Card className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" aria-label={t('cf.prevMonth')} onClick={() => setMonth(addMonths(month, -1))}>
-              ‹
-            </Button>
-            <h1 className="min-w-[10ch] text-center font-display text-4xl leading-none uppercase">{monthName(month)}</h1>
-            <Button variant="outline" size="icon" aria-label={t('cf.nextMonth')} disabled={isCurrent} onClick={() => setMonth(addMonths(month, 1))}>
-              ›
-            </Button>
-          </div>
-          <Button asChild className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
-            <a href={href('add')}>{t('cf.add')}</a>
-          </Button>
-        </div>
-        <SyncBar sync={sync} />
-      </Card>
-
-      <MonthHero summary={summary} budget={budget} />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <MoneyNow entries={entries} sync={<SyncBar sync={sync} />} onPick={(account) => setFilter({ text: '', account })} />
+        <MonthHero
+          summary={summary}
+          budget={budget}
+          onPrev={() => setMonth(addMonths(month, -1))}
+          onNext={isCurrent ? undefined : () => setMonth(addMonths(month, 1))}
+        />
+      </div>
 
       {/*
-        One DOM order serves both layouts. Phone (one column): what needs doing and where the money went come before
-        the long entry list, so they stay reachable. Wide: the entries sit in the left column, spanning every row; the
-        last row is 1fr so a long list never stretches the gaps between the right-hand cards.
+        One DOM order serves both layouts. Phone (one column): where it went, then the entries (today and yesterday
+        open, the rest of the month folded), then everything else. Wide: those two sit in the left column, spanning
+        every row; the last row is 1fr so a long list never stretches the gaps between the right-hand cards.
       */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[repeat(8,auto)_1fr] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-9 lg:row-start-1">
+          <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
+          <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} today={today} fold={isCurrent && !filtering} />
+        </div>
         <Side>
           <Bills />
         </Side>
-        <Side>
-          <CategoryBars title={t('cf.where')} totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
-        </Side>
-        <div className="min-w-0 lg:col-start-1 lg:row-span-9 lg:row-start-1">
-          <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} />
-        </div>
         <Side>
           <Accounts entries={entries} onPick={(account) => setFilter({ text: '', account })} />
         </Side>
@@ -137,7 +125,52 @@ function Side({ children }: { children: ReactNode }) {
   return <div className="min-w-0 lg:col-start-2">{children}</div>
 }
 
-function MonthHero({ summary: s, budget }: MonthHeroProps) {
+/** What the active accounts hold right now (all time, any month). Tapping an account shows its entries. */
+function MoneyNow({ entries, sync, onPick }: MoneyNowProps) {
+  const { t, money, amount, compact } = useI18n()
+  const accounts = useCashflow((s) => s.accounts)
+  const balances = accountBalances(accounts, entries)
+  const total = accountsTotal(accounts, entries)
+  const active = accounts.filter((a) => !a.archived)
+
+  return (
+    <Card aria-label={t('cf.moneyNow')} className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label>{t('cf.moneyNow')}</Label>
+        <Button asChild className="shrink-0 font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
+          <a href={href('add')}>{t('cf.add')}</a>
+        </Button>
+      </div>
+      <div className="flex items-baseline gap-1.5 leading-[0.8]" style={{ color: total < 0 ? COLOR.down : COLOR.text }}>
+        <span className="font-display text-3xl">{total < 0 ? '−' : ''}Rp</span>
+        <span className="font-display text-[clamp(48px,12vw,76px)]">{amount(Math.abs(total))}</span>
+      </div>
+      {active.length > 1 && (
+        <ul aria-label={t('cf.accounts')} className="flex flex-wrap gap-1.5">
+          {active.map((a) => (
+            <li key={a.id}>
+              <button
+                type="button"
+                onClick={() => onPick(a.id)}
+                title={`${a.name}: ${money(balances[a.id])} · ${t('cf.showEntries')}`}
+                className="flex items-baseline gap-1.5 rounded-md bg-surface-2 px-2.5 py-1 text-xs hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <span className="font-label text-[11px] text-text-muted uppercase">{a.name}</span>
+                <span className="font-mono" style={{ color: balances[a.id] < 0 ? COLOR.down : undefined }}>
+                  {balances[a.id] < 0 ? '−' : ''}
+                  {compact(Math.abs(balances[a.id]))}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {sync}
+    </Card>
+  )
+}
+
+function MonthHero({ summary: s, budget, onPrev, onNext }: MonthHeroProps) {
   const { t, money, compact, num, amount, month } = useI18n()
   const daysLeft = s.daysInMonth - s.daysElapsed
   const over = budget ? s.expense - budget : 0
@@ -151,11 +184,20 @@ function MonthHero({ summary: s, budget }: MonthHeroProps) {
   return (
     <Card aria-label={t('cf.netOf', { month: month(s.month) })} className="flex flex-wrap gap-4">
       <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-2">
-        <Label>{t('cf.netOf', { month: month(s.month) })}</Label>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="size-7" aria-label={t('cf.prevMonth')} onClick={onPrev}>
+            ‹
+          </Button>
+          <h1 className="min-w-[10ch] text-center font-display text-2xl leading-none uppercase">{month(s.month)}</h1>
+          <Button variant="outline" size="icon" className="size-7" aria-label={t('cf.nextMonth')} disabled={!onNext} onClick={onNext}>
+            ›
+          </Button>
+          <Label className="ml-auto">{t('cf.net')}</Label>
+        </div>
         {/* Net = income − spent: green and + when income covers spending, red and − when spending is higher. */}
         <div className="flex items-baseline gap-1.5 leading-[0.8]" style={{ color: s.net >= 0 ? COLOR.up : COLOR.down }}>
-          <span className="font-display text-4xl">{s.net >= 0 ? '+' : '−'}Rp</span>
-          <span className="font-display text-[clamp(52px,8vw,96px)]">{amount(Math.abs(s.net))}</span>
+          <span className="font-display text-2xl">{s.net >= 0 ? '+' : '−'}Rp</span>
+          <span className="font-display text-[clamp(40px,9vw,64px)]">{amount(Math.abs(s.net))}</span>
         </div>
         {budget ? (
           <div className="flex flex-col gap-1.5 pt-1">
@@ -176,7 +218,7 @@ function MonthHero({ summary: s, budget }: MonthHeroProps) {
         {tiles.map((x) => (
           <div key={x.label} className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
             <Label>{x.label}</Label>
-            <span className="font-display text-[30px] leading-none" style={{ color: x.color }}>
+            <span className="font-display text-[26px] leading-none" style={{ color: x.color }}>
               {x.value}
             </span>
           </div>
@@ -186,90 +228,147 @@ function MonthHero({ summary: s, budget }: MonthHeroProps) {
   )
 }
 
+const MIX_ROWS = 5
+
 /**
- * Spending (or income) per category. With budgets (the spending card): a category with a budget shows "spent / budget"
- * and its bar fills against the budget, red once over; "Budgets" edits the limits.
+ * Where it went, as a 100-pixel strip: each pixel is 1% of the month's spending, coloured by category, filled
+ * column by column so each category is one block. The legend below is the readable table (icon, name, amount, share
+ * or budget); pointing at a row lights up its pixels. "Budgets" edits the monthly limit per category.
  */
-function CategoryBars({ title, totals, budgets }: CategoryBarsProps) {
+function SpendingMix({ totals, budgets }: SpendingMixProps) {
   const { t, money, num, category } = useI18n()
-  const setSettings = useSettings((s) => s.set)
   const [editing, setEditing] = useState(false)
-  const limits = budgets ?? {}
+  const [lit, setLit] = useState<string>()
   // Budgeted categories with no spending yet still show, so the limit is visible.
-  const rows = [...totals, ...Object.keys(limits).filter((c) => !totals.some((x) => x.category === c)).map((c) => ({ category: c, amount: 0, pct: 0 }))]
-  const editable = [...new Set([...EXPENSE_CATEGORIES, ...rows.map((r) => r.category)])].filter((c) => c !== ADJUSTMENT)
+  const rows = [...totals, ...Object.keys(budgets).filter((c) => !totals.some((x) => x.category === c)).map((c) => ({ category: c, amount: 0, pct: 0 }))]
+  const cells = shareCells(totals)
+  const top = totals[0]
+  const describe = totals.map((c) => `${category(c.category)} ${num(c.pct, 0)}%`).join(', ')
 
   return (
-    <Card aria-label={title}>
+    <Card aria-label={t('cf.where')}>
       <CardTitle
         icon="chest"
         aside={
-          budgets && (
-            <button type="button" onClick={() => setEditing(!editing)} className="underline underline-offset-4">
-              {t(editing ? 'cf.done' : 'cf.budgets')}
-            </button>
-          )
+          <button type="button" onClick={() => setEditing(!editing)} className="underline underline-offset-4">
+            {t(editing ? 'cf.done' : 'cf.budgets')}
+          </button>
         }
       >
-        {title}
+        {t('cf.where')}
       </CardTitle>
       {editing ? (
-        <ul className="flex flex-col gap-1.5">
-          {editable.map((c) => (
-            <li key={c} className="flex items-center gap-2 text-sm">
-              <PixelIcon name={categoryIcon(c)} color={categoryColor(c)} size={14} />
-              <span className="flex-1 truncate">{category(c)}</span>
-              <input
-                className={`${fieldClass} w-36 font-mono`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1000}
-                placeholder="—"
-                aria-label={t('cf.budgetFor', { s: category(c) })}
-                value={limits[c] ?? ''}
-                onChange={(e) => {
-                  const n = Math.round(Number(e.target.value))
-                  const next = { ...limits }
-                  if (n > 0) next[c] = n
-                  else delete next[c]
-                  setSettings({ categoryBudgets: next })
-                }}
-              />
-            </li>
-          ))}
-        </ul>
+        <BudgetEditor budgets={budgets} extra={rows.map((r) => r.category)} />
+      ) : !rows.length ? (
+        <p className="text-sm text-text-muted">{t('cf.noEntries')}</p>
       ) : (
-        <>
-          {!rows.length && <p className="text-sm text-text-muted">{t('cf.noEntries')}</p>}
-          <ul className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-3">
+          {top && (
+            <p className="flex items-center gap-2 text-sm">
+              <PixelIcon name={categoryIcon(top.category)} color={categoryColor(top.category)} size={22} className="shrink-0" />
+              <span>{t('cf.topShare', { n: num(top.pct, 0), s: category(top.category) })}</span>
+            </p>
+          )}
+          {cells.length > 0 && (
+            <div role="img" aria-label={describe} className="grid grid-flow-col auto-cols-fr gap-[2px]" style={{ gridTemplateRows: `repeat(${MIX_ROWS}, auto)` }}>
+              {cells.map((c, i) => (
+                <span
+                  key={i}
+                  className="pixel-pop aspect-square rounded-[2px] transition-opacity"
+                  style={{ background: categoryColor(c), opacity: lit && lit !== c ? 0.18 : 1, animationDelay: `${Math.floor(i / MIX_ROWS) * 18}ms` }}
+                />
+              ))}
+            </div>
+          )}
+          <ul className="flex flex-col">
             {rows.map((c) => {
-              const limit = limits[c.category]
+              const limit = budgets[c.category]
               const over = limit !== undefined && c.amount > limit
               return (
-                <li key={c.category} className="flex flex-col gap-1">
-                  <div className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="flex items-center gap-2">
-                      <PixelIcon name={categoryIcon(c.category)} color={categoryColor(c.category)} size={14} />
-                      {category(c.category)}
-                    </span>
-                    <span className="font-mono" style={{ color: over ? COLOR.down : undefined }}>
-                      {money(c.amount)}{' '}
-                      <span className="text-text-muted">{limit !== undefined ? `/ ${money(limit)}` : `· ${num(c.pct, 0)}%`}</span>
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded bg-empty">
-                    <div
-                      className="h-full rounded"
-                      style={{ width: `${limit !== undefined ? Math.min(100, (c.amount / limit) * 100) : c.pct}%`, background: over ? COLOR.down : categoryColor(c.category) }}
-                    />
-                  </div>
+                <li
+                  key={c.category}
+                  tabIndex={0}
+                  onPointerEnter={() => setLit(c.category)}
+                  onPointerLeave={() => setLit(undefined)}
+                  onFocus={() => setLit(c.category)}
+                  onBlur={() => setLit(undefined)}
+                  className="flex items-center gap-2 rounded border-b border-border py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <span aria-hidden="true" className="size-2.5 shrink-0 rounded-[2px]" style={{ background: categoryColor(c.category) }} />
+                  <PixelIcon name={categoryIcon(c.category)} color={categoryColor(c.category)} size={14} className="shrink-0" />
+                  <span className="truncate">{category(c.category)}</span>
+                  <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
+                  <span className="shrink-0 font-mono" style={{ color: over ? COLOR.down : undefined }}>
+                    {money(c.amount)} <span className="text-text-muted">{limit !== undefined ? `/ ${money(limit)}` : `· ${num(c.pct, 0)}%`}</span>
+                  </span>
                 </li>
               )
             })}
           </ul>
-        </>
+        </div>
       )}
+    </Card>
+  )
+}
+
+/** Monthly limit per spending category, stored in Settings. Empty = no limit. */
+function BudgetEditor({ budgets, extra }: BudgetEditorProps) {
+  const { t, category } = useI18n()
+  const setSettings = useSettings((s) => s.set)
+  const editable = [...new Set([...EXPENSE_CATEGORIES, ...extra])].filter((c) => c !== ADJUSTMENT)
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {editable.map((c) => (
+        <li key={c} className="flex items-center gap-2 text-sm">
+          <PixelIcon name={categoryIcon(c)} color={categoryColor(c)} size={14} />
+          <span className="flex-1 truncate">{category(c)}</span>
+          <input
+            className={`${fieldClass} w-36 font-mono`}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1000}
+            placeholder="—"
+            aria-label={t('cf.budgetFor', { s: category(c) })}
+            value={budgets[c] ?? ''}
+            onChange={(e) => {
+              const n = Math.round(Number(e.target.value))
+              const next = { ...budgets }
+              if (n > 0) next[c] = n
+              else delete next[c]
+              setSettings({ categoryBudgets: next })
+            }}
+          />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Income per category, as bars of its share. */
+function CategoryBars({ title, totals }: CategoryBarsProps) {
+  const { money, num, category } = useI18n()
+  return (
+    <Card aria-label={title}>
+      <CardTitle icon="chest">{title}</CardTitle>
+      <ul className="flex flex-col gap-2.5">
+        {totals.map((c) => (
+          <li key={c.category} className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="flex items-center gap-2">
+                <PixelIcon name={categoryIcon(c.category)} color={categoryColor(c.category)} size={14} />
+                {category(c.category)}
+              </span>
+              <span className="font-mono">
+                {money(c.amount)} <span className="text-text-muted">· {num(c.pct, 0)}%</span>
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded bg-empty">
+              <div className="h-full rounded" style={{ width: `${c.pct}%`, background: categoryColor(c.category) }} />
+            </div>
+          </li>
+        ))}
+      </ul>
     </Card>
   )
 }
@@ -320,7 +419,7 @@ function groupByDay(entries: readonly CashEntry[]): DayGroup[] {
   return groups
 }
 
-function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFilter, filtering }: EntryListProps) {
+function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFilter, filtering, today, fold }: EntryListProps) {
   const { t, money, day, category } = useI18n()
   const accountName = (ref: string | undefined) => accounts.find((a) => a.id === resolveAccount(ref, accounts))?.name ?? ''
   // Filtered by one account: show its balance after each entry (per-account view).
@@ -328,40 +427,17 @@ function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFil
   const label = (c: string) => (c === TRANSFER ? t('cf.transfer') : category(c))
   const categories = [...new Set(all.map((e) => e.category))].sort((a, b) => label(a).localeCompare(label(b)))
   const set = (patch: Partial<EntryFilter>) => onFilter({ ...filter, ...patch })
-  return (
-    <Card aria-label={t('cf.entries')}>
-      <CardTitle icon="coin" aside={filtering ? t('cf.found', { n: entries.length }) : undefined}>
-        {t('cf.entries')}
-      </CardTitle>
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        <input className={`${fieldClass} min-w-[12ch] flex-[2_1_0]`} type="search" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder={t('cf.search')} aria-label={t('cf.search')} />
-        <select className={`${fieldClass} w-auto flex-1`} value={filter.account ?? ''} onChange={(e) => set({ account: e.target.value || undefined })} aria-label={t('add.account')}>
-          <option value="">{t('cf.allAccounts')}</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select className={`${fieldClass} w-auto flex-1`} value={filter.category ?? ''} onChange={(e) => set({ category: e.target.value || undefined })} aria-label={t('add.category')}>
-          <option value="">{t('cf.allCategories')}</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {label(c)}
-            </option>
-          ))}
-        </select>
-        {filtering && (
-          <Button size="sm" variant="ghost" onClick={() => onFilter({ text: '' })}>
-            {t('cf.clearFilter')}
-          </Button>
-        )}
-      </div>
-      {!entries.length && <p className="text-sm text-text-muted">{t(filtering ? 'cf.noMatch' : 'cf.noEntries')}</p>}
-      {groupByDay(entries).map((g) => (
+  const yesterday = addDays(today, -1)
+  const groups = groupByDay(entries)
+  // This month, unfiltered: today and yesterday stay open, the rest of the month folds away.
+  const recent = groups.filter((g) => g.date >= yesterday)
+  const earlier = groups.filter((g) => g.date < yesterday)
+  const earlierNet = earlier.reduce((sum, g) => sum + g.net, 0)
+  const earlierCount = earlier.reduce((n, g) => n + g.entries.length, 0)
+  const dayGroup = (g: DayGroup) => (
         <div key={g.date}>
           <div className="flex justify-between border-b-2 border-text pt-3 pb-1 font-label text-[11px] uppercase">
-            <span>{day(g.date)}</span>
+            <span>{g.date === today ? `${t('cf.today')} · ${day(g.date)}` : g.date === yesterday ? `${t('cf.yesterday')} · ${day(g.date)}` : day(g.date)}</span>
             <span style={{ color: signColor(g.net) }}>
               {g.net >= 0 ? '+' : '−'}
               {money(Math.abs(g.net))}
@@ -402,7 +478,60 @@ function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFil
             })}
           </ul>
         </div>
-      ))}
+  )
+  return (
+    <Card aria-label={t('cf.entries')}>
+      <CardTitle icon="coin" aside={filtering ? t('cf.found', { n: entries.length }) : undefined}>
+        {t('cf.entries')}
+      </CardTitle>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        <input className={`${fieldClass} min-w-[12ch] flex-[2_1_0]`} type="search" value={filter.text} onChange={(e) => set({ text: e.target.value })} placeholder={t('cf.search')} aria-label={t('cf.search')} />
+        <select className={`${fieldClass} w-auto flex-1`} value={filter.account ?? ''} onChange={(e) => set({ account: e.target.value || undefined })} aria-label={t('add.account')}>
+          <option value="">{t('cf.allAccounts')}</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <select className={`${fieldClass} w-auto flex-1`} value={filter.category ?? ''} onChange={(e) => set({ category: e.target.value || undefined })} aria-label={t('add.category')}>
+          <option value="">{t('cf.allCategories')}</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {label(c)}
+            </option>
+          ))}
+        </select>
+        {filtering && (
+          <Button size="sm" variant="ghost" onClick={() => onFilter({ text: '' })}>
+            {t('cf.clearFilter')}
+          </Button>
+        )}
+      </div>
+      {!entries.length && <p className="text-sm text-text-muted">{t(filtering ? 'cf.noMatch' : 'cf.noEntries')}</p>}
+      {fold ? (
+        <>
+          {!recent.length && entries.length > 0 && <p className="py-2 text-sm text-text-muted">{t('cf.nothingRecent')}</p>}
+          {recent.map(dayGroup)}
+          {earlier.length > 0 && (
+            <details className="group mt-3 rounded-lg bg-surface-2 px-3 [&[open]]:pb-2">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-2.5 font-label text-[11px] uppercase [&::-webkit-details-marker]:hidden">
+                <span aria-hidden="true" className="transition-transform group-open:rotate-90">
+                  ▸
+                </span>
+                <span>{t('cf.earlier', { n: earlierCount })}</span>
+                <span className="ml-auto" style={{ color: signColor(earlierNet) }}>
+                  {earlierNet >= 0 ? '+' : '−'}
+                  {money(Math.abs(earlierNet))}
+                </span>
+              </summary>
+              {earlier.map(dayGroup)}
+            </details>
+          )}
+        </>
+      ) : (
+        groups.map(dayGroup)
+      )}
     </Card>
   )
 }
