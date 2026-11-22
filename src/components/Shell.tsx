@@ -14,24 +14,30 @@ const nextTheme = (t: ThemePref): ThemePref => THEME_ORDER[(THEME_ORDER.indexOf(
 const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-label text-[11px] uppercase hover:border-primary', focusRing)
 
+/** Nav tones for the playful header: each link lights up in its own colour (see .play-header in index.css). */
+const NAV_TONES = ['blue', 'purple', 'teal', 'orange', 'pink', 'gold', 'lime'] as const
+
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
+  // Cashflow has the playful skin; the header follows it there so the page reads as one.
+  const play = route === 'cashflow'
   const theme = useSettings((s) => s.theme)
   const privacy = useSettings((s) => !!s.privacy)
   const set = useSettings((s) => s.set)
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1180px] flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-border bg-surface px-3.5 py-2.5">
+      <header className={cn('flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-border bg-surface px-3.5 py-2.5', play && 'play-header')}>
         <a href={href('dashboard')} className={cn('flex items-center gap-2.5 rounded-md', focusRing)}>
-          <PixelIcon name="coin" size={24} />
+          <PixelIcon name="coin" size={24} className={play ? 'coin-spin' : undefined} />
           <span className="font-display text-3xl leading-none">MERCURY</span>
         </a>
         <nav aria-label="Main" className="flex flex-wrap gap-1">
-          {NAV_ROUTES.map((r) => (
+          {NAV_ROUTES.map((r, i) => (
             <a
               key={r}
               href={href(r)}
+              data-tone={play ? (r === route ? 'gold' : NAV_TONES[i % NAV_TONES.length]) : undefined}
               aria-current={r === route ? 'page' : undefined}
               className={cn(
                 'rounded-md px-2.5 py-1.5 font-label text-xs uppercase',

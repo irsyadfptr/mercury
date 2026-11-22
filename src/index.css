@@ -264,6 +264,30 @@
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' shape-rendering='crispEdges'%3E%3Crect x='160' y='72' width='10' height='10' fill='%23f5c84c'/%3E%3Crect x='24' y='32' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='184' y='24' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='16' y='40' width='10' height='10' fill='%235cc98a'/%3E%3Crect x='208' y='32' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='40' y='216' width='6' height='6' fill='%23f39a4a'/%3E%3Crect x='56' y='112' width='6' height='6' fill='%234fc7c0'/%3E%3Crect x='200' y='24' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='16' y='64' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='208' y='72' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='152' y='88' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='96' y='184' width='6' height='6' fill='%235cc98a'/%3E%3Crect x='32' y='24' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='248' y='216' width='8' height='8' fill='%23f39a4a'/%3E%3Crect x='232' y='232' width='8' height='8' fill='%234fc7c0'/%3E%3Crect x='152' y='120' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='120' y='40' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='264' y='248' width='8' height='8' fill='%23f07fae'/%3E%3C/svg%3E") 0 0 / 280px 280px repeat;
 }
 [data-theme="dark"] .cf-confetti { opacity: 0.22; }
+/*
+ * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, a rainbow pixel stripe made of
+ * every card colour, MERCURY with a pink offset shadow, and chunky nav chips that each light up in their own
+ * tone (the current page is a gold block).
+ */
+.play-header { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); position: relative; padding-top: 20px !important; border: 2px solid var(--play-ink) !important; border-radius: 14px !important; box-shadow: 4px 5px 0 var(--play-ink); }
+[data-theme="dark"] .play-header { --play-ink: oklch(0.1 0.02 280); border-color: oklch(0.45 0.05 280) !important; }
+.play-header::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; border-radius: 11px 11px 0 0; border-bottom: 2px solid var(--play-ink);
+  background: linear-gradient(90deg,
+    oklch(0.86 0.15 92) 0 14.28%, oklch(0.74 0.16 355) 0 28.57%, oklch(0.68 0.17 305) 0 42.85%, oklch(0.72 0.13 240) 0 57.14%,
+    oklch(0.78 0.12 190) 0 71.42%, oklch(0.76 0.17 150) 0 85.71%, oklch(0.77 0.16 55) 0 100%);
+  background-size: 140px 100%;
+}
+[data-theme="dark"] .play-header::before { border-bottom-color: oklch(0.45 0.05 280); }
+.play-header .font-display { text-shadow: 2px 2px 0 oklch(0.74 0.16 355); }
+.play-header nav a { border: 2px solid transparent; transition: transform 0.12s steps(2), background 0.12s; }
+.play-header nav a:hover { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); transform: translateY(-2px) rotate(-2deg); }
+.play-header nav a[aria-current="page"] { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 3px 0 var(--play-ink); }
+.play-header nav a[aria-current="page"]:hover { transform: none; }
+.play-header nav ~ div button { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }
+.play-header nav ~ div button:active { transform: translate(2px, 2px); box-shadow: none; }
+[data-theme="dark"] .play-header nav a[aria-current="page"], [data-theme="dark"] .play-header nav ~ div button { border-color: oklch(0.45 0.05 280); }
+
 /* A coin that turns, beside "Money now". */
 .coin-spin { animation: coin-spin 1.6s steps(4) infinite; }
 @keyframes coin-spin { 50% { transform: scaleX(0.15); } }
