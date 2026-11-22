@@ -20,7 +20,7 @@ export function Invest() {
   const from = account || accounts[0]?.id
 
   return (
-    <Card aria-label={t('invest.title')}>
+    <Card aria-label={t('invest.title')} data-tone="purple">
       <CardTitle icon="chartUp" aside={t('invest.sub')}>
         {t('invest.title')}
       </CardTitle>

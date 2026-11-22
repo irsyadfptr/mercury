@@ -13,6 +13,7 @@ import { useSettings } from '@/settings'
 import type { AccountNameError, CashEntry, EntryFilter, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { useSheetSync } from '@/useSheetSync'
+import { useCountUp } from '@/useCountUp'
 import { useNow } from '@/useNow'
 import { budgetBar, shareCells } from '@/view/bars'
 import { categoryColor, categoryIcon, COLOR, signColor } from '@/view/tokens'
@@ -20,6 +21,7 @@ import { billsDue, dueTag } from '@/domain/bills'
 import { Bills } from './Bills'
 import { Goals, MonthQuest } from './CashGame'
 import { Invest } from './Invest'
+import { SafeSpend } from './SafeSpend'
 import { SpendCalendar } from './SpendCalendar'
 import type { AccountsProps, BudgetEditorProps, CategoryBarsProps, DayGroup, EntryListProps, MoneyNowProps, MonthHeroProps, SixMonthsProps, SpendingMixProps } from './Cashflow.types'
 
@@ -76,15 +78,19 @@ export function Cashflow() {
   const isCurrent = month >= monthOf(today)
 
   return (
-    <>
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <div className="cf-play contents">
+      <div aria-hidden="true" className="cf-confetti" />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2">
         <MoneyNow entries={entries} today={today} sync={<SyncBar sync={sync} />} onPick={(account) => setFilter({ text: '', account })} />
-        <MonthHero
-          summary={summary}
-          budget={budget}
-          onPrev={() => setMonth(addMonths(month, -1))}
-          onNext={isCurrent ? undefined : () => setMonth(addMonths(month, 1))}
-        />
+        <SafeSpend entries={entries} today={today} />
+        <div className="min-w-0 lg:col-span-2">
+          <MonthHero
+            summary={summary}
+            budget={budget}
+            onPrev={() => setMonth(addMonths(month, -1))}
+            onNext={isCurrent ? undefined : () => setMonth(addMonths(month, 1))}
+          />
+        </div>
       </div>
 
       {/*
@@ -175,7 +181,7 @@ export function Cashflow() {
           </Button>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -196,14 +202,18 @@ function MoneyNow({ entries, today, sync, onPick }: MoneyNowProps) {
   const due = billsDue(useCashflow((s) => s.bills), today, UPCOMING_DAYS).slice(0, 3)
   const balances = accountBalances(accounts, entries)
   const total = accountsTotal(accounts, entries)
+  const shownTotal = useCountUp(total)
   const active = accounts.filter((a) => !a.archived)
 
   return (
-    <Card aria-label={t('cf.moneyNow')} className="flex flex-col gap-3">
-      <Label>{t('cf.moneyNow')}</Label>
+    <Card aria-label={t('cf.moneyNow')} data-tone="gold" className="flex flex-col gap-3">
+      <span className="flex items-center gap-2">
+        <PixelIcon name="coin" size={18} className="coin-spin" />
+        <Label>{t('cf.moneyNow')}</Label>
+      </span>
       <div className="flex items-baseline gap-1.5 leading-[0.8]" style={{ color: total < 0 ? COLOR.down : COLOR.text }}>
         <span className="font-display text-3xl">{total < 0 ? '−' : ''}Rp</span>
-        <span className="font-display text-[clamp(48px,12vw,76px)]">{amount(Math.abs(total))}</span>
+        <span className="font-display text-[clamp(48px,12vw,76px)]">{amount(Math.abs(shownTotal))}</span>
       </div>
       {active.length > 1 && (
         <ul aria-label={t('cf.accounts')} className="flex flex-wrap gap-1.5">
@@ -255,6 +265,7 @@ function MonthHero({ summary: s, budget, onPrev, onNext }: MonthHeroProps) {
   const daysLeft = s.daysInMonth - s.daysElapsed
   const over = budget ? s.expense - budget : 0
   const savings = s.savingsRate
+  const shownNet = useCountUp(s.net)
   const tiles = [
     { label: t('cf.income'), value: compact(s.income), color: COLOR.text },
     { label: t('cf.spentLegend'), value: compact(s.expense), color: COLOR.text },
@@ -262,7 +273,7 @@ function MonthHero({ summary: s, budget, onPrev, onNext }: MonthHeroProps) {
   ]
 
   return (
-    <Card aria-label={t('cf.netOf', { month: month(s.month) })} className="flex flex-wrap gap-4">
+    <Card aria-label={t('cf.netOf', { month: month(s.month) })} data-tone={s.net >= 0 ? 'green' : 'red'} className="flex flex-wrap gap-4">
       <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-2">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" className="size-7" aria-label={t('cf.prevMonth')} onClick={onPrev}>
@@ -277,7 +288,7 @@ function MonthHero({ summary: s, budget, onPrev, onNext }: MonthHeroProps) {
         {/* Net = income − spent: green and + when income covers spending, red and − when spending is higher. */}
         <div className="flex items-baseline gap-1.5 leading-[0.8]" style={{ color: s.net >= 0 ? COLOR.up : COLOR.down }}>
           <span className="font-display text-2xl">{s.net >= 0 ? '+' : '−'}Rp</span>
-          <span className="font-display text-[clamp(40px,9vw,64px)]">{amount(Math.abs(s.net))}</span>
+          <span className="font-display text-[clamp(40px,9vw,64px)]">{amount(Math.abs(shownNet))}</span>
         </div>
         {budget ? (
           <div className="flex flex-col gap-1.5 pt-1">
@@ -337,7 +348,7 @@ function SpendingMix({ totals, budgets, lastMonth, month: viewed, days }: Spendi
   const describe = totals.map((c) => `${category(c.category)} ${num(c.pct, 0)}%`).join(', ')
 
   return (
-    <Card aria-label={t('cf.where')}>
+    <Card aria-label={t('cf.where')} data-tone="purple">
       <CardTitle
         icon="chest"
         aside={
@@ -456,8 +467,8 @@ function BudgetEditor({ budgets, extra }: BudgetEditorProps) {
 function CategoryBars({ title, totals }: CategoryBarsProps) {
   const { money, num, category } = useI18n()
   return (
-    <Card aria-label={title}>
-      <CardTitle icon="chest">{title}</CardTitle>
+    <Card aria-label={title} data-tone="green">
+      <CardTitle icon="coin">{title}</CardTitle>
       <ul className="flex flex-col gap-2.5">
         {totals.map((c) => (
           <li key={c.category} className="flex flex-col gap-1">
@@ -487,7 +498,7 @@ function SixMonths({ months, current }: SixMonthsProps) {
   const description = months.map((m) => `${month(m.month, true)}: ${t('cf.spentLegend')} ${compact(m.expense)}, ${t('cf.incomeLegend')} ${compact(m.income)}`).join('; ')
 
   return (
-    <Card aria-label={t('cf.sixMonths')}>
+    <Card aria-label={t('cf.sixMonths')} data-tone="blue">
       <CardTitle
         aside={
           <span className="flex gap-3">
@@ -556,7 +567,16 @@ function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFil
               const label = transfer ? `${accountName(e.account)} → ${accountName(e.toAccount)}` : category(e.category)
               return (
                 <li key={e.id} className="flex items-center gap-3 border-b border-border py-2">
-                  <PixelIcon name={transfer ? 'coin' : categoryIcon(e.category)} color={transfer ? undefined : categoryColor(e.category)} size={18} className="shrink-0" />
+                  <span
+                    aria-hidden="true"
+                    className="grid size-9 shrink-0 place-items-center rounded-lg border-2"
+                    style={{
+                      background: `color-mix(in srgb, ${transfer ? 'var(--cat-gold)' : categoryColor(e.category)} 24%, var(--surface))`,
+                      borderColor: `color-mix(in srgb, ${transfer ? 'var(--cat-gold)' : categoryColor(e.category)} 60%, var(--surface))`,
+                    }}
+                  >
+                    <PixelIcon name={transfer ? 'coin' : categoryIcon(e.category)} color={transfer ? undefined : categoryColor(e.category)} size={18} />
+                  </span>
                   <a href={href('add', { edit: e.id })} aria-label={t('cf.edit', { label: e.note || label })} className="flex min-w-0 flex-col rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                     <span className="truncate">{e.note || label}</span>
                     <span className="flex flex-wrap gap-1.5 font-label text-[11px] text-text-muted uppercase">
@@ -587,7 +607,7 @@ function EntryList({ entries, all, accounts, pendingIds, onRemove, filter, onFil
         </div>
   )
   return (
-    <Card aria-label={t('cf.entries')}>
+    <Card aria-label={t('cf.entries')} data-tone="blue">
       <CardTitle icon="coin" aside={filtering ? t('cf.found', { n: entries.length }) : undefined}>
         {t('cf.entries')}
       </CardTitle>
@@ -735,7 +755,7 @@ function Accounts({ entries, onPick }: AccountsProps) {
   )
 
   return (
-    <Card aria-label={t('cf.accounts')}>
+    <Card aria-label={t('cf.accounts')} data-tone="lime">
       <CardTitle icon="chest" aside={<span className="font-mono normal-case">{t('cf.accountsTotal', { amount: signed(total) })}</span>}>
         {t('cf.accounts')}
       </CardTitle>

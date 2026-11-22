@@ -34,7 +34,7 @@ export function SpendCalendar({ entries, month, today }: { entries: readonly Cas
   const dayEntries = shown ? entries.filter((e) => e.date === shown && e.type !== TRANSFER) : []
 
   return (
-    <Card aria-label={t('cal.title')}>
+    <Card aria-label={t('cal.title')} data-tone="teal">
       <CardTitle icon="calendar" aside={t('cal.noSpend', { n: noSpend })}>
         {t('cal.title')}
       </CardTitle>

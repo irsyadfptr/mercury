@@ -32,7 +32,7 @@ export function MonthQuest({ entries }: { entries: readonly CashEntry[] }) {
   ] as const
 
   return (
-    <Card aria-label={t('game.title')} className="flex flex-col gap-3">
+    <Card aria-label={t('game.title')} data-tone="gold" className="flex flex-col gap-3">
       <CardTitle icon="star" aside={t('game.sub')}>
         {t('game.title')}
       </CardTitle>
@@ -151,7 +151,7 @@ export function Goals({ entries }: { entries: readonly CashEntry[] }) {
   )
 
   return (
-    <Card aria-label={t('goal.title')}>
+    <Card aria-label={t('goal.title')} data-tone="pink">
       <CardTitle icon="gift">{t('goal.title')}</CardTitle>
       {!shown.length && !draft && <p className="text-sm text-text-muted">{t('goal.none')}</p>}
       <ul className="flex flex-col gap-3">

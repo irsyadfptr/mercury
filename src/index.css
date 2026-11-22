@@ -217,8 +217,61 @@
 @keyframes fab-shine { 0%, 70% { left: -40%; } 100% { left: 130%; } }
 @keyframes fab-twinkle { 50% { opacity: 0; transform: scale(0.4); } }
 @keyframes fab-enter { from { transform: translateY(120%) scale(0.6); } 70% { transform: translateY(-12%) scale(1.05); } }
+/*
+ * Cashflow's playful skin (scoped to .cf-play): each card has its own colour (data-tone) for a tinted face, a chunky
+ * ink outline with a hard offset shadow, a pixel stripe along the top and its icon in a coloured badge. Behind the
+ * cards, scattered pixel confetti.
+ */
+.cf-play { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); }
+[data-theme="dark"] .cf-play { --play-ink: oklch(0.1 0.02 280); }
+[data-tone="gold"] { --tone: oklch(0.86 0.15 92); }
+[data-tone="pink"] { --tone: oklch(0.74 0.16 355); }
+[data-tone="green"] { --tone: oklch(0.76 0.17 150); }
+[data-tone="red"] { --tone: oklch(0.68 0.19 28); }
+[data-tone="purple"] { --tone: oklch(0.68 0.17 305); }
+[data-tone="blue"] { --tone: oklch(0.72 0.13 240); }
+[data-tone="teal"] { --tone: oklch(0.78 0.12 190); }
+[data-tone="orange"] { --tone: oklch(0.77 0.16 55); }
+[data-tone="lime"] { --tone: oklch(0.86 0.17 125); }
+.cf-play section[data-tone] {
+  position: relative;
+  padding-top: 26px;
+  border: 2px solid var(--play-ink);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tone) 11%, var(--surface));
+  box-shadow: 4px 5px 0 var(--play-ink);
+}
+[data-theme="dark"] .cf-play section[data-tone] { border-color: color-mix(in srgb, var(--tone) 55%, var(--bg)); background: color-mix(in srgb, var(--tone) 9%, var(--surface)); }
+.cf-play section[data-tone]::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; border-radius: 11px 11px 0 0;
+  border-bottom: 2px solid var(--play-ink);
+  background: repeating-linear-gradient(90deg, var(--tone) 0 10px, color-mix(in srgb, var(--tone) 55%, white) 10px 20px);
+}
+[data-theme="dark"] .cf-play section[data-tone]::before { border-bottom-color: color-mix(in srgb, var(--tone) 55%, var(--bg)); }
+.cf-play section[data-tone] h2 { text-shadow: 2px 2px 0 color-mix(in srgb, var(--tone) 70%, transparent); }
+.cf-play section[data-tone] h2 > svg:first-child {
+  box-sizing: content-box; padding: 5px; border-radius: 8px;
+  background: var(--tone); border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink);
+  transform: rotate(-6deg);
+}
+.cf-play section[data-tone] h2 > svg:first-child path { fill: var(--on-tone); }
+.cf-play section[data-tone] .bg-surface-2 { background: color-mix(in srgb, var(--tone) 20%, var(--surface)); }
+.cf-play section[data-tone]:hover h2 > svg:first-child { animation: badge-wiggle 0.3s steps(2) 2; }
+@keyframes badge-wiggle { 50% { transform: rotate(6deg) scale(1.1); } }
+/* Pixel confetti behind the page (fixed, so it doesn't scroll with long lists). */
+.cf-confetti {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.35;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' shape-rendering='crispEdges'%3E%3Crect x='160' y='72' width='10' height='10' fill='%23f5c84c'/%3E%3Crect x='24' y='32' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='184' y='24' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='16' y='40' width='10' height='10' fill='%235cc98a'/%3E%3Crect x='208' y='32' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='40' y='216' width='6' height='6' fill='%23f39a4a'/%3E%3Crect x='56' y='112' width='6' height='6' fill='%234fc7c0'/%3E%3Crect x='200' y='24' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='16' y='64' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='208' y='72' width='6' height='6' fill='%23f07fae'/%3E%3Crect x='152' y='88' width='6' height='6' fill='%235fa8e8'/%3E%3Crect x='96' y='184' width='6' height='6' fill='%235cc98a'/%3E%3Crect x='32' y='24' width='6' height='6' fill='%23a678e0'/%3E%3Crect x='248' y='216' width='8' height='8' fill='%23f39a4a'/%3E%3Crect x='232' y='232' width='8' height='8' fill='%234fc7c0'/%3E%3Crect x='152' y='120' width='6' height='6' fill='%23c6e05a'/%3E%3Crect x='120' y='40' width='8' height='8' fill='%23f5c84c'/%3E%3Crect x='264' y='248' width='8' height='8' fill='%23f07fae'/%3E%3C/svg%3E") 0 0 / 280px 280px repeat;
+}
+[data-theme="dark"] .cf-confetti { opacity: 0.22; }
+/* A coin that turns, beside "Money now". */
+.coin-spin { animation: coin-spin 1.6s steps(4) infinite; }
+@keyframes coin-spin { 50% { transform: scaleX(0.15); } }
+/* Hearts: the one about to be lost beats. */
+.heart-beat { animation: heart-beat 0.8s steps(2) infinite alternate; }
+@keyframes heart-beat { to { transform: scale(1.18); } }
 @media (prefers-reduced-motion: reduce) {
-  .flame, .glow, .pixel-pop, .fab-body, .fab-face::after, .fab-spark, .fab-enter, .fab:hover .fab-body { animation: none; }
+  .flame, .glow, .pixel-pop, .coin-spin, .heart-beat, .cf-play section[data-tone]:hover h2 > svg:first-child, .fab-body, .fab-face::after, .fab-spark, .fab-enter, .fab:hover .fab-body { animation: none; }
 }
 
 @layer base {
