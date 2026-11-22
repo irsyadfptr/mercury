@@ -101,6 +101,12 @@ export function Cashflow() {
         <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-10 lg:row-start-1">
           <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} lastMonth={sameDaysLastMonth(entries, month, summary.daysElapsed)} month={month} days={summary.daysElapsed} />
           <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} today={today} fold={isCurrent && !filtering} />
+          {/* Wide screens: the month score and six months fill the left column under the entries (on phones they stay
+              further down, in the order below). Both only display, so drawing them in two places is safe. */}
+          <div className="hidden flex-col gap-4 lg:flex">
+            <MonthQuest entries={entries} />
+            <SixMonths months={lastMonths(entries, month, MONTHS_SHOWN)} current={month} />
+          </div>
         </div>
         <Side>
           <SpendCalendar entries={entries} month={month} today={today} />
@@ -114,10 +120,10 @@ export function Cashflow() {
         <Side>
           <Goals entries={entries} />
         </Side>
-        <Side>
+        <Side className="lg:hidden">
           <MonthQuest entries={entries} />
         </Side>
-        <Side>
+        <Side className="lg:hidden">
           <SixMonths months={lastMonths(entries, month, MONTHS_SHOWN)} current={month} />
         </Side>
         {summary.incomeByCategory.length > 0 && (
@@ -185,9 +191,9 @@ export function Cashflow() {
 }
 
 /** A card in the right-hand column on wide screens. */
-function Side({ id, children }: { id?: string; children: ReactNode }) {
+function Side({ id, className = '', children }: { id?: string; className?: string; children: ReactNode }) {
   return (
-    <div id={id} className="min-w-0 scroll-mt-4 lg:col-start-2">
+    <div id={id} className={`min-w-0 scroll-mt-4 lg:col-start-2 ${className}`}>
       {children}
     </div>
   )
