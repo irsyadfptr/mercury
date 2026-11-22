@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useCashflow } from '@/cashflowStore'
 import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
@@ -82,21 +82,42 @@ export function Cashflow() {
       </Card>
 
       <MonthHero summary={summary} budget={budget} />
-      <MonthQuest entries={entries} />
 
-      <div className="flex flex-wrap gap-4">
-        <div className="flex min-w-0 flex-[3_1_520px] flex-col gap-4">
+      {/*
+        One DOM order serves both layouts. Phone (one column): what needs doing and where the money went come before
+        the long entry list, so they stay reachable. Wide: the entries sit in the left column, spanning every row; the
+        last row is 1fr so a long list never stretches the gaps between the right-hand cards.
+      */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[repeat(8,auto)_1fr] lg:items-start">
+        <Side>
+          <Bills />
+        </Side>
+        <Side>
+          <CategoryBars title={t('cf.where')} totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
+        </Side>
+        <div className="min-w-0 lg:col-start-1 lg:row-span-9 lg:row-start-1">
           <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} />
         </div>
-        <div className="flex min-w-0 flex-[2_1_320px] flex-col gap-4">
+        <Side>
           <Accounts entries={entries} onPick={(account) => setFilter({ text: '', account })} />
+        </Side>
+        <Side>
           <Goals entries={entries} />
-          <Invest />
-          <Bills />
-          <CategoryBars title={t('cf.where')} totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} />
-          {summary.incomeByCategory.length > 0 && <CategoryBars title={t('cf.incomeFrom')} totals={summary.incomeByCategory} />}
+        </Side>
+        <Side>
+          <MonthQuest entries={entries} />
+        </Side>
+        <Side>
           <SixMonths months={lastMonths(entries, month, MONTHS_SHOWN)} current={month} />
-        </div>
+        </Side>
+        {summary.incomeByCategory.length > 0 && (
+          <Side>
+            <CategoryBars title={t('cf.incomeFrom')} totals={summary.incomeByCategory} />
+          </Side>
+        )}
+        <Side>
+          <Invest />
+        </Side>
       </div>
 
       {hidden && (
@@ -109,6 +130,11 @@ export function Cashflow() {
       )}
     </>
   )
+}
+
+/** A card in the right-hand column on wide screens. */
+function Side({ children }: { children: ReactNode }) {
+  return <div className="min-w-0 lg:col-start-2">{children}</div>
 }
 
 function MonthHero({ summary: s, budget }: MonthHeroProps) {
