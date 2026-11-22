@@ -265,23 +265,19 @@
 }
 [data-theme="dark"] .cf-confetti { opacity: 0.22; }
 /*
- * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, a rainbow pixel stripe made of
- * every card colour, MERCURY with a pink offset shadow, and chunky nav chips that each light up in their own
- * tone (the current page is a gold block).
+ * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, a gold pixel stripe, MERCURY
+ * with an offset shadow, and chunky nav chips that light up soft gold on hover (the current page is a gold block).
  */
 .play-header { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); position: relative; padding-top: 20px !important; border: 2px solid var(--play-ink) !important; border-radius: 14px !important; box-shadow: 4px 5px 0 var(--play-ink); }
 [data-theme="dark"] .play-header { --play-ink: oklch(0.1 0.02 280); border-color: oklch(0.45 0.05 280) !important; }
 .play-header::before {
   content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; border-radius: 11px 11px 0 0; border-bottom: 2px solid var(--play-ink);
-  background: linear-gradient(90deg,
-    oklch(0.86 0.15 92) 0 14.28%, oklch(0.74 0.16 355) 0 28.57%, oklch(0.68 0.17 305) 0 42.85%, oklch(0.72 0.13 240) 0 57.14%,
-    oklch(0.78 0.12 190) 0 71.42%, oklch(0.76 0.17 150) 0 85.71%, oklch(0.77 0.16 55) 0 100%);
-  background-size: 140px 100%;
+  background: repeating-linear-gradient(90deg, oklch(0.86 0.15 92) 0 10px, color-mix(in srgb, oklch(0.86 0.15 92) 55%, white) 10px 20px);
 }
 [data-theme="dark"] .play-header::before { border-bottom-color: oklch(0.45 0.05 280); }
-.play-header .font-display { text-shadow: 2px 2px 0 oklch(0.74 0.16 355); }
+.play-header .font-display { text-shadow: 2px 2px 0 oklch(0.86 0.15 92); }
 .play-header nav a { border: 2px solid transparent; transition: transform 0.12s steps(2), background 0.12s; }
-.play-header nav a:hover { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); transform: translateY(-2px) rotate(-2deg); }
+.play-header nav a:hover { background: color-mix(in srgb, oklch(0.86 0.15 92) 45%, var(--surface)) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); transform: translateY(-2px) rotate(-2deg); }
 .play-header nav a[aria-current="page"] { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 3px 0 var(--play-ink); }
 .play-header nav a[aria-current="page"]:hover { transform: none; }
 .play-header nav ~ div button { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }

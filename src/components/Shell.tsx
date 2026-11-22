@@ -14,9 +14,6 @@ const nextTheme = (t: ThemePref): ThemePref => THEME_ORDER[(THEME_ORDER.indexOf(
 const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-label text-[11px] uppercase hover:border-primary', focusRing)
 
-/** Nav tones for the playful header: each link lights up in its own colour (see .play-header in index.css). */
-const NAV_TONES = ['blue', 'purple', 'teal', 'orange', 'pink', 'gold', 'lime'] as const
-
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
   // Cashflow has the playful skin; the header follows it there so the page reads as one.
@@ -33,11 +30,11 @@ export function Shell({ route, children }: ShellProps) {
           <span className="font-display text-3xl leading-none">MERCURY</span>
         </a>
         <nav aria-label="Main" className="flex flex-wrap gap-1">
-          {NAV_ROUTES.map((r, i) => (
+          {NAV_ROUTES.map((r) => (
             <a
               key={r}
               href={href(r)}
-              data-tone={play ? (r === route ? 'gold' : NAV_TONES[i % NAV_TONES.length]) : undefined}
+              data-tone={play && r === route ? 'gold' : undefined}
               aria-current={r === route ? 'page' : undefined}
               className={cn(
                 'rounded-md px-2.5 py-1.5 font-label text-xs uppercase',
