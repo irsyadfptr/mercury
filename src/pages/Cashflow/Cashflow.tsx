@@ -130,10 +130,17 @@ export function Cashflow() {
       <a
         href={href('add')}
         aria-label={t('cf.add')}
-        className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40 flex h-14 min-w-14 items-center justify-center gap-2 rounded-2xl bg-primary px-4 font-label text-primary-foreground uppercase shadow-[0_4px_0_var(--accent-deep),0_8px_20px_rgb(0_0_0/0.25)] transition-transform hover:-translate-y-0.5 focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none active:translate-y-1 active:shadow-[0_0_0_var(--accent-deep)] sm:right-6 sm:bottom-6"
+        title={t('cf.add')}
+        className="fab fab-enter group fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40 block size-16 rounded-lg focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none sm:right-6 sm:bottom-6"
       >
-        <PixelIcon name="plus" size={20} />
-        <span className="hidden text-xs sm:inline">{t('cf.addShort')}</span>
+        <span aria-hidden="true" className="fab-shadow pixel-block absolute inset-0" />
+        <span aria-hidden="true" className="fab-body pixel-block absolute inset-0 grid place-items-center">
+          <span className="fab-face pixel-block absolute inset-[3px] grid place-items-center">
+            <PixelIcon name="plus" size={26} color="oklch(0.24 0.03 275)" className="relative" />
+          </span>
+        </span>
+        <span aria-hidden="true" className="fab-spark -top-1.5 -left-1" />
+        <span aria-hidden="true" className="fab-spark top-2 -right-2" />
       </a>
       {added && !hidden && (
         <div role="status" className="fixed inset-x-4 bottom-[calc(88px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">

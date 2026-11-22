@@ -170,8 +170,55 @@
 /* Where-it-went pixels drop in column by column (delay set inline). */
 .pixel-pop { animation: pixel-pop 0.24s steps(3) both; }
 @keyframes pixel-pop { from { transform: scale(0); } }
+/*
+ * Add button: a gold pixel block with stepped 8-bit corners, ink outline, bevel and a hard shadow. It bobs in steps,
+ * a shine sweeps across now and then and two sparkles twinkle; hover wiggles, press squashes it onto its shadow.
+ */
+.pixel-block {
+  --s: 4px;
+  clip-path: polygon(
+    calc(var(--s) * 2) 0, calc(100% - var(--s) * 2) 0, calc(100% - var(--s) * 2) var(--s), calc(100% - var(--s)) var(--s),
+    calc(100% - var(--s)) calc(var(--s) * 2), 100% calc(var(--s) * 2), 100% calc(100% - var(--s) * 2),
+    calc(100% - var(--s)) calc(100% - var(--s) * 2), calc(100% - var(--s)) calc(100% - var(--s)),
+    calc(100% - var(--s) * 2) calc(100% - var(--s)), calc(100% - var(--s) * 2) 100%, calc(var(--s) * 2) 100%,
+    calc(var(--s) * 2) calc(100% - var(--s)), var(--s) calc(100% - var(--s)), var(--s) calc(100% - var(--s) * 2),
+    0 calc(100% - var(--s) * 2), 0 calc(var(--s) * 2), var(--s) calc(var(--s) * 2), var(--s) var(--s), calc(var(--s) * 2) var(--s)
+  );
+}
+.fab { --ink: oklch(0.24 0.03 275); }
+.fab-shadow { background: var(--fab-drop, oklch(0.2 0.02 275 / 0.35)); transform: translateY(6px); }
+/* Night: a light rim and a gold-tinted drop, so the block doesn't sink into the dark page. */
+[data-theme="dark"] .fab { --fab-rim: oklch(0.95 0.01 280); --fab-drop: oklch(0.76 0.18 55 / 0.35); }
+.fab-body { background: var(--fab-rim, var(--ink)); animation: fab-bob 1.4s steps(2) infinite alternate; transition: transform 0.08s steps(2); }
+.fab-face {
+  --s: 3px;
+  background:
+    linear-gradient(var(--fire-orange), var(--fire-orange)) bottom / 100% 6px no-repeat,
+    linear-gradient(var(--fire-yellow), var(--fire-yellow));
+  overflow: hidden;
+}
+/* Highlight pixels in the top-left corner, like light on a bevel. */
+.fab-face::before {
+  content: ''; position: absolute; left: 6px; top: 6px; width: 4px; height: 4px; background: white;
+  box-shadow: 4px 0 white, 0 4px white;
+}
+/* The shine: a pixel-wide band that crosses the face every few seconds. */
+.fab-face::after {
+  content: ''; position: absolute; inset: -20% auto -20% -40%; width: 10px; background: rgb(255 255 255 / 0.7);
+  transform: skewX(-20deg); animation: fab-shine 3.6s steps(8) infinite;
+}
+.fab-spark { position: absolute; width: 4px; height: 4px; background: var(--fire-yellow); box-shadow: 0 0 0 1px var(--ink); animation: fab-twinkle 1.8s steps(2) infinite; }
+.fab-spark:nth-of-type(2) { animation-delay: -0.9s; width: 3px; height: 3px; }
+.fab:hover .fab-body { animation: fab-wiggle 0.36s steps(2) infinite alternate; }
+.fab:active .fab-body { animation: none; transform: translateY(6px) scale(1.06, 0.9); }
+.fab-enter { animation: fab-enter 0.4s steps(4) both; }
+@keyframes fab-bob { to { transform: translateY(-3px); } }
+@keyframes fab-wiggle { from { transform: translateY(-3px) rotate(-5deg); } to { transform: translateY(-3px) rotate(5deg); } }
+@keyframes fab-shine { 0%, 70% { left: -40%; } 100% { left: 130%; } }
+@keyframes fab-twinkle { 50% { opacity: 0; transform: scale(0.4); } }
+@keyframes fab-enter { from { transform: translateY(120%) scale(0.6); } 70% { transform: translateY(-12%) scale(1.05); } }
 @media (prefers-reduced-motion: reduce) {
-  .flame, .glow, .pixel-pop { animation: none; }
+  .flame, .glow, .pixel-pop, .fab-body, .fab-face::after, .fab-spark, .fab-enter, .fab:hover .fab-body { animation: none; }
 }
 
 @layer base {
