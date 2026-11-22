@@ -224,6 +224,7 @@ Page **Long-term** (`#/longterm`, src/pages/LongTerm). Scoring is pure code in s
 
 **Big batch (2026-11-16, user's request):**
 - **Cashflow month card** shows **net** (income − spent): green "+" when income covers spending, red "−" when not. Spent moved to a tile.
+- **Saving in Quick add** goes back to Cashflow, which shows "Saved … · + Another · Undo" for 6 s (`#/cashflow?added=<id>`). Undo removes the new entry at once.
 - **Edit an entry:** tap its title → Quick add opens `#/add?edit=<id>` filled in; Save replaces it. A synced entry's Sheet row is rewritten by id at the next sync (`edited` queue in `mercury.cashflow`).
 - **Undo delete:** × hides the entry and shows "Deleted · Undo" for 6 s; it is really deleted after that, on a second delete, or when leaving the page (no confirm box any more).
 - **Filter / per-account view:** search text (note, category, account names), account and category filters search **all months**. Tapping an account name filters to it and shows its running balance after each entry (`runningBalances`, same balance-date rules).

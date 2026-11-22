@@ -8,7 +8,7 @@ import { accountBalances, accountsTotal, balanceAdjustment, filterEntries, resol
 import { addDays, addMonths, isCashflow, lastMonths, localDate, monthOf, monthSummary } from '@/domain/cashflow'
 import { ADJUSTMENT, DEFAULT_ACCOUNT_ID, EXPENSE_CATEGORIES, MAX_ACCOUNT_NAME, TRANSFER } from '@/domain/schema'
 import { useI18n } from '@/i18n'
-import { href } from '@/routes'
+import { href, routeParam } from '@/routes'
 import { useSettings } from '@/settings'
 import type { AccountNameError, CashEntry, EntryFilter, Key } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
@@ -56,6 +56,17 @@ export function Cashflow() {
   }
 
   const entries = hidden ? all.filter((e) => e.id !== hidden.id) : all
+  // Just saved in Quick add ('#/cashflow?added=<id>'): say so, with "Add another" and Undo, for a few seconds.
+  const [addedId, setAddedId] = useState(() => routeParam('added'))
+  useEffect(() => {
+    if (!addedId) return
+    history.replaceState(null, '', href('cashflow')) // a reload doesn't show it again
+    window.scrollTo(0, 0) // the pad was scrolled to its Save button
+    const timer = setTimeout(() => setAddedId(undefined), UNDO_MS)
+    return () => clearTimeout(timer)
+  }, [addedId])
+  const added = addedId ? all.find((e) => e.id === addedId) : undefined
+  const accountName = (id?: string) => accounts.find((a) => a.id === id)?.name ?? ''
   const summary = monthSummary(entries, month, today)
   const filtering = !!(filter.account || filter.category || filter.text.trim())
   const shown = filtering ? filterEntries(entries, filter, accounts, (c) => category(c)) : entries.filter((e) => monthOf(e.date) === month)
@@ -108,6 +119,31 @@ export function Cashflow() {
         </Side>
       </div>
 
+      {added && !hidden && (
+        <div role="status" className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
+          <span className="min-w-0 truncate text-sm">
+            ✓{' '}
+            {added.type === TRANSFER
+              ? t('add.savedTransfer', { amount: money(added.amount), from: accountName(added.account), to: accountName(added.toAccount) })
+              : t('add.saved', { amount: money(added.amount), category: category(added.category) })}
+          </span>
+          <span className="flex shrink-0 gap-1">
+            <Button size="sm" variant="outline" asChild>
+              <a href={href('add')}>{t('cf.addAnother')}</a>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setAddedId(undefined)
+                removeEntry(added.id) // undoing a save: gone at once, no second undo
+              }}
+            >
+              {t('cf.undo')}
+            </Button>
+          </span>
+        </div>
+      )}
       {hidden && (
         <div role="status" className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
           <span className="min-w-0 truncate text-sm">{t('cf.deleted', { label: hidden.note || category(hidden.category), amount: money(hidden.amount) })}</span>
