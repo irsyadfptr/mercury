@@ -201,3 +201,16 @@ export function quests(s: Summary, opts: QuestOptions): Quest[] {
   if (s.rows.length && (sinceBackup == null || sinceBackup > BACKUP_EVERY_DAYS)) out.push({ kind: 'backup', days: sinceBackup })
   return out
 }
+
+/**
+ * Open holdings with a real price (not valued at cost), best and worst by unrealized %: up to `n` winners (gain > 0,
+ * best first) and `n` losers (loss < 0, worst first). Holdings without a USD/IDR rate are left out.
+ */
+export function winnersLosers(rows: readonly Row[], n = 3): { winners: Row[]; losers: Row[] } {
+  const priced = rows.filter((r) => r.v.quantity > 0 && r.v.priceSource !== 'cost' && Number.isFinite(r.v.valueIdr) && Number.isFinite(r.v.unrealizedPct))
+  const sorted = [...priced].sort((a, b) => b.v.unrealizedPct - a.v.unrealizedPct)
+  return {
+    winners: sorted.filter((r) => r.v.unrealizedPct > 0).slice(0, n),
+    losers: sorted.filter((r) => r.v.unrealizedPct < 0).reverse().slice(0, n),
+  }
+}

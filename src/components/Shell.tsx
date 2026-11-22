@@ -2,7 +2,7 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { href, NAV_ROUTES } from '@/routes'
 import { useSettings } from '@/settings'
-import type { Key, Lang, ShellProps, ThemePref } from '@/types'
+import type { Key, Lang, Route, ShellProps, ThemePref } from '@/types'
 import { PixelIcon } from './PixelIcon'
 
 const THEME_ORDER: readonly ThemePref[] = ['system', 'light', 'dark']
@@ -14,10 +14,13 @@ const nextTheme = (t: ThemePref): ThemePref => THEME_ORDER[(THEME_ORDER.indexOf(
 const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
 const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-label text-[11px] uppercase hover:border-primary', focusRing)
 
+/** Pages drawn in the playful skin (.play-skin in index.css). */
+const PLAY_ROUTES: readonly Route[] = ['cashflow', 'dashboard']
+
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
-  // Cashflow has the playful skin; the header follows it there so the page reads as one.
-  const play = route === 'cashflow'
+  // Pages with the playful skin; the header follows it there so the page reads as one.
+  const play = PLAY_ROUTES.includes(route)
   const theme = useSettings((s) => s.theme)
   const privacy = useSettings((s) => !!s.privacy)
   const set = useSettings((s) => s.set)

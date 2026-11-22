@@ -78,8 +78,8 @@ export function Cashflow() {
   const isCurrent = month >= monthOf(today)
 
   return (
-    <div className="cf-play contents">
-      <div aria-hidden="true" className="cf-confetti" />
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2">
         <MoneyNow entries={entries} today={today} sync={<SyncBar sync={sync} />} onPick={(account) => setFilter({ text: '', account })} />
         <SafeSpend entries={entries} today={today} />

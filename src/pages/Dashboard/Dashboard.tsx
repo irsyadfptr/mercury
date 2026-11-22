@@ -6,10 +6,11 @@ import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
 import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
-import { heatTier, level, quests, speedOf } from '@/domain/portfolio'
+import { heatTier, level, quests, speedOf, winnersLosers } from '@/domain/portfolio'
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
+import { SafeSpend } from '@/pages/Cashflow/SafeSpend'
 import { href } from '@/routes'
 import { useBreakers } from '@/useGate'
 import type { Breaker } from '@/domain/circuitBreaker'
@@ -28,30 +29,98 @@ import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, xpBar } fr
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { QuestView, StatTile } from './Dashboard.types'
 
+/**
+ * The daily glance, most-needed first: what you're worth, what to do today (quests), what you can spend today and how
+ * the month is going, then trading health, where the money sits, winners and losers, and the market's mood.
+ * Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
+ */
 export function Dashboard() {
   const summary = useSummary()
-  // Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
+  const { entries } = useCashEntries()
+  const today = localDate(useNow())
   const hasHoldings = summary.rows.length > 0
   return (
-    <>
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
       <Hero summary={summary} />
-      <MonthCard />
+      <Quests summary={summary} />
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2">
+        <SafeSpend entries={entries} today={today} />
+        <MonthCard />
+      </div>
       {!hasHoldings && <EmptyDashboard />}
+      {hasHoldings && (
+        <div className="flex flex-wrap gap-4">
+          <HeatCard heat={summary.heat} />
+          <TradeRisk rows={summary.rows} />
+        </div>
+      )}
+      {hasHoldings && <Inventory summary={summary} />}
       <div className="flex flex-wrap gap-4">
-        {hasHoldings && <HeatCard heat={summary.heat} />}
-        {hasHoldings && <TradeRisk rows={summary.rows} />}
+        {hasHoldings && <WinnersLosers rows={summary.rows} />}
         <MoodCard />
       </div>
-      {hasHoldings && <Inventory summary={summary} />}
-      <Quests summary={summary} />
-    </>
+    </div>
+  )
+}
+
+// ---- Winners and losers ----
+
+/** Best and worst open holdings by unrealized %, with a bar sized against the biggest move shown. */
+function WinnersLosers({ rows }: { rows: readonly Row[] }) {
+  const { t, compact, num } = useI18n()
+  const { winners, losers } = winnersLosers(rows)
+  const max = Math.max(1, ...[...winners, ...losers].map((r) => Math.abs(r.v.unrealizedPct)))
+  const list = (title: string, items: Row[], up: boolean) => (
+    <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-1.5">
+      <Label className="flex items-center gap-1.5">
+        <PixelIcon name={up ? 'arrowUp' : 'arrowDown'} size={12} color={up ? COLOR.up : COLOR.down} />
+        {title}
+      </Label>
+      {!items.length && <p className="text-sm text-text-muted">{t(up ? 'wl.noWinners' : 'wl.noLosers')}</p>}
+      <ul className="flex flex-col gap-1.5">
+        {items.map((r) => (
+          <li key={r.holding.id}>
+            <a href={href('portfolio')} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold">{r.holding.symbol}</span>
+                <span className="font-display text-xl leading-none" style={{ color: up ? COLOR.up : COLOR.down }}>
+                  {up ? '▲' : '▼'}
+                  {num(Math.abs(r.v.unrealizedPct), 1)}%
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-2 flex-1 overflow-hidden rounded bg-empty">
+                  <span className="block h-full rounded" style={{ width: `${(Math.abs(r.v.unrealizedPct) / max) * 100}%`, background: up ? COLOR.up : COLOR.down }} />
+                </span>
+                <span className="font-mono text-xs text-text-muted">
+                  {up ? '+' : '−'}
+                  {compact(Math.abs(r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)))}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+  return (
+    <Card aria-label={t('wl.title')} data-tone="teal" className="min-w-0 flex-[3_1_460px]">
+      <CardTitle icon="chartUp" aside={t('wl.sub')}>
+        {t('wl.title')}
+      </CardTitle>
+      <div className="flex flex-wrap gap-4">
+        {list(t('wl.winners'), winners, true)}
+        {list(t('wl.losers'), losers, false)}
+      </div>
+    </Card>
   )
 }
 
 function EmptyDashboard() {
   const { t } = useI18n()
   return (
-    <Card className="flex flex-col items-center gap-3 py-8 text-center">
+    <Card data-tone="gold" className="flex flex-col items-center gap-3 py-8 text-center">
       <PixelIcon name="chest" size={40} />
       <h2 className="font-display text-3xl leading-none uppercase">{t('empty.title')}</h2>
       <p className="text-text-muted">{t('empty.body')}</p>
@@ -133,7 +202,7 @@ function Hero({ summary }: { summary: Summary }) {
   const xpPct = Math.round(lv.xp * 100)
 
   return (
-    <Card aria-label={t('dash.netWorth')} className="flex flex-wrap gap-4">
+    <Card aria-label={t('dash.netWorth')} data-tone="gold" className="flex flex-wrap gap-4">
       <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2.5">
           <Label>{t('dash.netWorth')}</Label>
@@ -200,7 +269,7 @@ function MonthCard() {
   const signed = (n: number) => `${n >= 0 ? '+' : '−'}${compact(Math.abs(n))}`
 
   return (
-    <Card aria-label={t('dash.month', { month: month(s.month) })} className="flex flex-wrap items-center gap-4">
+    <Card aria-label={t('dash.month', { month: month(s.month) })} data-tone={s.net >= 0 ? 'green' : 'red'} className="flex flex-wrap items-center gap-4">
       <div className="flex min-w-0 flex-[3_1_320px] flex-col gap-1.5">
         <div className="flex flex-wrap justify-between gap-2">
           <Label>{t('dash.month', { month: month(s.month) })}</Label>
@@ -243,7 +312,7 @@ function HeatCard({ heat }: { heat: number }) {
   const tierLabel = t(`heat.${tier}`)
 
   return (
-    <Card aria-label={t('heat.title')} className="flex min-w-0 flex-[2_1_340px] flex-col gap-3" style={hot ? { background: COLOR.fireSoft, borderColor: COLOR.fireEdge } : undefined}>
+    <Card aria-label={t('heat.title')} data-tone="red" className="flex min-w-0 flex-[2_1_340px] flex-col gap-3" style={hot ? { background: COLOR.fireSoft, borderColor: COLOR.fireEdge } : undefined}>
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-3xl leading-none uppercase">{t('heat.title')}</h2>
         <span className={`rounded-md px-2 py-0.5 font-label text-[11px] uppercase ${flames ? 'bg-fire-red text-white' : 'bg-surface-2 text-text-muted'}`}>{tierLabel}</span>
@@ -277,6 +346,7 @@ function MoodCard() {
   return (
     <Card
       aria-label={t('mood.title')}
+      data-tone="lime"
       className="flex min-w-0 flex-[1_1_240px] flex-col gap-3"
       // Pops off the page without tinting the surface: zone-coloured thick border, hard pixel drop shadow, soft halo.
       style={tone ? { border: `2px solid ${tone}`, boxShadow: `0 5px 0 ${tone}, 0 0 28px color-mix(in oklch, ${tone} 40%, transparent)` } : undefined}
@@ -361,7 +431,7 @@ function TradeRisk({ rows }: { rows: readonly Row[] }) {
   })
 
   return (
-    <Card aria-label={f.t('risk.title')} className="min-w-0 flex-[3_1_460px]">
+    <Card aria-label={f.t('risk.title')} data-tone="purple" className="min-w-0 flex-[3_1_460px]">
       <CardTitle icon="heart" aside={f.t('risk.limit', { n: limit })}>
         {f.t('risk.title')}
       </CardTitle>
@@ -393,11 +463,11 @@ function Inventory({ summary }: { summary: Summary }) {
   const description = items.map((i) => `${t(`class.${i.assetClass}`)} ${num(i.pct, 0)}%`).join(', ')
 
   return (
-    <Card aria-label={t('inv.title')}>
+    <Card aria-label={t('inv.title')} data-tone="blue">
       <CardTitle icon="chest" aside={t('inv.speed')}>
         {t('inv.title')}
       </CardTitle>
-      <div role="img" aria-label={description} className="flex h-[230px] gap-2">
+      <div role="img" aria-label={description} className="flex h-[250px] gap-2">
         <Tile item={map.first} largest />
         {map.second && (
           <div className="flex min-w-0 flex-col gap-2" style={{ flex: `${map.rightWeight} 1 0` }}>
@@ -429,10 +499,11 @@ function Tile({ item, largest = false }: { item: AllocationItem; largest?: boole
       className="flex min-w-0 flex-col justify-between overflow-hidden rounded-lg p-3 shadow-[inset_0_-4px_0_oklch(0_0_0/0.12)]"
       style={{ flex: `${item.value} 1 0`, background: colors.bg, color: colors.fg }}
     >
-      <span className="truncate font-label text-[11px] uppercase">
+      {/* Never squeezed: on a short tile the amount gives way, not the name. */}
+      <span className="shrink-0 truncate font-label text-[11px] uppercase">
         {t(`class.${item.assetClass}`)} {'★'.repeat(speedOf(item.assetClass))}
       </span>
-      <div>
+      <div className="min-h-0">
         <div className="font-display leading-[0.85]" style={{ fontSize: tileFontSize(item.pct, largest) }}>
           {num(item.pct, 0)}%
         </div>
@@ -556,7 +627,7 @@ function Quests({ summary }: { summary: Summary }) {
   const list = [...breakerAlerts(f, breakers),...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
-    <Card aria-label={f.t('quests.title')}>
+    <Card aria-label={f.t('quests.title')} data-tone="orange">
       <CardTitle
         icon="star"
         aside={
