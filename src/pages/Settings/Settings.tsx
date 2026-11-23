@@ -2,7 +2,9 @@ import { useRef, useState } from 'react'
 import { useCashflow } from '@/cashflowStore'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
-import { Card, CardTitle, Field, fieldClass } from '@/components/ui-bits'
+import { PixelIcon } from '@/components/PixelIcon'
+import { Card, CardTitle, Field, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
+import { setupChecks, type SetupCheck, type SetupCheckId } from '@/domain/setupChecks'
 import { DEFAULT_BREAKER, type BreakerSettings } from '@/domain/circuitBreaker'
 import { parseBackup, toBackup } from '@/domain/backup'
 import { useI18n } from '@/i18n'
@@ -10,10 +12,11 @@ import { install, useInstallState } from '@/pwa'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import { ENV_KEY } from '@/useCryptoMarket'
-import type { Lang, ThemePref } from '@/types'
+import type { Lang, PixelIconName, SyncStatus, ThemePref } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { currentToken } from '@/sync/google'
 import { testConnection } from '@/sync/sheets'
+import { useNow } from '@/useNow'
 import { useSheetSync } from '@/useSheetSync'
 import type { StatusMessage } from './Settings.types'
 
@@ -30,24 +33,95 @@ function downloadJson(filename: string, value: unknown) {
 /** '' → undefined so clearing a field unsets the value. */
 const optional = (s: string) => (s.trim() === '' ? undefined : Number(s))
 
+/**
+ * Most-needed first: what's set up (status row), your data (backup and sync, the one the app asks about), the money
+ * and risk limits, the circuit breaker, API keys, look and language (also in the header), then the phone app.
+ */
 export function Settings() {
   const { t } = useI18n()
+  const sync = useSheetSync()
   return (
-    <>
-      <Card>
-        <h1 className="font-display text-5xl leading-none uppercase">{t('set.title')}</h1>
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
+      <Card data-tone="gold" className="flex flex-col gap-3">
+        <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('set.title')}</h1>
+        <StatusRow sync={sync.status} />
       </Card>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Preferences />
-        <RiskLimits />
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        <div id="set-data" className="min-w-0 scroll-mt-4 md:col-span-2">
+          <YourData />
+        </div>
+        <div id="set-limits" className="min-w-0 scroll-mt-4">
+          <RiskLimits />
+        </div>
         <BreakerLimits />
-        <MarketData />
-        <AiSettings />
-        <CashflowSettings />
-        <PhoneApp />
-        <Backup />
+        <div id="set-keys" className="min-w-0 scroll-mt-4">
+          <ApiKeys />
+        </div>
+        <Preferences />
+        <div id="set-app" className="min-w-0 scroll-mt-4 md:col-span-2">
+          <PhoneApp />
+        </div>
       </div>
-    </>
+    </div>
+  )
+}
+
+const CHECK_CARD: Record<SetupCheckId, string> = {
+  backup: 'set-data',
+  sync: 'set-data',
+  cgKey: 'set-keys',
+  dsKey: 'set-keys',
+  app: 'set-app',
+}
+const CHECK_ICON: Record<SetupCheckId, PixelIconName> = {
+  backup: 'chest',
+  sync: 'coin',
+  cgKey: 'tag',
+  dsKey: 'bulb',
+  app: 'gamepad',
+}
+
+/** One chip per setup item: green when done, orange when it needs you; tapping one scrolls to its card. */
+function StatusRow({ sync }: { sync: SyncStatus }) {
+  const { t } = useI18n()
+  const { lastExportAt, coingeckoKey, deepseekKey } = useSettings()
+  const install = useInstallState()
+  const now = useNow()
+  const checks = setupChecks({
+    lastExportAt,
+    now,
+    sync,
+    cgKey: !!(coingeckoKey || ENV_KEY),
+    dsKey: !!deepseekKey,
+    install,
+  })
+  const detail = (c: SetupCheck) => (c.id !== 'backup' ? '' : c.days == null ? t('set.never') : t('set.check.age', { d: c.days }))
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {checks.map((c) => (
+        <li key={c.id}>
+          <button
+            type="button"
+            data-tone={c.ok ? 'green' : 'orange'}
+            onClick={() =>
+              document.getElementById(CHECK_CARD[c.id])?.scrollIntoView({
+                behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+              })
+            }
+            className="flex items-center gap-1.5 rounded-md border-2 border-text px-2 py-1 text-left shadow-[2px_2px_0_var(--text)] hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            style={{
+              background: 'color-mix(in srgb, var(--tone) 35%, var(--surface))',
+            }}
+          >
+            <PixelIcon name={CHECK_ICON[c.id]} size={14} color="currentColor" />
+            <span className="font-label text-[11px] uppercase">{t(`set.check.${c.id}`)}</span>
+            <span className="font-label text-[11px] font-bold">{c.ok ? '✓' : '!'}</span>
+            {detail(c) && <span className="text-[11px] text-text-muted">{detail(c)}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -55,8 +129,8 @@ function PhoneApp() {
   const { t } = useI18n()
   const state = useInstallState()
   return (
-    <Card className="md:col-span-2">
-      <CardTitle icon="coin">{t('pwa.title')}</CardTitle>
+    <Card data-tone="teal">
+      <CardTitle icon="gamepad">{t('pwa.title')}</CardTitle>
       {state === 'installed' && <p className="text-sm">{t('pwa.installed')}</p>}
       {state === 'available' && (
         <Button onClick={() => void install()} className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
@@ -74,10 +148,9 @@ function PhoneApp() {
   )
 }
 
-function CashflowSettings() {
+/** Google Sheet sync: status, connect, test and disconnect (inside the Your data card). */
+function SyncPart() {
   const { t } = useI18n()
-  const monthlyBudget = useSettings((s) => s.monthlyBudget)
-  const set = useSettings((s) => s.set)
   const sync = useSheetSync()
   const [test, setTest] = useState<{ sheets: string; drive: string } | 'running' | 'signedOut'>()
 
@@ -89,10 +162,93 @@ function CashflowSettings() {
   }
 
   return (
-    <Card className="md:col-span-2">
-      <CardTitle icon="coin">{t('set.cashflow')}</CardTitle>
+    <div className="flex flex-col gap-3">
+      <SyncBar sync={sync} />
+      <div className="flex flex-wrap gap-2">
+        {sync.status !== 'unconfigured' && (
+          <Button variant="outline" size="sm" onClick={() => void runTest()} disabled={test === 'running'}>
+            {t(test === 'running' ? 'set.testing' : 'set.testConnection')}
+          </Button>
+        )}
+        {(sync.status === 'idle' || sync.status === 'error') && (
+          <Button variant="ghost" size="sm" onClick={sync.disconnect}>
+            {t('sync.disconnect')}
+          </Button>
+        )}
+      </div>
+      {test === 'signedOut' && <p className="text-sm text-warn-text">{t('set.testSignIn')}</p>}
+      {test && typeof test === 'object' && (
+        <ul role="status" className="flex flex-col gap-1 text-sm">
+          {(['sheets', 'drive'] as const).map((api) => (
+            <li key={api} className={test[api] === 'ok' ? 'text-up' : 'text-down'}>
+              {test[api] === 'ok' ? '✓' : '✗'} {t(api === 'sheets' ? 'set.apiSheets' : 'set.apiDrive')}
+              {test[api] !== 'ok' && <span className="block pl-4 text-xs break-words text-text-muted">{test[api]}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function Preferences() {
+  const { t } = useI18n()
+  const { lang, theme, set } = useSettings()
+  return (
+    <Card data-tone="blue">
+      <CardTitle icon="star">{t('set.prefs')}</CardTitle>
       <div className="flex flex-col gap-3">
-        <Field label={t('set.budget')} className="max-w-xs">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-text-muted">{t('set.language')}</span>
+          <PixelTabs<Lang>
+            label={t('set.language')}
+            options={[
+              { id: 'en', label: 'English' },
+              { id: 'id', label: 'Bahasa Indonesia' },
+            ]}
+            value={lang}
+            onChange={(v) => set({ lang: v })}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-text-muted">{t('set.theme')}</span>
+          <PixelTabs<ThemePref>
+            label={t('set.theme')}
+            options={(['system', 'light', 'dark'] as const).map((id) => ({
+              id,
+              label: t(`theme.${id}`),
+            }))}
+            value={theme}
+            onChange={(v) => set({ theme: v })}
+          />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function RiskLimits() {
+  const { t } = useI18n()
+  const { heatLimit, tradeLimit, usdIdr, monthlyBudget, set } = useSettings()
+  // Limits must stay positive; ignore empty or zero while typing.
+  const setLimit = (key: 'heatLimit' | 'tradeLimit', raw: string) => {
+    const n = optional(raw)
+    if (n && n > 0) set({ [key]: n })
+  }
+  return (
+    <Card data-tone="red">
+      <CardTitle icon="heart">{t('set.limits')}</CardTitle>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t('set.heatLimit')}>
+          <input className={fieldClass} type="number" min="0.1" step="0.1" value={heatLimit} onChange={(e) => setLimit('heatLimit', e.target.value)} />
+        </Field>
+        <Field label={t('set.tradeLimit')}>
+          <input className={fieldClass} type="number" min="0.1" step="0.1" value={tradeLimit} onChange={(e) => setLimit('tradeLimit', e.target.value)} />
+        </Field>
+        <Field label={t('set.fx')} hint={t('set.fxHint')}>
+          <input className={fieldClass} type="number" min="0" step="any" value={usdIdr ?? ''} onChange={(e) => set({ usdIdr: optional(e.target.value) })} />
+        </Field>
+        <Field label={t('set.budget')}>
           <input
             className={fieldClass}
             type="number"
@@ -104,83 +260,6 @@ function CashflowSettings() {
               set({ monthlyBudget: n && n > 0 ? Math.round(n) : undefined })
             }}
           />
-        </Field>
-        <SyncBar sync={sync} />
-        <div className="flex flex-wrap gap-2">
-          {sync.status !== 'unconfigured' && (
-            <Button variant="outline" size="sm" onClick={() => void runTest()} disabled={test === 'running'}>
-              {t(test === 'running' ? 'set.testing' : 'set.testConnection')}
-            </Button>
-          )}
-          {(sync.status === 'idle' || sync.status === 'error') && (
-            <Button variant="ghost" size="sm" onClick={sync.disconnect}>
-              {t('sync.disconnect')}
-            </Button>
-          )}
-        </div>
-        {test === 'signedOut' && <p className="text-sm text-warn-text">{t('set.testSignIn')}</p>}
-        {test && typeof test === 'object' && (
-          <ul role="status" className="flex flex-col gap-1 text-sm">
-            {(['sheets', 'drive'] as const).map((api) => (
-              <li key={api} className={test[api] === 'ok' ? 'text-up' : 'text-down'}>
-                {test[api] === 'ok' ? '✓' : '✗'} {t(api === 'sheets' ? 'set.apiSheets' : 'set.apiDrive')}
-                {test[api] !== 'ok' && <span className="block pl-4 text-xs break-words text-text-muted">{test[api]}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-function Preferences() {
-  const { t } = useI18n()
-  const { lang, theme, set } = useSettings()
-  return (
-    <Card>
-      <CardTitle>
-        {t('set.language')} · {t('set.theme')}
-      </CardTitle>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={t('set.language')}>
-          <select className={fieldClass} value={lang} onChange={(e) => set({ lang: e.target.value as Lang })}>
-            <option value="en">English</option>
-            <option value="id">Bahasa Indonesia</option>
-          </select>
-        </Field>
-        <Field label={t('set.theme')}>
-          <select className={fieldClass} value={theme} onChange={(e) => set({ theme: e.target.value as ThemePref })}>
-            <option value="system">{t('theme.system')}</option>
-            <option value="light">{t('theme.light')}</option>
-            <option value="dark">{t('theme.dark')}</option>
-          </select>
-        </Field>
-      </div>
-    </Card>
-  )
-}
-
-function RiskLimits() {
-  const { t } = useI18n()
-  const { heatLimit, tradeLimit, usdIdr, set } = useSettings()
-  // Limits must stay positive; ignore empty or zero while typing.
-  const setLimit = (key: 'heatLimit' | 'tradeLimit', raw: string) => {
-    const n = optional(raw)
-    if (n && n > 0) set({ [key]: n })
-  }
-  return (
-    <Card>
-      <CardTitle icon="heart">{t('set.limits')}</CardTitle>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={t('set.heatLimit')}>
-          <input className={fieldClass} type="number" min="0.1" step="0.1" value={heatLimit} onChange={(e) => setLimit('heatLimit', e.target.value)} />
-        </Field>
-        <Field label={t('set.tradeLimit')}>
-          <input className={fieldClass} type="number" min="0.1" step="0.1" value={tradeLimit} onChange={(e) => setLimit('tradeLimit', e.target.value)} />
-        </Field>
-        <Field label={t('set.fx')} hint={t('set.fxHint')}>
-          <input className={fieldClass} type="number" min="0" step="any" value={usdIdr ?? ''} onChange={(e) => set({ usdIdr: optional(e.target.value) })} />
         </Field>
       </div>
     </Card>
@@ -210,8 +289,8 @@ function BreakerLimits() {
     </Field>
   )
   return (
-    <Card>
-      <CardTitle icon="cross">{t('set.cb.title')}</CardTitle>
+    <Card data-tone="orange">
+      <CardTitle icon="shield">{t('set.cb.title')}</CardTitle>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {field('dailyPct', '0.1')}
         {field('weeklyPct', '0.1')}
@@ -232,49 +311,65 @@ function BreakerLimits() {
   )
 }
 
-function MarketData() {
+/** Market data (CoinGecko) and AI (DeepSeek) keys; both stay in this browser. */
+function ApiKeys() {
   const { t } = useI18n()
-  const { coingeckoKey, set } = useSettings()
+  const { coingeckoKey, deepseekKey, set } = useSettings()
   const source = coingeckoKey ? 'set.keyActive' : ENV_KEY ? 'set.keyFromEnv' : 'set.keyMissing'
   return (
-    <Card>
-      <CardTitle icon="chartUp" aside={t(source)}>
-        {t('set.market')}
-      </CardTitle>
-      <Field label={t('set.cgKey')} hint={t('set.cgKeyHint')}>
-        <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={coingeckoKey ?? ''} onChange={(e) => set({ coingeckoKey: e.target.value.trim() || undefined })} />
-      </Field>
+    <Card data-tone="purple">
+      <CardTitle icon="tag">{t('set.keys')}</CardTitle>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <Label className="text-text">{t('set.market')}</Label>
+            <Label>{t(source)}</Label>
+          </div>
+          <Field label={t('set.cgKey')} hint={t('set.cgKeyHint')}>
+            <input
+              className={fieldClass}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={coingeckoKey ?? ''}
+              onChange={(e) => set({ coingeckoKey: e.target.value.trim() || undefined })}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <Label className="text-text">{t('set.ai')}</Label>
+            <Label>{t(deepseekKey ? 'set.keyActive' : 'set.keyMissing')}</Label>
+          </div>
+          <Field label={t('set.dsKey')} hint={t('set.dsKeyHint')}>
+            <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={deepseekKey ?? ''} onChange={(e) => set({ deepseekKey: e.target.value.trim() || undefined })} />
+          </Field>
+        </div>
+      </div>
     </Card>
   )
 }
 
-function AiSettings() {
-  const { t } = useI18n()
-  const { deepseekKey, set } = useSettings()
-  return (
-    <Card>
-      <CardTitle icon="chartUp" aside={t(deepseekKey ? 'set.keyActive' : 'set.keyMissing')}>
-        {t('set.ai')}
-      </CardTitle>
-      <Field label={t('set.dsKey')} hint={t('set.dsKeyHint')}>
-        <input className={fieldClass} type="password" autoComplete="off" spellCheck={false} value={deepseekKey ?? ''} onChange={(e) => set({ deepseekKey: e.target.value.trim() || undefined })} />
-      </Field>
-    </Card>
-  )
-}
-
-function Backup() {
+/** Backup (export / import) and Google Sheet sync in one card: everything about keeping your data safe. */
+function YourData() {
   const { t, locale } = useI18n()
   const { lastExportAt, set } = useSettings()
   const { holdings, transactions, journal, dividends, replaceAll } = useStore()
   const { entries } = useCashEntries()
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<StatusMessage>()
+  const hasSync = useSheetSync().status !== 'unconfigured'
 
   function exportJson() {
     const now = new Date().toISOString()
     const { accounts, bills, goals } = useCashflow.getState()
-    downloadJson(`mercury-${now.slice(0, 10)}.json`, toBackup(holdings, transactions, now, journal, { dividends, cashflow: { entries, accounts, bills, goals } }))
+    downloadJson(
+      `mercury-${now.slice(0, 10)}.json`,
+      toBackup(holdings, transactions, now, journal, {
+        dividends,
+        cashflow: { entries, accounts, bills, goals },
+      }),
+    )
     set({ lastExportAt: now })
   }
 
@@ -282,41 +377,72 @@ function Backup() {
     const result = parseBackup(await file.text())
     if (!result.ok) return setMessage({ text: result.error, error: true })
     const cash = result.data.cashflow
-    if (!confirm(t(cash ? 'set.importConfirmCash' : 'set.importConfirm', { n: result.data.holdings.length, e: cash?.entries.length ?? 0 }))) return
+    if (
+      !confirm(
+        t(cash ? 'set.importConfirmCash' : 'set.importConfirm', {
+          n: result.data.holdings.length,
+          e: cash?.entries.length ?? 0,
+        }),
+      )
+    )
+      return
     replaceAll(result.data)
     // Cashflow is added, never wiped: entries this device or the Sheet lacks are queued; accounts, bills and goals merge (newest edit wins).
     if (cash) useCashflow.getState().restoreCashflow(cash)
-    setMessage({ text: t('set.imported', { h: result.data.holdings.length, t: result.data.transactions.length }) })
+    setMessage({
+      text: t('set.imported', {
+        h: result.data.holdings.length,
+        t: result.data.transactions.length,
+      }),
+    })
   }
 
   return (
-    <Card className="md:col-span-2">
+    <Card data-tone="green">
       <CardTitle icon="chest" aside={t('set.storage')}>
-        {t('set.backup')}
+        {t('set.data')}
       </CardTitle>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={exportJson}>{t('set.export')}</Button>
-        <Button variant="outline" onClick={() => fileInput.current?.click()}>
-          {t('set.import')}
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void importJson(file)
-            e.target.value = ''
-          }}
-        />
-        <span className="text-sm text-text-muted">{t('set.lastExport', { d: lastExportAt ? new Date(lastExportAt).toLocaleString(locale) : t('set.never') })}</span>
+      <div className={`grid gap-4 ${hasSync ? 'md:grid-cols-2' : ''}`}>
+        <div className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3">
+          <Label className="text-text">{t('set.backup')}</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={exportJson} className="font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none">
+              {t('set.export')}
+            </Button>
+            <Button variant="outline" onClick={() => fileInput.current?.click()}>
+              {t('set.import')}
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void importJson(file)
+                e.target.value = ''
+              }}
+            />
+            <span className="text-sm text-text-muted">
+              {t('set.lastExport', {
+                d: lastExportAt ? new Date(lastExportAt).toLocaleString(locale) : t('set.never'),
+              })}
+            </span>
+          </div>
+          {message && (
+            <p role="status" className={message.error ? 'text-sm text-down' : 'text-sm'}>
+              {message.text}
+            </p>
+          )}
+        </div>
+        {/* Builds without a Google client have no sync to show. */}
+        {hasSync && (
+          <div className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3">
+            <Label className="text-text">{t('set.cashflow')} · Google Sheet</Label>
+            <SyncPart />
+          </div>
+        )}
       </div>
-      {message && (
-        <p role="status" className={message.error ? 'mt-3 text-sm text-down' : 'mt-3 text-sm'}>
-          {message.text}
-        </p>
-      )}
     </Card>
   )
 }
