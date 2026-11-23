@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -108,5 +108,20 @@ describe('tradeTrack', () => {
     expect(t.entry).toBeGreaterThan(0)
     expect(t.now).toBeLessThan(100)
     expect(t.now).toBeGreaterThan(t.entry)
+  })
+})
+
+describe('shareBar', () => {
+  const lit = (pct: number) => shareBar(pct, 'var(--tone)').filter((s) => s.bg === 'var(--tone)').length
+  it('fills by share in one colour', () => {
+    expect(shareBar(40, 'var(--tone)')).toHaveLength(10)
+    expect(lit(40)).toBe(4)
+    expect(lit(100)).toBe(10)
+    expect(lit(0)).toBe(0)
+  })
+  it('shows a tiny share as one segment and clamps out-of-range values', () => {
+    expect(lit(0.3)).toBe(1)
+    expect(lit(140)).toBe(10)
+    expect(lit(-5)).toBe(0)
   })
 })

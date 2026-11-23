@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byType, daysHeld, heatTier, level, positionSize, quests, rarity, sizeQuote, summarize, winnersLosers } from './portfolio'
+import { byType, daysHeld, heatTier, holdingQuests, level, openGroup, positionSize, quests, rarity, sizeQuote, summarize, winnersLosers } from './portfolio'
 import type { Holding, Transaction } from '@/types'
 
 const NOW = Date.parse('2026-11-13T00:00:00Z')
@@ -132,5 +132,54 @@ describe('by type', () => {
     ])
     expect(groups[3].pnlPct).toBe(50)
     expect(groups[3].share).toBeCloseTo((3_000_000 / 5_000_000) * 100)
+  })
+})
+
+describe('openGroup', () => {
+  const holdings = [
+    h({ id: 'bbca', group: 'investing', manualPrice: 10_000 }),
+    h({ id: 'rdpu', group: 'investing', assetClass: 'money_market' }), // at cost: in value, not in gain
+    h({ id: 'adro', manualPrice: 2_500 }),
+    h({ id: 'gone', manualPrice: 1_000 }),
+    h({ id: 'spy', group: 'investing', assetClass: 'us_stock', currency: 'USD', manualPrice: 600 }),
+  ]
+  const sell = (holdingId: string, quantity: number, price: number): Transaction => ({ ...buy(holdingId, quantity, price), type: 'sell' })
+  const txns = [buy('bbca', 1_000, 9_000), buy('rdpu', 5_000_000, 1), buy('adro', 10_000, 2_600), buy('gone', 100, 900), sell('gone', 100, 1_000), buy('spy', 1, 500)]
+  const rows = summarize(holdings, txns, undefined, NOW).rows
+
+  it('totals the open holdings of a group, gain from priced ones only, USD without a rate left out', () => {
+    const inv = openGroup(rows, 'investing')
+    expect(inv.rows.map((r) => r.holding.id)).toEqual(['bbca', 'rdpu', 'spy'])
+    expect(inv.value).toBe(10_000_000 + 5_000_000)
+    expect(inv.cost).toBe(9_000_000)
+    expect(inv.pnl).toBe(1_000_000)
+    expect(inv.pnlPct).toBeCloseTo(11.11, 2)
+  })
+
+  it('skips closed holdings', () => {
+    const tr = openGroup(rows, 'trading')
+    expect(tr.rows.map((r) => r.holding.id)).toEqual(['adro'])
+    expect(tr.pnl).toBe(-1_000_000)
+  })
+
+  it('is zero for an empty group', () => {
+    expect(openGroup([], 'trading')).toEqual({ rows: [], value: 0, cost: 0, pnl: 0, pnlPct: 0 })
+  })
+})
+
+describe('holdingQuests', () => {
+  it('keeps holding to-dos only, most urgent first', () => {
+    const a = h({ id: 'a' })
+    const b = h({ id: 'b' })
+    const list = holdingQuests([
+      { kind: 'stalePrice', holding: a, days: 9 },
+      { kind: 'backup', days: null },
+      { kind: 'setStop', holding: b },
+      { kind: 'review', holding: a, since: '2026-11-01' },
+      { kind: 'overRisk', holding: a, pct: 1.4 },
+      { kind: 'fxRate' },
+      { kind: 'setStop', holding: a },
+    ])
+    expect(list.map((q) => `${q.kind}:${q.holding.id}`)).toEqual(['overRisk:a', 'setStop:b', 'setStop:a', 'review:a', 'stalePrice:a'])
   })
 })

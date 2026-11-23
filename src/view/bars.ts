@@ -109,3 +109,13 @@ export function tradeTrack(entry: number, now: number, stop?: number, target?: n
   const at = (p: number) => Math.min(100, Math.max(0, ((p - lo) / (hi - lo || 1)) * 100))
   return { stop: stop ? at(stop) : undefined, entry: at(entry), now: at(now), target: target ? at(target) : undefined }
 }
+
+/**
+ * A share (0–100 %) as a short pixel bar in one colour: n segments, any share above 0 lights at least one, so a
+ * small type is still visible next to a big one.
+ */
+export function shareBar(pct: number, color: CssColor, n = 10): Segment[] {
+  const p = Math.min(100, Math.max(0, pct))
+  const filled = p > 0 ? Math.max(1, Math.round((p / 100) * n)) : 0
+  return range(n).map((i) => ({ bg: i < filled ? color : COLOR.empty }))
+}
