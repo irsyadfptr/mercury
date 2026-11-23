@@ -44,7 +44,7 @@ import {
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
-import type { I18n, Key } from '@/types'
+import type { I18n } from '@/types'
 import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
 import { WatchButton } from '@/components/WatchButton'
@@ -52,6 +52,9 @@ import { useWatchlist, withWatched } from '@/watchlist'
 import { ChartPanel } from './ChartPanel'
 import { ArbNote, ExpectedRange } from './RiskNotes'
 import { frameCache } from './frameCache'
+import { MoodMeter, ScanGroups, ScanLayout, Stat } from './ScanParts'
+import { MOOD_TONE, showCheck } from './scanDom'
+import { groupScan, rulePips, type ScanGroup } from '@/view/scanGroups'
 
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const SCAN_CONCURRENCY = 4
@@ -87,13 +90,12 @@ const moodRows = (rows: readonly Row[]) => rows.map((r) => ({ symbol: r.symbol, 
 const lastScan: Partial<Record<string, Scan>> = {}
 
 /** buy = every rule passes and the mood allows; paused = would buy but the mood is Defensive; wait = trend ok, no trigger yet. */
-type Status = 'buy' | 'paused' | 'wait' | 'none'
+type Status = Extract<ScanGroup, 'buy' | 'paused' | 'wait' | 'none'>
 const TREND_IDS: ShortRuleId[] = ['trend', 'stack', 'big']
 function statusOf(c: ShortCheck, defensive: boolean): Status {
   if (c.signal) return defensive ? 'paused' : 'buy'
   return c.rules.filter((r) => TREND_IDS.includes(r.id)).every((r) => r.pass) ? 'wait' : 'none'
 }
-const STATUS_ORDER: Record<Status, number> = { buy: 0, paused: 1, wait: 2, none: 3 }
 
 /** One market + holding time of the short-term scanner: mood, ticker check, scan and rules test. */
 export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }) {
@@ -167,11 +169,18 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
   const defensive = mood?.light === 'red'
   const skip = useMemo(() => (series ? (d: string) => (series.get(d) ?? 100) < MOOD_DEFENSIVE : undefined), [series])
 
+  const choose = (s: string) => {
+    setPick(s)
+    showCheck()
+  }
+  // Same order as the swing scanner: mood, setups, the one you tapped, then the rules test.
   return (
     <>
-      <MoodLine mk={mk} mood={mood} running={!!scan?.running} />
-      <Detail key={pick} mk={mk} styleId={styleId} symbol={pick} onPick={setPick} defensive={defensive} skip={skip} rows={ok} />
-      <ScanTable mk={mk} styleId={styleId} scan={scan} defensive={defensive} onStart={() => void start()} onPick={setPick} />
+      <ScanLayout
+        mood={<MoodLine mk={mk} mood={mood} running={!!scan?.running} />}
+        scan={<ScanTable mk={mk} styleId={styleId} scan={scan} defensive={defensive} onStart={() => void start()} onPick={choose} />}
+        check={<Detail key={pick} mk={mk} styleId={styleId} symbol={pick} onPick={choose} defensive={defensive} skip={skip} rows={ok} />}
+      />
       <RulesTest mk={mk} styleId={styleId} rows={done ? ok : []} skip={skip} />
       <p className="px-1 text-xs text-text-muted">{t('short.note')}</p>
     </>
@@ -179,23 +188,17 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
 }
 
 function MoodLine({ mk, mood, running }: { mk: ShortMarket; mood?: MarketMood; running: boolean }) {
-  const { t, num } = useI18n()
-  const cls = mood?.light === 'red' ? 'text-down' : mood?.light === 'yellow' ? 'text-warn-text' : 'text-up'
+  const { t } = useI18n()
   return (
-    <Card className="py-3 sm:py-3">
-      <p className="text-sm">
-        <Label>{t('short.mood')}</Label>{' '}
-        {mood ? (
-          <>
-            <span className={`font-mono ${cls}`}>
-              {num(mood.score)} · {t(`mood.idx.${mood.light}`)}
-            </span>{' '}
-            <span className="text-text-muted">{t(mood.light === 'red' ? 'short.moodRed' : 'short.moodOk', { m: mk === 'idx' ? 'IDX' : 'Crypto' })}</span>
-          </>
-        ) : (
-          <span className="text-text-muted">{running ? t('short.moodWait') : '—'}</span>
-        )}
-      </p>
+    <Card data-tone={mood ? MOOD_TONE[mood.light] : 'lime'}>
+      <CardTitle icon="heart">{t('short.mood')}</CardTitle>
+      {mood ? (
+        <MoodMeter score={mood.score} light={mood.light}>
+          <span className="text-text-muted">{t(mood.light === 'red' ? 'short.moodRed' : 'short.moodOk', { m: mk === 'idx' ? 'IDX' : 'Crypto' })}</span>
+        </MoodMeter>
+      ) : (
+        <p className="text-sm text-text-muted">{running ? t('short.moodWait') : '—'}</p>
+      )}
     </Card>
   )
 }
@@ -204,19 +207,15 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
   const f = useI18n()
   const { t } = f
   const price = priceOf(mk, f)
-  const rows = (scan?.rows.filter(isRow) ?? [])
-    .map((r) => ({ ...r, status: statusOf(r.check, defensive) }))
-    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.check.score - a.check.score || a.symbol.localeCompare(b.symbol))
+  const rows = (scan?.rows.filter(isRow) ?? []).map((r) => ({ ...r, score: r.check.score, status: statusOf(r.check, defensive) }))
   const failed = scan?.rows.filter((r) => !isRow(r)) ?? []
   const missing = failed.find((r) => 'error' in r && r.error === 'idx-missing')
   const buys = rows.filter((r) => r.status === 'buy').length
   const listName = mk === 'idx' ? 'LQ45' : `Top ${scan?.base ?? 50}`
-  const columns: Key[] = ['scan.ticker', 'scan.score', 'short.col.status', 'short.col.entry', 'scan.stop', 'short.col.target']
   const watched = useWatchlist(mk).list
-  const badge: Record<Status, 'paper' | 'warn' | 'neutral'> = { buy: 'paper', paused: 'warn', wait: 'neutral', none: 'neutral' }
 
   return (
-    <Card>
+    <Card data-tone="purple">
       <CardTitle icon="star" aside={scan && t('scan.progress', { n: scan.rows.length, total: scan.list.length })}>
         {t('short.scanTitle', { u: listName, s: t(`short.style.${styleId}`) })}
       </CardTitle>
@@ -228,41 +227,24 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
       </div>
       {missing && <p className="mb-2 text-sm text-down">{t('scan.err.idx-missing')}</p>}
       {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left">
-              <tr>
-                {columns.map((k) => (
-                  <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal whitespace-nowrap text-text-muted uppercase">
-                    {t(k)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r) => (
-                <tr key={r.symbol}>
-                  <td className="px-2 py-1.5">
-                    <button type="button" onClick={() => onPick(r.symbol)} className="font-mono underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                      {r.symbol}
-                    </button>
-                    {watched.includes(r.symbol) && <span className="ml-1 text-warn-text" title={t('watch.on')}>★</span>}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">
-                    {r.check.score}/{r.check.rules.length}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">
-                    <Badge tone={badge[r.status]}>{t(`short.status.${r.status}`)}</Badge>
-                    {r.check.trigger && <span className="ml-1 text-xs text-text-muted">{t(`short.trigger.${r.check.trigger}`)}</span>}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.entry)}</td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.stop)}</td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.target)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ScanGroups
+          groups={groupScan(rows, (r) => r.status).map((g) => ({
+            group: g.group,
+            rows: g.rows.map((r) => ({
+              symbol: r.symbol,
+              score: r.check.score,
+              total: r.check.rules.length,
+              pips: rulePips(r.check.rules),
+              price: price(r.check.entry),
+              badge: r.check.trigger ? <Badge tone={r.status === 'buy' ? 'paper' : 'neutral'}>{t(`short.trigger.${r.check.trigger}`)}</Badge> : undefined,
+              levels: r.check.stop !== undefined ? `${t('scan.stop')} ${price(r.check.stop)} · ${t('short.col.target')} ${price(r.check.target)}` : '',
+              watched: watched.includes(r.symbol),
+            })),
+          }))}
+          title={(g) => (g === 'buy' || g === 'paused' || g === 'wait' ? t(`short.group.${g}`) : t(`scan.group.${g}`))}
+          empty={t('short.noneToday')}
+          onPick={onPick}
+        />
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
       <p className="mt-3 text-xs text-text-muted">
@@ -320,8 +302,8 @@ function Detail({
   }
 
   return (
-    <Card>
-      <CardTitle icon="heart">{t('short.check')}</CardTitle>
+    <Card data-tone="blue">
+      <CardTitle icon="chartUp">{t('short.check')}</CardTitle>
       <form onSubmit={submit} className="mb-4 flex flex-wrap gap-2">
         <input
           value={input}
@@ -396,9 +378,9 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         </div>
       </div>
 
-      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+      <ul className="flex flex-col gap-1">
         {c.rules.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
+          <li key={r.id} className="flex flex-wrap items-center gap-x-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
             <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${r.pass ? 'text-up' : r.pass === false ? 'text-down' : 'text-text-muted'}`}>
               {r.pass ? `✓ ${t('rule.pass')}` : r.pass === false ? `✗ ${t('rule.fail')}` : `? ${t('rule.unknown')}`}
             </span>
@@ -408,7 +390,7 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         ))}
       </ul>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2">
         <Stat label={t('short.col.entry')} value={price(c.entry)} note={t('short.entryNote', { f: frame })} />
         <Stat label={t('scan.stop')} value={price(c.stop)} note={c.risk !== undefined ? `−${pct(c.risk / c.entry)} · ${t('short.stopRule', { n: SWING_BARS, k: MAX_ATR_STOP, f: frame })}` : undefined} />
         <Stat label={t('short.col.target')} value={price(c.target)} note={c.target !== undefined ? `+${pct((c.target - c.entry) / c.entry)}` : undefined} />
@@ -581,7 +563,7 @@ function RulesTest({ mk, styleId, rows, skip }: { mk: ShortMarket; styleId: Styl
   }
 
   return (
-    <Card>
+    <Card data-tone="teal">
       <CardTitle icon="chest" aside={result && t('short.rt.sub', { n: rows.length })}>
         {t('rt.title')}
       </CardTitle>
@@ -620,15 +602,5 @@ function RulesTest({ mk, styleId, rows, skip }: { mk: ShortMarket; styleId: Styl
       )}
       <p className="mt-3 text-xs text-text-muted">{t('short.rt.note')}</p>
     </Card>
-  )
-}
-
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
-      <Label>{label}</Label>
-      <div className="font-mono text-lg">{value}</div>
-      {note && <div className="text-xs text-text-muted">{note}</div>}
-    </div>
   )
 }

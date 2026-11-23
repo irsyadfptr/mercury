@@ -11,7 +11,7 @@ import { cachedCoinList, FIXED_LIST, loadCoinList, type CoinList } from '@/marke
 import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
 import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
-import { MOOD_DEFENSIVE, type MoodLight } from '@/market/mood'
+import { MOOD_DEFENSIVE } from '@/market/mood'
 import { marketMood, marketMoodSeries, saveMood, type MarketMood } from '@/market/marketMood'
 import { useGate } from '@/useGate'
 import { firstProblem, gateNote } from '@/components/gateText'
@@ -32,6 +32,9 @@ import { ENV_KEY } from '@/useCryptoMarket'
 import { useSummary } from '@/useSummary'
 import { ChartPanel, type Timeframe } from './ChartPanel'
 import { ArbNote, ExpectedRange } from './RiskNotes'
+import { MoodMeter, ScanGroups, ScanLayout, Stat } from './ScanParts'
+import { MOOD_TONE, showCheck } from './scanDom'
+import { groupScan, rulePips, swingGroup } from '@/view/scanGroups'
 import { ShortView } from './ShortView'
 import { WatchButton } from '@/components/WatchButton'
 import { useWatchlist, withWatched } from '@/watchlist'
@@ -41,7 +44,12 @@ const SCAN_CONCURRENCY = 4
 /** Fewer backtest trades than this is too small a sample to lean on. */
 const MIN_TRADES = 10
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
-const LIGHT_CLASS: Record<MoodLight, string> = { red: 'text-down', yellow: 'text-warn-text', green: 'text-up' }
+/** Chunky pixel tabs (mode and market), the chosen one a block in the card's colour. */
+const tabGroup = 'flex gap-1 rounded-lg border-2 border-border bg-surface p-1'
+const tab = (on: boolean) =>
+  `rounded-md border-2 px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
+    on ? 'border-text bg-[var(--tone)] text-[oklch(0.24_0.03_275)] shadow-[2px_2px_0_var(--text)]' : 'border-transparent text-text-muted hover:bg-surface-2 hover:text-text'
+  }`
 
 /** Everything that differs between the stock and crypto scanners; the rules themselves live in indicators.ts. */
 interface Market {
@@ -178,23 +186,21 @@ export function Scanner() {
     setMode(v)
     save(MODE_KEY, v)
   }
-  const tab = (on: boolean) =>
-    `rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${on ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`
-
   return (
-    <>
-      <Card>
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
+      <Card data-tone="gold">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase">{t('scan.title')}</h1>
+          <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('scan.title')}</h1>
           <div className="flex flex-wrap gap-2">
-            <div role="group" aria-label={t('short.styleLabel')} className="flex gap-1 rounded-md border border-border p-1">
+            <div role="group" aria-label={t('short.styleLabel')} className={tabGroup}>
               {MODES.map((id) => (
                 <button key={id} type="button" aria-pressed={id === mode} onClick={() => pickMode(id)} className={tab(id === mode)}>
                   {t(`scan.mode.${id}`)}
                 </button>
               ))}
             </div>
-            <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
+            <div role="group" aria-label={t('scan.title')} className={tabGroup}>
               {(['idx', 'crypto'] as const).map((id) => (
                 <button key={id} type="button" aria-pressed={id === marketId} onClick={() => pick(id)} className={tab(id === marketId)}>
                   {t(`scan.market.${id}`)}
@@ -206,7 +212,7 @@ export function Scanner() {
         <p className="mt-2 text-sm text-text-muted">{t(mode === 'swing' ? 'scan.intro' : `short.intro.${mode}`)}</p>
       </Card>
       {!m.available ? (
-        <Card>
+        <Card data-tone="red">
           <p className="text-sm">{t('scan.localOnly')}</p>
         </Card>
       ) : mode === 'swing' ? (
@@ -214,7 +220,7 @@ export function Scanner() {
       ) : (
         <ShortView key={`${m.id}:${mode}`} mk={m.id} styleId={mode} />
       )}
-    </>
+    </div>
   )
 }
 
@@ -311,11 +317,18 @@ function MarketView({ m: base }: { m: Market }) {
     return { defensive: mood?.light === 'red', skip: series && ((d: string) => (series.get(d) ?? 100) < MOOD_DEFENSIVE) }
   }, [scan, mood, m.id])
 
+  const pick = (s: string) => {
+    void run(s)
+    showCheck()
+  }
+  // Mood first (may you buy today?), then the setups, then the one you tapped; the rules test is research, so last.
   return (
     <>
-      <MoodCard m={m} mood={mood} running={!!scan?.running} />
-      <TickerCheck m={m} load={check} onCheck={run} filter={filter} />
-      <ScanCard m={m} scan={scan} defensive={filter.defensive} onStart={() => void startScan()} onPick={(s) => void run(s)} />
+      <ScanLayout
+        mood={<MoodCard m={m} mood={mood} running={!!scan?.running} />}
+        scan={<ScanCard m={m} scan={scan} defensive={filter.defensive} onStart={() => void startScan()} onPick={pick} />}
+        check={<TickerCheck key={check.status === 'done' ? check.symbol : 'input'} m={m} load={check} onCheck={run} filter={filter} />}
+      />
       <RulesTest m={m} scan={scan} />
     </>
   )
@@ -369,7 +382,7 @@ function RulesTest({ m, scan }: { m: Market; scan?: Scan }) {
   }
 
   return (
-    <Card>
+    <Card data-tone="teal">
       <CardTitle icon="chest" aside={t('rt.sub', { ...u, n: tickers.length })}>
         {t('rt.title')}
       </CardTitle>
@@ -427,8 +440,9 @@ function MoodCard({ m, mood: any, running }: { m: Market; mood?: MarketMood; run
   const v = moodVars(m)
   const part = (x: number | undefined) => (x === undefined ? '—' : `${num(x)}/100`)
   const mood = any?.idx
+  const light = any?.crypto?.light ?? mood?.light
   return (
-    <Card>
+    <Card data-tone={light ? MOOD_TONE[light] : 'lime'}>
       <CardTitle icon="heart" aside={t(m.id === 'crypto' ? 'regime.source' : 'mood.idx.source', v)}>
         {t('mood.idx.title', v)}
       </CardTitle>
@@ -437,28 +451,23 @@ function MoodCard({ m, mood: any, running }: { m: Market; mood?: MarketMood; run
       ) : !mood ? (
         <p className="text-sm text-text-muted">{running ? t('mood.idx.waiting', v) : '—'}</p>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-          <div>
-            <div className={`font-display text-5xl leading-none ${LIGHT_CLASS[mood.light]}`}>{mood.score}</div>
-            <div className={`font-label text-[11px] uppercase ${LIGHT_CLASS[mood.light]}`}>● {t(`mood.idx.${mood.light}`)}</div>
-          </div>
-          <dl className="grid flex-1 grid-cols-1 gap-1 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.breadth', v)}</dt>
-              <dd className="font-mono">
-                {part(mood.breadth)} · {t('mood.idx.breadthNote', { n: mood.above, total: mood.counted })}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.trend', v)}</dt>
-              <dd className="font-mono">{part(mood.trend)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-text-muted">{t('mood.idx.calm', v)}</dt>
-              <dd className="font-mono">{part(mood.calm)}</dd>
-            </div>
+        <div className="flex flex-col gap-3">
+          <MoodMeter score={mood.score} light={mood.light}>
+            {t(`mood.idx.advice.${mood.light}`)}
+          </MoodMeter>
+          <dl className="grid grid-cols-3 gap-2 text-sm">
+            {[
+              { k: t('mood.idx.breadth', v), d: `${part(mood.breadth)}`, n: t('mood.idx.breadthNote', { n: mood.above, total: mood.counted }) },
+              { k: t('mood.idx.trend', v), d: part(mood.trend) },
+              { k: t('mood.idx.calm', v), d: part(mood.calm) },
+            ].map((x) => (
+              <div key={x.k} className="min-w-0 rounded-lg bg-surface-2 px-2.5 py-2">
+                <dt className="text-xs text-text-muted">{x.k}</dt>
+                <dd className="font-mono">{x.d}</dd>
+                {x.n && <dd className="text-[11px] text-text-muted">{x.n}</dd>}
+              </div>
+            ))}
           </dl>
-          <p className="w-full text-sm">{t(`mood.idx.advice.${mood.light}`)}</p>
         </div>
       )}
     </Card>
@@ -483,7 +492,7 @@ function TickerCheck({ m, load, onCheck, filter }: { m: Market; load: Load; onCh
     void onCheck(symbol.trim().toUpperCase())
   }
   return (
-    <Card>
+    <Card data-tone="blue">
       <CardTitle icon="chartUp">{t('scan.check')}</CardTitle>
       <form onSubmit={submit} className="mb-4 flex gap-2">
         <input
@@ -499,6 +508,7 @@ function TickerCheck({ m, load, onCheck, filter }: { m: Market; load: Load; onCh
           {load.status === 'loading' ? t('scan.loading') : t('scan.run')}
         </Button>
       </form>
+      {load.status === 'idle' && <p className="text-sm text-text-muted">{t('scan.pickHint')}</p>}
       {load.status === 'error' && <ErrorText m={m} error={load.error} />}
       {load.status === 'done' && <CheckResult m={m} r={load} filter={filter} />}
     </Card>
@@ -560,9 +570,9 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         </p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+      <ul className="flex flex-col gap-1">
         {c.rules.map((rule) => (
-          <li key={rule.id} className="flex flex-wrap items-center gap-x-3 px-3 py-2 text-sm">
+          <li key={rule.id} className="flex flex-wrap items-center gap-x-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
             <span className={`w-14 shrink-0 font-label text-[11px] uppercase ${rule.pass ? 'text-up' : rule.pass === false ? 'text-down' : 'text-text-muted'}`}>
               {rule.pass ? `✓ ${t('rule.pass')}` : rule.pass === false ? `✗ ${t('rule.fail')}` : `? ${t('rule.unknown')}`}
             </span>
@@ -572,7 +582,7 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         ))}
       </ul>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat
           label={t('scan.buyZone')}
           value={c.refZone ? `${price(c.refZone.low)}–${price(c.refZone.high)}` : '—'}
@@ -703,32 +713,21 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   )
 }
 
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
-      <Label>{label}</Label>
-      <div className="font-mono text-lg">{value}</div>
-      {note && <div className="text-xs text-text-muted">{note}</div>}
-    </div>
-  )
-}
-
 function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: Scan; defensive: boolean; onStart: () => void; onPick: (s: string) => void }) {
   const f = useI18n()
   const { t, day } = f
   const price = (n: number | undefined) => (n === undefined ? '—' : m.price(f, n))
-  const ok = (scan?.rows.filter(isResult) ?? []).sort((a, b) => b.check.score - a.check.score || a.symbol.localeCompare(b.symbol))
+  const ok = scan?.rows.filter(isResult) ?? []
   const failed = scan?.rows.filter((r) => !isResult(r)) ?? []
   const passing = ok.filter((r) => r.check.score === r.check.rules.length).length
   const missing = failed.find((r) => 'error' in r && r.error === 'idx-missing')
   const changes = scan && !scan.running ? scanChanges(loadScanLog(m.id)) : undefined
   const list = (xs: string[]) => (xs.length ? xs.join(', ') : '—')
   const u = { u: m.listName }
-  const columns: Key[] = ['scan.ticker', 'scan.score', 'scan.close', 'scan.buyZone', 'scan.stop', 'scan.target2']
   const watched = useWatchlist(m.id).list
 
   return (
-    <Card>
+    <Card data-tone="purple">
       <CardTitle icon="star" aside={scan && t('scan.progress', { n: scan.rows.length, total: m.list.length })}>
         {t('scan.lq45', u)}
       </CardTitle>
@@ -740,7 +739,7 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
       </div>
       {missing && 'error' in missing && <ErrorText m={m} error={missing.error} />}
       {changes && (
-        <div className="mb-3 rounded-md bg-surface-2 px-3 py-2 text-sm">
+        <div className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
           <Label>{t('scan.changes', { d: day(changes.since) })}</Label>
           <p>
             {t('scan.newPassing')}: <span className="font-mono">{list(changes.newPassing)}</span> · {t('scan.lostPassing')}:{' '}
@@ -753,45 +752,29 @@ function ScanCard({ m, scan, defensive, onStart, onPick }: { m: Market; scan?: S
         </div>
       )}
       {ok.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left">
-              <tr>
-                {columns.map((k) => (
-                  <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal text-text-muted uppercase">
-                    {t(k)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {ok.map((r) => (
-                <tr key={r.symbol}>
-                  <td className="px-2 py-1.5">
-                    <button type="button" onClick={() => onPick(r.symbol)} className="font-mono underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                      {r.symbol}
-                    </button>
-                    {watched.includes(r.symbol) && <span className="ml-1 text-warn-text" title={t('watch.on')}>★</span>}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">
-                    {r.check.score}/{r.check.rules.length} {r.check.score === r.check.rules.length && !defensive && <Badge tone="paper">{t('scan.pass')}</Badge>}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.close)}</td>
-                  <td className="px-2 py-1.5 font-mono whitespace-nowrap">
-                    {r.check.refZone ? `${price(r.check.refZone.low)}–${price(r.check.refZone.high)} ` : '—'}
-                    {r.check.zone !== 'none' ? (
-                      <Badge tone={r.check.zone === 'in' ? 'paper' : 'warn'}>{t(`scan.badge.${r.check.zone}`)}</Badge>
-                    ) : (
-                      r.check.refZone && <Badge tone="neutral">{t('scan.badge.notIdeal')}</Badge>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.stop)}</td>
-                  <td className="px-2 py-1.5 font-mono">{price(r.check.target2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ScanGroups
+          groups={groupScan(ok.map((r) => ({ ...r, score: r.check.score })), (r) => swingGroup(r.check, defensive)).map((g) => ({
+            group: g.group,
+            rows: g.rows.map((r) => ({
+              symbol: r.symbol,
+              score: r.check.score,
+              total: r.check.rules.length,
+              pips: rulePips(r.check.rules),
+              price: price(r.check.close),
+              badge:
+                r.check.zone !== 'none' ? (
+                  <Badge tone={r.check.zone === 'in' ? 'paper' : 'warn'}>{t(`scan.badge.${r.check.zone}`)}</Badge>
+                ) : r.check.refZone ? (
+                  <Badge tone="neutral">{t('scan.badge.notIdeal')}</Badge>
+                ) : undefined,
+              levels: r.check.stop !== undefined ? `${t('scan.stop')} ${price(r.check.stop)} · 2R ${price(r.check.target2)}` : '',
+              watched: watched.includes(r.symbol),
+            })),
+          }))}
+          title={(g) => t(`scan.group.${g}`)}
+          empty={t('scan.noneToday')}
+          onPick={onPick}
+        />
       )}
       {!missing && failed.length > 0 && <p className="mt-2 text-xs text-text-muted">{t('scan.failed', { list: failed.map((r) => r.symbol).join(', ') })}</p>}
       <p className="mt-3 text-xs text-text-muted">
