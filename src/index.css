@@ -218,7 +218,7 @@
 @keyframes fab-twinkle { 50% { opacity: 0; transform: scale(0.4); } }
 @keyframes fab-enter { from { transform: translateY(120%) scale(0.6); } 70% { transform: translateY(-12%) scale(1.05); } }
 /*
- * The playful skin (scoped to .play-skin; Cashflow and Dashboard): each card has its own colour (data-tone) for a tinted face, a chunky
+ * The playful skin (scoped to .play-skin; Cashflow, Dashboard and Portfolio): each card has its own colour (data-tone) for a tinted face, a chunky
  * ink outline with a hard offset shadow, a pixel stripe along the top and its icon in a coloured badge. Behind the
  * cards, scattered pixel confetti.
  */
@@ -267,7 +267,7 @@
 }
 [data-theme="dark"] .play-confetti { opacity: 0.22; }
 /*
- * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, MERCURY with an offset
+ * The header on the playful pages, in the same skin as its cards: ink outline, hard shadow, MERCURY with an offset
  * shadow, and chunky nav chips that light up soft gold on hover (the current page is a gold block).
  */
 .play-header { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); position: relative; border: 2px solid var(--play-ink) !important; border-radius: 14px !important; box-shadow: 4px 5px 0 var(--play-ink); }

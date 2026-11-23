@@ -15,7 +15,7 @@ const focusRing = 'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ou
 const pill = cn('rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-label text-[11px] uppercase hover:border-primary', focusRing)
 
 /** Pages drawn in the playful skin (.play-skin in index.css). */
-const PLAY_ROUTES: readonly Route[] = ['cashflow', 'dashboard']
+const PLAY_ROUTES: readonly Route[] = ['cashflow', 'dashboard', 'portfolio']
 
 export function Shell({ route, children }: ShellProps) {
   const { t, lang } = useI18n()
