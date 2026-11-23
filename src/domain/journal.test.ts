@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Holding, JournalEntry, Transaction } from '@/types'
 import { parseBackup, toBackup } from './backup'
-import { byDay, exitLessonsDue, journalStreak } from './journal'
+import { byDay, exitLessonsDue, journalStreak, journalCalendar } from './journal'
 
 const e = (date: string, createdAt = `${date}T01:00:00.000Z`): JournalEntry => ({ id: createdAt, date, tag: 'note', text: 'x', createdAt })
 
@@ -58,5 +58,22 @@ describe('backup with dividends and cashflow', () => {
     expect(old.ok && [old.data.dividends, old.data.cashflow]).toEqual([[], undefined])
     const stray = toBackup([], [], '2026-11-16T00:00:00.000Z', [], { dividends: [{ id: 'd', holdingId: 'gone', date: '2026-11-01', amount: 1 }] })
     expect(parseBackup(JSON.stringify(stray)).ok).toBe(false)
+  })
+})
+
+describe('journalCalendar', () => {
+  it('covers whole weeks from Monday, counts entries per day and marks future days', () => {
+    // 2026-11-25 is a Wednesday.
+    const cells = journalCalendar([{ date: '2026-11-25' }, { date: '2026-11-25' }, { date: '2026-11-17' }, { date: '2026-01-01' }], '2026-11-25', 2)
+    expect(cells).toHaveLength(14)
+    expect(cells[0].date).toBe('2026-11-16')
+    expect(cells.at(-1)!.date).toBe('2026-11-29')
+    expect(cells.find((c) => c.date === '2026-11-25')).toEqual({ date: '2026-11-25', count: 2, future: false })
+    expect(cells.find((c) => c.date === '2026-11-17')!.count).toBe(1)
+    expect(cells.filter((c) => c.future).map((c) => c.date)).toEqual(['2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'])
+  })
+  it('starts on the same Monday when today is a Monday or a Sunday', () => {
+    expect(journalCalendar([], '2026-11-23', 1)[0].date).toBe('2026-11-23')
+    expect(journalCalendar([], '2026-11-29', 1)[0].date).toBe('2026-11-23')
   })
 })

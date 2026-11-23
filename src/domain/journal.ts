@@ -46,3 +46,21 @@ export function byDay(entries: readonly JournalEntry[]): [string, JournalEntry[]
   for (const e of sorted) groups.set(e.date, [...(groups.get(e.date) ?? []), e])
   return [...groups]
 }
+
+/**
+ * Pure: the last `weeks` weeks as calendar cells, Monday first, ending with the week of `today`: each day's number of
+ * journal entries, and whether it is after today (drawn empty).
+ */
+export function journalCalendar(entries: readonly Pick<JournalEntry, 'date'>[], today: string, weeks = 5): { date: string; count: number; future: boolean }[] {
+  const counts = new Map<string, number>()
+  for (const e of entries) counts.set(e.date, (counts.get(e.date) ?? 0) + 1)
+  const t = new Date(`${today}T00:00:00Z`)
+  const monday = new Date(t)
+  monday.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) - (weeks - 1) * 7)
+  return Array.from({ length: weeks * 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setUTCDate(monday.getUTCDate() + i)
+    const date = d.toISOString().slice(0, 10)
+    return { date, count: counts.get(date) ?? 0, future: date > today }
+  })
+}

@@ -2,11 +2,14 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
 import { useCashflow } from '@/cashflowStore'
-import { Card, CardTitle, Label, Segments } from '@/components/ui-bits'
+import { HeatMeter } from '@/components/HeatMeter'
+import { describeQuest } from '@/components/questText'
+import { TradeList } from '@/components/TradeList'
+import { Card, CardTitle, Label, Segments, TonePanel } from '@/components/ui-bits'
 import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
-import { heatTier, level, quests, speedOf, winnersLosers } from '@/domain/portfolio'
+import { heatTier, level, openGroup, quests, speedOf, winnersLosers } from '@/domain/portfolio'
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
@@ -16,7 +19,7 @@ import { href } from '@/routes'
 import { useBreakers } from '@/useGate'
 import type { Breaker } from '@/domain/circuitBreaker'
 import { useSettings } from '@/settings'
-import type { AllocationItem, Bill, CashEntry, Holding, I18n, JournalEntry, PixelIconName, Quest, RiskStatus, Row, Summary, Transaction } from '@/types'
+import type { AllocationItem, Bill, CashEntry, Holding, I18n, JournalEntry, PixelIconName, QuestView, Row, Summary, Transaction } from '@/types'
 import { WATCHLIST } from '@/market/coingecko'
 import { exitLessonsDue, journalStreak } from '@/domain/journal'
 import { useStore } from '@/store'
@@ -26,9 +29,9 @@ import { useNow } from '@/useNow'
 import { longTermSymbols, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
 import { allocation, tileFontSize, treemap } from '@/view/allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, tradeTrack, xpBar } from '@/view/bars'
+import { budgetBar, moodBar, moodColor, xpBar } from '@/view/bars'
 import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
-import type { QuestView, StatTile } from './Dashboard.types'
+import type { StatTile } from './Dashboard.types'
 
 /**
  * The daily glance, most-needed first: what you're worth and where it is (accounts, investing, running trades), what
@@ -193,7 +196,7 @@ const LEVEL_UP_SOON = 0.9
 function Part({ tone, icon, label, value, aside, children }: { tone: string; icon: PixelIconName; label: string; value: number; aside?: ReactNode; children?: ReactNode }) {
   const { compact } = useI18n()
   return (
-    <div data-tone={tone} data-part className="flex min-w-0 flex-col gap-2 rounded-xl border-2 p-3" style={{ background: 'color-mix(in srgb, var(--tone) 16%, var(--surface))', borderColor: 'color-mix(in srgb, var(--tone) 60%, var(--surface))' }}>
+    <TonePanel tone={tone}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="flex items-center gap-2">
           <span className="grid size-7 place-items-center rounded-md border-2 border-text" style={{ background: 'var(--tone)' }}>
@@ -208,7 +211,7 @@ function Part({ tone, icon, label, value, aside, children }: { tone: string; ico
         {compact(Math.abs(value))}
       </span>
       {children}
-    </div>
+    </TonePanel>
   )
 }
 
@@ -222,9 +225,8 @@ function Hero({ summary, entries, today }: { summary: Summary; entries: readonly
   const total = summary.netWorth + cash
   const shown = useCountUp(total)
   const lv = level(total)
-  const { trades, pnl: tradePnl } = tradeTotals(summary.rows)
-  const investing = summary.rows.filter((r) => r.holding.group === 'investing' && r.v.quantity > 0)
-  const investingPnl = investing.filter((r) => r.v.priceSource !== 'cost').reduce((sum, r) => sum + idrPnl(r), 0)
+  const { rows: trades, pnl: tradePnl } = openGroup(summary.rows, 'trading')
+  const { rows: investing, pnl: investingPnl } = openGroup(summary.rows, 'investing')
   const xpPct = Math.round(lv.xp * 100)
 
   return (
@@ -354,33 +356,12 @@ function MonthCard() {
 // ---- Heat ----
 
 function HeatCard({ heat }: { heat: number }) {
-  const { t, num } = useI18n()
+  const { t } = useI18n()
   const limit = useSettings((x) => x.heatLimit)
-  const { tier, flames } = heatTier(heat, limit)
-  const hot = flames >= 2
-  const numberColor = tier === 'overheated' ? COLOR.fireRed : hot ? COLOR.fireOrange : COLOR.text
-  const tierLabel = t(`heat.${tier}`)
-
+  const hot = heatTier(heat, limit).flames >= 2
   return (
     <Card aria-label={t('heat.title')} data-tone="red" className="flex min-w-0 flex-[2_1_340px] flex-col gap-3" style={hot ? { background: COLOR.fireSoft, borderColor: COLOR.fireEdge } : undefined}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-3xl leading-none uppercase">{t('heat.title')}</h2>
-        <span className={`rounded-md px-2 py-0.5 font-label text-[11px] uppercase ${flames ? 'bg-fire-red text-white' : 'bg-surface-2 text-text-muted'}`}>{tierLabel}</span>
-      </div>
-      <div className="flex min-h-[88px] items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <span className="font-display text-7xl leading-[0.85]" style={{ color: numberColor }}>
-            {num(heat, 1)}%
-          </span>
-          <Label>{t('heat.explain', { n: limit })}</Label>
-        </div>
-        <div aria-hidden="true" className="flex items-end gap-0.5">
-          {flameSizes(flames).map((size, i) => (
-            <PixelIcon key={i} name="flame" size={size} className="flame" />
-          ))}
-        </div>
-      </div>
-      <Segments items={heatBar(heat, limit)} height={16} label={`${t('heat.title')} ${num(heat, 1)}% / ${limit}%: ${tierLabel}`} />
+      <HeatMeter heat={heat} title={<h2 className="font-display text-3xl leading-none uppercase">{t('heat.title')}</h2>} />
     </Card>
   )
 }
@@ -454,101 +435,6 @@ function MoodCard() {
   )
 }
 
-// ---- Trade risk ----
-
-/** Pure: the short note next to a trade's health bar. */
-function riskNote(status: RiskStatus, limit: number, f: I18n): string {
-  switch (status.kind) {
-    case 'noStop':
-      return f.t('risk.noStop')
-    case 'over':
-      return f.t('risk.over', { n: f.num(status.overBy, 2) })
-    case 'close':
-      return `${f.num(status.pct, 2)} / ${f.num(limit, 1)}% · ${f.t('risk.close')}`
-    case 'safe':
-      return `${f.num(status.pct, 2)} / ${f.num(limit, 1)}%`
-  }
-}
-
-const isAlarming = (s: RiskStatus) => s.kind === 'noStop' || s.kind === 'over'
-
-/** Open trades (Trading group): how many, and their gain or loss together in rupiah (priced ones only). */
-function tradeTotals(rows: readonly Row[]) {
-  const trades = rows.filter((r) => r.holding.group === 'trading' && r.v.quantity > 0)
-  const pnl = trades.filter((r) => r.v.priceSource !== 'cost').reduce((sum, r) => sum + idrPnl(r), 0)
-  return { trades, pnl }
-}
-
-/** A holding's unrealized gain or loss in rupiah. */
-const idrPnl = (r: Row) => r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)
-
-/**
- * Open trades, one row each: gain or loss so far, a line from stop to target with the entry and today's price on it,
- * days held, and the trade's risk against the per-trade limit (what the old Trade risk card showed).
- */
-function TradeList({ rows }: { rows: readonly Row[] }) {
-  const f = useI18n()
-  const { t, num, compact } = f
-  const limit = useSettings((x) => x.tradeLimit)
-  const { trades } = tradeTotals(rows)
-  const price = (n: number) => num(n, n < 10 ? 4 : 0)
-  if (!trades.length) return <p className="text-sm text-text-muted">{t('risk.empty')}</p>
-  return (
-      <ul className="flex flex-col gap-2">
-        {trades.map((r) => {
-          const { holding: h, v } = r
-          const priced = v.priceSource !== 'cost'
-          const up = v.unrealized >= 0
-          const track = tradeTrack(v.avgCost, v.price, h.stop, h.target)
-          const bar = riskBar(r.risk, limit)
-          // Without a stop the left label already says so; the risk note would repeat it.
-          const note = bar && bar.status.kind !== 'noStop' ? riskNote(bar.status, limit, f) : undefined
-          const from = Math.min(track.entry, track.now)
-          return (
-            <li key={h.id}>
-              <a href={href('portfolio')} className="flex flex-col gap-2 rounded-lg bg-surface-2 px-3 py-2.5 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="font-semibold">
-                    {h.symbol} {h.paper && <span className="font-label text-[11px] text-accent-text uppercase">· {t('badge.paper')}</span>}
-                    <span className="ml-1.5 font-label text-[11px] text-text-muted uppercase">{t('run.days', { d: r.daysHeld })}</span>
-                  </span>
-                  {priced ? (
-                    <span className="flex items-baseline gap-1.5" style={{ color: up ? COLOR.up : COLOR.down }}>
-                      <span className="font-display text-xl leading-none">
-                        {up ? '▲' : '▼'}
-                        {num(Math.abs(v.unrealizedPct), 1)}%
-                      </span>
-                      <span className="font-mono text-xs">
-                        {up ? '+' : '−'}
-                        {compact(Math.abs(idrPnl(r)))}
-                      </span>
-                    </span>
-                  ) : (
-                    <Label>{t('run.noPrice')}</Label>
-                  )}
-                </span>
-                {/* Stop ──── entry ▓▓▓ now ──── target */}
-                <span role="img" aria-label={t('run.trackLabel', { stop: h.stop ? price(h.stop) : '—', entry: price(v.avgCost), now: price(v.price), target: h.target ? price(h.target) : '—' })} className="relative mx-1.5 block h-3">
-                  <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded bg-empty" />
-                  <span className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded" style={{ left: `${from}%`, width: `${Math.abs(track.now - track.entry)}%`, background: up ? COLOR.up : COLOR.down }} />
-                  {track.stop !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.stop}%`, background: COLOR.down }} />}
-                  {track.target !== undefined && <span className="absolute top-0 h-3 w-1 -translate-x-1/2 rounded-sm" style={{ left: `${track.target}%`, background: COLOR.up }} />}
-                  <span className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-text-muted" style={{ left: `${track.entry}%` }} />
-                  <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface" style={{ left: `${track.now}%`, background: up ? COLOR.up : COLOR.down }} />
-                </span>
-                <span className="flex justify-between gap-2 font-label text-[10px] uppercase">
-                  <span style={{ color: h.stop ? COLOR.down : COLOR.muted }}>{h.stop ? t('run.stop', { p: price(h.stop) }) : t('run.noStop')}</span>
-                  {note && <span style={{ color: bar && isAlarming(bar.status) ? COLOR.down : COLOR.muted }}>{note}</span>}
-                  <span style={{ color: h.target ? COLOR.up : COLOR.muted }}>{h.target ? t('run.target', { p: price(h.target) }) : t('run.noTarget')}</span>
-                </span>
-              </a>
-            </li>
-          )
-        })}
-      </ul>
-  )
-}
-
 // ---- Inventory ----
 
 function Inventory({ summary }: { summary: Summary }) {
@@ -610,28 +496,6 @@ function Tile({ item, largest = false }: { item: AllocationItem; largest?: boole
 }
 
 // ---- Quests ----
-
-/** Pure: how a quest reads and where it sends you. */
-function describeQuest(q: Quest, f: I18n): QuestView {
-  switch (q.kind) {
-    case 'setStop':
-      return { label: f.t('quest.setStop', { s: q.holding.symbol }), tag: '', route: 'portfolio' }
-    case 'overRisk':
-      return { label: f.t('quest.overRisk', { s: q.holding.symbol, n: f.num(q.pct, 2) }), tag: '', route: 'portfolio' }
-    case 'stalePrice':
-      return {
-        label: f.t('quest.stalePrice', { s: q.holding.symbol }),
-        tag: q.days == null ? f.t('quest.stalePriceNever') : f.t('quest.stalePriceAge', { d: q.days }),
-        route: 'portfolio',
-      }
-    case 'backup':
-      return { label: f.t('quest.backup'), tag: q.days == null ? f.t('quest.backupNever') : f.t('quest.backupAge', { d: q.days }), route: 'settings' }
-    case 'fxRate':
-      return { label: f.t('quest.fxRate'), tag: '', route: 'settings' }
-    case 'review':
-      return { label: f.t('quest.review', { s: q.holding.symbol }), tag: f.day(q.since), route: 'journal', params: { view: 'trades' } }
-  }
-}
 
 /** The circuit breaker, when it stops new entries (real first). */
 function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>): QuestView[] {

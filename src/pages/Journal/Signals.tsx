@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardTitle, Label } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Label, PixelTabs } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
 import { fetchCryptoHistory } from '@/market/binance'
 import { fetchHistory, IDX_AVAILABLE } from '@/market/idx'
@@ -112,34 +112,20 @@ export function SignalsView() {
     setProgress(undefined)
   }
 
-  const tab = (on: boolean) =>
-    `rounded px-2.5 py-1 font-label text-[11px] uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${on ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`
   const moodLine =
     live.closed >= MIN_COMPARE && paused.closed >= MIN_COMPARE
       ? t((paused.avgR ?? 0) < (live.avgR ?? 0) ? 'sg.moodHelps' : 'sg.moodHurts', { p: signed(f, paused.avgR), l: signed(f, live.avgR) })
       : t('sg.moodWait', { n: MIN_COMPARE })
 
   return (
-    <Card>
+    <Card data-tone="purple">
       <CardTitle icon="star" aside={t('sg.count', { n: shown.length })}>
         {t('sg.title')}
       </CardTitle>
       <p className="mb-3 text-sm text-text-muted">{t('sg.intro')}</p>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="group" aria-label={t('sg.market')} className="flex gap-1 rounded-md border border-border p-1">
-          {(['all', 'idx', 'crypto'] as const).map((m) => (
-            <button key={m} type="button" aria-pressed={m === market} onClick={() => setMarket(m)} className={tab(m === market)}>
-              {t(m === 'all' ? 'sg.all' : `scan.market.${m}`)}
-            </button>
-          ))}
-        </div>
-        <div role="group" aria-label={t('sg.style')} className="flex gap-1 rounded-md border border-border p-1">
-          {(['all', ...SIGNAL_STYLES] as const).map((s) => (
-            <button key={s} type="button" aria-pressed={s === style} onClick={() => setStyle(s)} className={tab(s === style)}>
-              {t(s === 'all' ? 'sg.all' : `scan.mode.${s}`)}
-            </button>
-          ))}
-        </div>
+        <PixelTabs label={t('sg.market')} options={(['all', 'idx', 'crypto'] as const).map((m) => ({ id: m, label: t(m === 'all' ? 'sg.all' : `scan.market.${m}`) }))} value={market} onChange={setMarket} />
+        <PixelTabs label={t('sg.style')} options={(['all', ...SIGNAL_STYLES] as const).map((x) => ({ id: x, label: t(x === 'all' ? 'sg.all' : `scan.mode.${x}`) }))} value={style} onChange={setStyle} />
         <Button onClick={() => void check()} disabled={!!progress || !log.length} className={primary}>
           {progress ? t('sg.checking', { n: progress.n, total: progress.total }) : t('sg.check')}
         </Button>

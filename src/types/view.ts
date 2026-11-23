@@ -1,3 +1,4 @@
+import type { Route } from './app'
 import type { AssetClass } from './domain'
 
 export type CssColor = string
@@ -42,4 +43,14 @@ export interface Treemap {
   /** Flex weights for the right column and its bottom row. */
   rightWeight: number
   restWeight: number
+}
+
+/** A quest as it reads, and where tapping it goes. */
+export interface QuestView {
+  label: string
+  /** Short status like "14 days old"; empty when none. */
+  tag: string
+  route: Route
+  /** Query for the route, e.g. a journal note to prefill. */
+  params?: Record<string, string>
 }

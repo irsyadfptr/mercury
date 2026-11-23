@@ -36,4 +36,8 @@ export const ICONS = {
   // Money out / in.
   arrowDown: [pix(['...XX...', '...XX...', '...XX...', '...XX...', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '...XX...'])],
   arrowUp: [pix(['...XX...', '..XXXX..', '.XXXXXX.', 'XXXXXXXX', '...XX...', '...XX...', '...XX...', '...XX...'])],
+  // Portfolio: a stop (shield), trading (sword), the AI review (bulb).
+  shield: [pix(['XXXXXXXX', 'X..XX..X', 'X..XX..X', 'XXXXXXXX', 'X..XX..X', '.X.XX.X.', '..XXXX..', '...XX...'])],
+  sword: [pix(['......XX', '.....XXX', '....XXX.', 'X..XXX..', '.XXXX...', '..XX....', '.XXXX...', 'XX..X...'])],
+  bulb: [pix(['..XXXX..', '.XXXXXX.', 'XXXXXXXX', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '........', '..XXXX..'])],
 } as const

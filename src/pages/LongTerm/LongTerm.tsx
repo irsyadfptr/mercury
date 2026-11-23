@@ -2,11 +2,13 @@ import { factLine } from '@/ai/deepseek'
 import { Explain } from '@/components/Explain'
 import { useReducer, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
+import { ltScoreColor } from '@/view/bars'
+import { ScorePips } from './ScorePips'
 import { useI18n } from '@/i18n'
 import { scoreFundamentals, type FundamentalScore, type Metric, type MetricId } from '@/market/fundamentals'
 import { fetchFundamentals, fetchScreen, IDX_AVAILABLE, IdxFetchError, SCREENS, type FundamentalRow, type IdxError, type ScreenId } from '@/market/idx'
-import type { I18n, Key } from '@/types'
+import type { I18n } from '@/types'
 import { loadScoreLog } from '@/market/scoreLog'
 import { longTermSymbols, saveCheck, useScoreLog } from '@/useScoreLog'
 import { useSummary } from '@/useSummary'
@@ -81,53 +83,57 @@ export function LongTerm() {
     }
   }
 
+  const pick = (s: string) => {
+    void run(s)
+    requestAnimationFrame(() => {
+      const el = document.getElementById('lt-check')
+      if (el && (el.getBoundingClientRect().top < 0 || el.getBoundingClientRect().top > innerHeight * 0.6)) el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+    })
+  }
+
+  // IDX order, most-needed first: how your holdings score (and what scores better), the check, the screen for new
+  // ideas, then score history. Wide: holdings + screen on the left, check + history on the right.
   return (
-    <>
-      <Card>
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
+      <Card data-tone="gold">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase">{t('lt.title')}</h1>
-          <div role="group" aria-label={t('scan.title')} className="flex gap-1 rounded-md border border-border p-1">
-            {(['idx', 'crypto'] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={id === market}
-                onClick={() => pickMarket(id)}
-                className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${id === market ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
-              >
-                {t(`scan.market.${id}`)}
-              </button>
-            ))}
-          </div>
+          <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('lt.title')}</h1>
+          <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={market} onChange={pickMarket} />
         </div>
         <p className="mt-2 text-sm text-text-muted">{t(market === 'idx' ? 'lt.intro' : 'cryf.intro')}</p>
       </Card>
       {market === 'crypto' ? (
         <CryptoCheck />
-      ) : IDX_AVAILABLE ? (
-        <>
-          <TickerCheck check={check} onCheck={run} />
-          <ScreenCard
-            onPick={(s) => {
-              void run(s)
-              window.scrollTo({ top: 0, behavior: 'smooth' })
-            }}
-          />
-        </>
       ) : (
-        <Card>
-          <p className="text-sm">{t('scan.localOnly')}</p>
-        </Card>
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+            <div className="order-1 min-w-0 lg:order-none">
+              <BetterScored log={log} held={held} onPick={pick} />
+            </div>
+            {IDX_AVAILABLE && (
+              <div className="order-3 min-w-0 lg:order-none">
+                <ScreenCard onPick={pick} />
+              </div>
+            )}
+          </div>
+          <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+            <div id="lt-check" className="order-2 min-w-0 scroll-mt-4 lg:order-none">
+              {IDX_AVAILABLE ? (
+                <TickerCheck check={check} onCheck={run} />
+              ) : (
+                <Card data-tone="red">
+                  <p className="text-sm">{t('scan.localOnly')}</p>
+                </Card>
+              )}
+            </div>
+            <div className="order-4 min-w-0 lg:order-none">
+              <ScoreHistory log={log} initial={check.status === 'done' ? check.row.symbol : held[0]} onPick={pick} />
+            </div>
+          </div>
+        </div>
       )}
-      {market === 'idx' && <div className="flex flex-wrap gap-4">
-        <div className="min-w-0 flex-[3_1_420px]">
-          <ScoreHistory log={log} initial={check.status === 'done' ? check.row.symbol : held[0]} onPick={(s) => void run(s)} />
-        </div>
-        <div className="min-w-0 flex-[2_1_320px]">
-          <BetterScored log={log} held={held} onPick={(s) => void run(s)} />
-        </div>
-      </div>}
-    </>
+    </div>
   )
 }
 
@@ -155,7 +161,7 @@ function TickerCheck({ check, onCheck }: { check: Check; onCheck: (s: string) =>
     void onCheck(symbol.trim().toUpperCase())
   }
   return (
-    <Card>
+    <Card data-tone="blue">
       <CardTitle icon="chartUp">{t('lt.check')}</CardTitle>
       <form onSubmit={submit} className="mb-4 flex gap-2">
         <input
@@ -171,6 +177,7 @@ function TickerCheck({ check, onCheck }: { check: Check; onCheck: (s: string) =>
           {check.status === 'loading' ? t('scan.loading') : t('scan.run')}
         </Button>
       </form>
+      {check.status === 'idle' && <p className="text-sm text-text-muted">{t('scan.pickHint')}</p>}
       {check.status === 'error' && <ErrorText error={check.error} />}
       {check.status === 'done' && <CheckResult row={check.row} />}
     </Card>
@@ -192,19 +199,28 @@ function CheckResult({ row }: { row: Scored }) {
         </div>
         <div className="text-right">
           <Label>{t('lt.total')}</Label>
-          <div className="font-display text-5xl leading-none">{s.total}/15</div>
+          <div className="font-display text-5xl leading-none" style={{ color: ltScoreColor(s.total) }}>
+            {s.total}
+            <span className="text-2xl text-text-muted">/15</span>
+          </div>
           {s.known < 15 && <div className="text-xs text-text-muted">{t('lt.known', { n: s.known })}</div>}
         </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <ScorePips total={s.total} height={12} label={`${row.symbol} ${s.total}/15`} />
+      <div className="flex flex-col gap-3">
         {s.parts.map((p) => (
-          <div key={p.id} className="rounded-md border border-border">
-            <div className="flex items-baseline justify-between bg-surface-2 px-3 py-2">
-              <div>
-                <Label>{t(`lt.part.${p.id}`)}</Label>
+          <div key={p.id} className="overflow-hidden rounded-lg border-2" style={{ borderColor: 'color-mix(in srgb, var(--tone) 55%, var(--surface))' }}>
+            <div className="flex items-center justify-between gap-3 bg-surface-2 px-3 py-2">
+              <div className="min-w-0">
+                <Label className="text-text">{t(`lt.part.${p.id}`)}</Label>
                 <div className="text-xs text-text-muted">{t(`lt.part.${p.id}.d`)}</div>
               </div>
-              <div className="font-display text-3xl leading-none">{p.score}/5</div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="w-16">
+                  <ScorePips total={p.score} max={5} label={`${p.score}/5`} />
+                </span>
+                <span className="font-display text-3xl leading-none">{p.score}/5</span>
+              </div>
             </div>
             <ul className="flex flex-col divide-y divide-border">
               {p.metrics.map((m) => (
@@ -250,28 +266,15 @@ function ScreenCard({ onPick }: { onPick: (s: string) => void }) {
       setScreen({ status: 'error', id, error: errorOf(e) })
     }
   }
-  const columns: Key[] = ['scan.ticker', 'lt.total', 'lt.part.quality', 'lt.part.value', 'lt.part.risk', 'lt.col.pe', 'lt.col.roe', 'lt.col.yield']
   const v = (x: number | null, d: number, unit = '') => (x === null ? '—' : `${num(x, d)}${unit}`)
 
   return (
-    <Card>
+    <Card data-tone="purple">
       <CardTitle icon="star" aside={screen.status === 'done' && t('lt.screen.count', { n: screen.rows.length, total: screen.universe })}>
         {t('lt.screen')}
       </CardTitle>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div role="group" aria-label={t('lt.screen')} className="flex flex-wrap gap-1 rounded-md border border-border p-1">
-          {SCREENS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={s === id}
-              onClick={() => setId(s)}
-              className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${s === id ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
-            >
-              {t(`lt.screen.${s}`)}
-            </button>
-          ))}
-        </div>
+        <PixelTabs label={t('lt.screen')} options={SCREENS.map((x) => ({ id: x, label: t(`lt.screen.${x}`) }))} value={id} onChange={setId} />
         <Button onClick={() => void run()} disabled={screen.status === 'loading'} className={primary}>
           {screen.status === 'loading' ? t('scan.loading') : t('lt.screen.run')}
         </Button>
@@ -279,46 +282,36 @@ function ScreenCard({ onPick }: { onPick: (s: string) => void }) {
       <p className="mb-3 text-sm text-text-muted">{t(`lt.screen.${id}.d`)}</p>
       {screen.status === 'error' && <ErrorText error={screen.error} />}
       {screen.status === 'done' && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left">
-              <tr>
-                {columns.map((k) => (
-                  <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal text-text-muted uppercase">
-                    {t(k)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {screen.rows.map((r) => (
-                <tr key={r.symbol}>
-                  <td className="px-2 py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onPick(r.symbol)}
-                      title={r.name}
-                      className="font-mono underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    >
-                      {r.symbol}
-                    </button>
-                  </td>
-                  <td className="px-2 py-1.5 font-mono">
-                    {r.score.total}/15 <span className="text-xs text-text-muted">({t('lt.known', { n: r.score.known })})</span>
-                  </td>
-                  {r.score.parts.map((p) => (
-                    <td key={p.id} className="px-2 py-1.5 font-mono">
-                      {p.score}/5
-                    </td>
-                  ))}
-                  <td className="px-2 py-1.5 font-mono">{v(r.input.pe, 1)}</td>
-                  <td className="px-2 py-1.5 font-mono">{v(r.input.roePct, 1, '%')}</td>
-                  <td className="px-2 py-1.5 font-mono">{v(r.input.dividendYieldPct, 1, '%')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="flex flex-col gap-1.5">
+          {screen.rows.map((r) => (
+            <li key={r.symbol}>
+              <button
+                type="button"
+                onClick={() => onPick(r.symbol)}
+                title={r.name ?? undefined}
+                className="flex w-full items-center gap-3 rounded-lg bg-surface-2 px-3 py-2 text-left hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <span className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="font-semibold">{r.symbol}</span>
+                    <span className="truncate text-xs text-text-muted">{r.name}</span>
+                  </span>
+                  <ScorePips total={r.score.total} height={7} label={`${r.symbol} ${r.score.total}/15`} />
+                  <span className="font-label text-[10px] text-text-muted uppercase">
+                    {r.score.parts.map((p) => `${t(`lt.part.${p.id}`)} ${p.score}`).join(' · ')} · {t('lt.col.pe')} {v(r.input.pe, 1)} · {t('lt.col.roe')} {v(r.input.roePct, 1, '%')} ·{' '}
+                    {t('lt.col.yield')} {v(r.input.dividendYieldPct, 1, '%')}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-display text-3xl leading-none" style={{ color: ltScoreColor(r.score.total) }}>
+                    {r.score.total}
+                  </span>
+                  <span className="font-label text-[10px] text-text-muted uppercase">{t('lt.known', { n: r.score.known })}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
       <p className="mt-3 text-xs text-text-muted">
         <Badge tone="neutral">{t('lt.screen.partial')}</Badge> {t('lt.screen.note')}
