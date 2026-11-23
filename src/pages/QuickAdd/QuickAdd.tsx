@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import { useCashflow } from '@/cashflowStore'
 import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
@@ -150,12 +150,27 @@ export function QuickAdd() {
   }, [])
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col gap-3 px-4 pt-3 pb-4">
+    <div className="play-skin mx-auto flex min-h-dvh max-w-[480px] flex-col gap-3 px-4 pt-3 pb-4">
+      <div aria-hidden="true" className="play-confetti" />
       <header className="flex items-center justify-between gap-2">
-        <a href={href('cashflow')} className={cn('rounded-md font-label text-xs uppercase underline underline-offset-4', focusRing)}>
+        <a href={href('cashflow')} className={cn('play-key rounded-md bg-surface px-2.5 py-1.5 font-label text-xs uppercase', focusRing)}>
           ← {t('add.back')}
         </a>
-        <h1 className="font-display text-3xl leading-none uppercase">{t(editing ? 'add.editTitle' : 'add.title')}</h1>
+        <h1 className="font-display text-3xl leading-none uppercase [text-shadow:2px_2px_0_oklch(0.86_0.15_92)]">{t(editing ? 'add.editTitle' : 'add.title')}</h1>
+        {/* Voice sits up here so the number pad stays in view. */}
+        {Recognition && (
+          <button
+            type="button"
+            onClick={listen}
+            disabled={listening}
+            aria-pressed={listening}
+            data-tone="red"
+            className={cn('play-key flex items-center gap-1.5 rounded-md bg-surface px-2.5 py-1.5 font-label text-xs uppercase', focusRing)}
+          >
+            <span aria-hidden="true" className={cn('size-2 rounded-full bg-down', listening && 'heart-beat')} />
+            {listening ? t('add.listening') : t('add.voice')}
+          </button>
+        )}
       </header>
       <SyncBar sync={sync} compact />
 
@@ -169,7 +184,7 @@ export function QuickAdd() {
                 setDraft((d) => ({ ...d, type: s.type, digits: String(s.amount), category: s.category, note: s.note ?? '', account: s.account ?? DEFAULT_ACCOUNT_ID, toAccount: undefined }))
                 setHeard(undefined)
               }}
-              className={cn('flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs', focusRing)}
+              className={cn('play-key mb-1 flex shrink-0 items-center gap-1.5 rounded-md bg-surface px-2.5 py-1.5 text-xs', focusRing)}
             >
               <PixelIcon name={categoryIcon(s.category)} color={categoryColor(s.category)} size={12} />
               <span>{s.note || category(s.category)}</span>
@@ -179,15 +194,9 @@ export function QuickAdd() {
         </div>
       )}
 
-      {Recognition && (
+      {Recognition && (heard || voiceError) && (
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" onClick={listen} disabled={listening} aria-pressed={listening} className="font-label text-xs uppercase">
-              <span aria-hidden="true" className={cn('size-2 rounded-full bg-down', listening && 'animate-pulse')} />
-              {listening ? t('add.listening') : t('add.voice')}
-            </Button>
-            {heard && <span className="min-w-0 truncate text-xs text-text-muted">{t('add.heard', { text: heard })}</span>}
-          </div>
+          {heard && <span className="min-w-0 truncate text-xs text-text-muted">{t('add.heard', { text: heard })}</span>}
           {voiceError && (
             <p role="alert" className="text-xs text-down">
               {t('add.voiceError')}
@@ -197,7 +206,7 @@ export function QuickAdd() {
         </div>
       )}
 
-      <div role="radiogroup" aria-label={t('add.title')} className="grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1">
+      <div role="radiogroup" aria-label={t('add.title')} className="grid grid-cols-3 gap-2">
         {(['expense', 'income', TRANSFER] as const).map((type) => (
           <button
             key={type}
@@ -208,7 +217,8 @@ export function QuickAdd() {
               update({ type, category: undefined, toAccount: undefined })
               setNewName(undefined)
             }}
-            className={cn('h-10 rounded-md font-label text-xs uppercase', focusRing, draft.type === type ? 'bg-surface text-text shadow-sm' : 'text-text-muted')}
+            data-tone={type === 'expense' ? 'red' : type === 'income' ? 'green' : 'blue'}
+            className={cn('play-key h-10 rounded-md bg-surface font-label text-xs uppercase', focusRing, draft.type !== type && 'text-text-muted')}
           >
             <span className="flex items-center justify-center gap-2">
               <PixelIcon name={type === 'expense' ? 'arrowDown' : type === 'income' ? 'arrowUp' : 'coin'} size={12} />
@@ -218,9 +228,9 @@ export function QuickAdd() {
         ))}
       </div>
 
-      <output aria-label={t('add.amount')} aria-live="polite" className="flex items-baseline justify-end gap-1.5 border-b-2 border-text pb-2 leading-[0.85]">
+      <output aria-label={t('add.amount')} aria-live="polite" className="play-screen flex items-baseline justify-end gap-1.5 px-4 pt-4 pb-3 leading-[0.85]">
         <span className="font-display text-3xl text-text-muted">{transfer ? '' : draft.type === 'expense' ? '−' : '+'}Rp</span>
-        <span className={cn('font-display text-[64px]', !amount && 'text-text-muted')}>{num(amount)}</span>
+        <span className={cn('font-display text-[64px]', !amount && 'text-text-muted', amount > 0 && draft.type === 'expense' && 'text-down', amount > 0 && draft.type === 'income' && 'text-up')}>{num(amount)}</span>
       </output>
 
       {(transfer ? (['account', 'toAccount'] as const) : (['account'] as const)).map((field) => (
@@ -236,7 +246,7 @@ export function QuickAdd() {
                 aria-checked={on}
                 disabled={field === 'toAccount' && a.id === draft.account}
                 onClick={() => update({ [field]: a.id })}
-                className={cn('h-9 rounded-md px-3 text-xs disabled:opacity-40', focusRing, on ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-text-muted')}
+                className={cn('play-key h-9 rounded-md bg-surface px-3 text-xs disabled:opacity-40', focusRing, !on && 'text-text-muted')}
               >
                 {a.name}
               </button>
@@ -256,7 +266,8 @@ export function QuickAdd() {
               role="radio"
               aria-checked={on}
               onClick={() => update({ category: c })}
-              className={cn('flex min-h-11 min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs', focusRing, on ? 'border-text bg-surface ring-2 ring-text' : 'border-border bg-surface')}
+              style={{ '--tone': categoryColor(c) } as CSSProperties}
+              className={cn('play-key flex min-h-11 min-w-0 items-center gap-2 rounded-md bg-surface px-2 py-1.5 text-left text-xs', focusRing, on && 'font-semibold')}
             >
               <PixelIcon name={categoryIcon(c)} color={categoryColor(c)} size={16} className="shrink-0" />
               <span className="min-w-0 leading-tight break-words">{category(c)}</span>
@@ -267,7 +278,7 @@ export function QuickAdd() {
           <button
             type="button"
             onClick={() => setNewName('')}
-            className={cn('flex min-h-11 items-center justify-center rounded-md border border-dashed border-border px-2 font-label text-[11px] text-text-muted uppercase', focusRing)}
+            className={cn('flex min-h-11 items-center justify-center rounded-md border-2 border-dashed border-border px-2 font-label text-[11px] text-text-muted uppercase', focusRing)}
           >
             {t('add.newCategory')}
           </button>
@@ -321,7 +332,7 @@ export function QuickAdd() {
             type="button"
             aria-pressed={draft.date === d.date}
             onClick={() => update({ date: d.date })}
-            className={cn('h-9 rounded-md px-3 font-label text-[11px] uppercase', focusRing, draft.date === d.date ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-text-muted')}
+            className={cn('play-key h-9 rounded-md bg-surface px-3 font-label text-[11px] uppercase', focusRing, draft.date !== d.date && 'text-text-muted')}
           >
             {d.label}
           </button>
@@ -331,28 +342,23 @@ export function QuickAdd() {
 
       <input className={fieldClass} value={draft.note} onChange={(e) => update({ note: e.target.value })} placeholder={t('add.note')} aria-label={t('add.note')} maxLength={120} />
 
-      <div className="mt-auto grid grid-cols-3 gap-1.5">
+      <div className="mt-auto grid grid-cols-3 gap-2">
         {PAD.map((key) => (
           <button
             key={key}
             type="button"
             onClick={() => press(key)}
             aria-label={key === 'back' ? t('add.backspace') : key}
-            className={cn('h-14 rounded-lg bg-surface-2 font-display text-3xl active:bg-empty', focusRing)}
+            className={cn('play-key h-14 rounded-lg font-display text-3xl', key === 'back' ? 'bg-surface-2' : 'bg-surface', focusRing)}
           >
             {key === 'back' ? '⌫' : key}
           </button>
         ))}
       </div>
 
-      <Button
-        id="quick-add-save"
-        disabled={!canSave}
-        onClick={save}
-        className="h-14 font-label text-sm uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none"
-      >
+      <button id="quick-add-save" type="button" disabled={!canSave} onClick={save} className={cn('play-save mb-1 h-14 rounded-lg font-label text-sm font-bold uppercase', focusRing)}>
         {t('add.save')}
-      </Button>
+      </button>
     </div>
   )
 }
