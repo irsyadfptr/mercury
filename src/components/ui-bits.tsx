@@ -81,3 +81,30 @@ export function TonePanel({ tone, className, children, ...rest }: ComponentProps
     </div>
   )
 }
+
+/**
+ * Chunky pixel tabs (play skin): the chosen one is a block in the card's colour (var(--tone)) with an ink outline
+ * and hard shadow. Each option is a toggle button (aria-pressed).
+ */
+export function PixelTabs<T extends string>({ options, value, onChange, label }: { options: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border-2 border-border bg-surface p-1">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          aria-pressed={o.id === value}
+          onClick={() => onChange(o.id)}
+          className={cn(
+            'rounded-md border-2 px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            o.id === value
+              ? 'border-text bg-[var(--tone,var(--accent))] text-[oklch(0.24_0.03_275)] shadow-[2px_2px_0_var(--text)]'
+              : 'border-transparent text-text-muted hover:bg-surface-2 hover:text-text',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}

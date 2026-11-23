@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Card, CardTitle, fieldClass, Label } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, fieldClass, Label } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
-import { betterScored, LT_LOW_SCORE, type ScoreEntry, type ScoreLog } from '@/market/scoreLog'
+import { betterScored, scoreAlert, type ScoreEntry, type ScoreLog } from '@/market/scoreLog'
+import { ltScoreColor } from '@/view/bars'
 import { COLOR } from '@/view/tokens'
+import { ScorePips } from './ScorePips'
 
 const SHOWN = 60
 const W = 600
@@ -23,7 +25,7 @@ export function ScoreHistory({ log, initial, onPick }: { log: ScoreLog; initial?
   const priceChange = first.price && last.price ? ((last.price - first.price) / first.price) * 100 : null
 
   return (
-    <Card aria-label={t('lt.history')}>
+    <Card aria-label={t('lt.history')} data-tone="teal">
       <CardTitle
         icon="chartUp"
         aside={
@@ -71,40 +73,63 @@ function Chart({ entries, label }: { entries: readonly ScoreEntry[]; label: stri
     <svg role="img" aria-label={label} viewBox={`0 0 ${W} ${H}`} className="h-[140px] w-full" preserveAspectRatio="none">
       {entries.map((e, i) => {
         const h = (e.total / 15) * H
-        return <rect key={e.date} x={i * bw + bw * 0.15} y={H - h} width={bw * 0.7} height={h} rx={1} fill={e.total < LT_LOW_SCORE ? COLOR.warn : 'var(--accent-soft)'} />
+        return <rect key={e.date} x={i * bw + bw * 0.15} y={H - h} width={bw * 0.7} height={h} rx={1} fill={ltScoreColor(e.total)} fillOpacity={0.55} />
       })}
       {prices.length > 1 && <polyline points={line} fill="none" stroke={COLOR.text} strokeWidth={2} vectorEffect="non-scaling-stroke" />}
     </svg>
   )
 }
 
-/** Each long-term holding next to logged tickers that score higher (from recent checks and screens). */
+/**
+ * Your long-term holdings first: each one's latest score as pips, a warning when it dropped or is low, and logged
+ * tickers that score higher (from recent checks and screens). Tapping one checks it.
+ */
 export function BetterScored({ log, held, onPick }: { log: ScoreLog; held: readonly string[]; onPick: (s: string) => void }) {
-  const { t } = useI18n()
+  const { t, day } = useI18n()
   const rows = [...new Set(held)].filter((s) => log[s]?.length)
   return (
-    <Card aria-label={t('lt.better')}>
-      <CardTitle icon="star" aside={t('lt.betterSub')}>
+    <Card aria-label={t('lt.better')} data-tone="green">
+      <CardTitle icon="chest" aside={t('lt.betterSub')}>
         {t('lt.better')}
       </CardTitle>
       {!rows.length && <p className="text-sm text-text-muted">{t('lt.betterNone')}</p>}
-      <ul className="flex flex-col">
+      <ul className="flex flex-col gap-1.5">
         {rows.map((s) => {
           const alts = betterScored(log, s)
+          const last = log[s].at(-1)!
+          const alert = scoreAlert(log[s])
           return (
-            <li key={s} className="flex flex-wrap items-center gap-2 border-b border-border py-2 text-sm">
-              <span className="font-semibold">{s}</span>
-              <span className="font-mono text-text-muted">{log[s].at(-1)!.total}/15</span>
-              <span aria-hidden="true" className="flex-grow -translate-y-1 border-b-[1.5px] border-dotted border-border" />
-              {alts.length ? (
-                alts.map((a) => (
-                  <button key={a.symbol} type="button" onClick={() => onPick(a.symbol)} className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs hover:ring-1 hover:ring-primary">
-                    {a.symbol} {a.entry.total}/15
-                  </button>
-                ))
-              ) : (
-                <Label>{t('lt.bestYet')}</Label>
-              )}
+            <li key={s} className="flex flex-col gap-1.5 rounded-lg bg-surface-2 px-3 py-2">
+              <button type="button" onClick={() => onPick(s)} className="flex items-center gap-3 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                <span className="w-14 shrink-0 font-semibold">{s}</span>
+                <span className="min-w-0 flex-1">
+                  <ScorePips total={last.total} label={`${s} ${last.total}/15`} />
+                </span>
+                <span className="shrink-0 font-display text-2xl leading-none" style={{ color: ltScoreColor(last.total) }}>
+                  {last.total}
+                  <span className="text-sm text-text-muted">/15</span>
+                </span>
+              </button>
+              <span className="flex flex-wrap items-center gap-1.5 text-xs">
+                <Label>{day(last.date)}</Label>
+                {alert && (
+                  <Badge tone="warn">{alert.kind === 'drop' ? t('lt.dropFrom', { n: alert.from }) : t('lt.lowScore')}</Badge>
+                )}
+                <span className="ml-auto flex flex-wrap items-center gap-1">
+                  {alts.length ? (
+                    <>
+                      <Label>{t('lt.betterAlts')}</Label>
+                      {alts.map((a) => (
+                        <button key={a.symbol} type="button" onClick={() => onPick(a.symbol)} className="rounded-md bg-surface px-2 py-0.5 font-mono text-xs hover:ring-1 hover:ring-primary">
+                          {a.symbol} {a.entry.total}
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <Label>{t('lt.bestYet')}</Label>
+                  )}
+                </span>
+              </span>
             </li>
           )
         })}

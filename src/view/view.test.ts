@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allocation, treemap } from './allocation'
-import { budgetBar, flameSizes, heatBar, moodBar, moodColor, riskBar, shareBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
+import { budgetBar, flameSizes, heatBar, ltScoreColor, moodBar, moodColor, riskBar, shareBar, shareCells, spendLevel, tradeTrack, xpBar } from './bars'
 import { COLOR } from './tokens'
 
 const filled = (segs: { bg: string }[], color: string) => segs.filter((s) => s.bg === color).length
@@ -123,5 +123,16 @@ describe('shareBar', () => {
     expect(lit(0.3)).toBe(1)
     expect(lit(140)).toBe(10)
     expect(lit(-5)).toBe(0)
+  })
+})
+
+describe('ltScoreColor', () => {
+  it('is green from two thirds, warn from the low mark, red below', () => {
+    expect(ltScoreColor(10)).toBe(COLOR.up)
+    expect(ltScoreColor(9)).toBe(COLOR.warn)
+    expect(ltScoreColor(8)).toBe(COLOR.warn)
+    expect(ltScoreColor(7)).toBe(COLOR.down)
+    expect(ltScoreColor(4, 6)).toBe(COLOR.up)
+    expect(ltScoreColor(0, 0)).toBe(COLOR.down)
   })
 })

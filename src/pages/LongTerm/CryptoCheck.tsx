@@ -3,6 +3,8 @@ import { factLine } from '@/ai/deepseek'
 import { Explain } from '@/components/Explain'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
+import { ltScoreColor } from '@/view/bars'
+import { ScorePips } from './ScorePips'
 import { useI18n } from '@/i18n'
 import { COIN } from '@/market/binance'
 import { scoreCrypto, type CryptoMetric, type CryptoMetricId, type CryptoScore } from '@/market/cryptoFundamentals'
@@ -74,7 +76,7 @@ export function CryptoCheck() {
   }
 
   return (
-    <Card>
+    <Card data-tone="blue">
       <CardTitle icon="chartUp">{t('cryf.title')}</CardTitle>
       {!key ? (
         <p className="text-sm">{t('cryf.needKey')}</p>
@@ -88,7 +90,7 @@ export function CryptoCheck() {
           </form>
           <div className="mb-4 flex flex-wrap gap-1">
             {coins.map((c) => (
-              <button key={c} type="button" onClick={() => void run(c)} className="rounded border border-border px-2 py-0.5 font-mono text-xs text-text-muted hover:bg-surface-2 hover:text-text">
+              <button key={c} type="button" onClick={() => void run(c)} className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-xs hover:ring-1 hover:ring-primary">
                 {c}
               </button>
             ))}
@@ -116,15 +118,17 @@ function Result({ data, score: s }: { data: CryptoFundamentals; score: CryptoSco
         </div>
         <div className="text-right">
           <Label>{t('lt.total')}</Label>
-          <div className="font-display text-5xl leading-none">
-            {s.total}/{s.max}
+          <div className="font-display text-5xl leading-none" style={{ color: ltScoreColor(s.total, s.max) }}>
+            {s.total}
+            <span className="text-2xl text-text-muted">/{s.max}</span>
           </div>
           {s.known < s.max && <div className="text-xs text-text-muted">{t('cryf.known', { n: s.known, m: s.max })}</div>}
         </div>
       </div>
+      <ScorePips total={s.total} max={s.max} height={12} label={`${data.symbol} ${s.total}/${s.max}`} />
       <div className="grid gap-3 lg:grid-cols-3">
         {s.parts.map((p) => (
-          <div key={p.id} className="rounded-md border border-border">
+          <div key={p.id} className="overflow-hidden rounded-lg border-2" style={{ borderColor: 'color-mix(in srgb, var(--tone) 55%, var(--surface))' }}>
             <div className="flex items-baseline justify-between bg-surface-2 px-3 py-2">
               <div>
                 <Label>{t(`cryf.part.${p.id}`)}</Label>

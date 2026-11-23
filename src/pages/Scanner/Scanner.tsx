@@ -2,7 +2,7 @@ import { factLine } from '@/ai/deepseek'
 import { Explain } from '@/components/Explain'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardTitle, Label, fieldClass } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
 import { IDX_LOT, positionSize } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { backtest, summarize, type Backtest, type BacktestOptions, type Trade } from '@/market/backtest'
@@ -44,13 +44,6 @@ const SCAN_CONCURRENCY = 4
 /** Fewer backtest trades than this is too small a sample to lean on. */
 const MIN_TRADES = 10
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
-/** Chunky pixel tabs (mode and market), the chosen one a block in the card's colour. */
-const tabGroup = 'flex gap-1 rounded-lg border-2 border-border bg-surface p-1'
-const tab = (on: boolean) =>
-  `rounded-md border-2 px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
-    on ? 'border-text bg-[var(--tone)] text-[oklch(0.24_0.03_275)] shadow-[2px_2px_0_var(--text)]' : 'border-transparent text-text-muted hover:bg-surface-2 hover:text-text'
-  }`
-
 /** Everything that differs between the stock and crypto scanners; the rules themselves live in indicators.ts. */
 interface Market {
   id: ScanMarket
@@ -193,20 +186,8 @@ export function Scanner() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('scan.title')}</h1>
           <div className="flex flex-wrap gap-2">
-            <div role="group" aria-label={t('short.styleLabel')} className={tabGroup}>
-              {MODES.map((id) => (
-                <button key={id} type="button" aria-pressed={id === mode} onClick={() => pickMode(id)} className={tab(id === mode)}>
-                  {t(`scan.mode.${id}`)}
-                </button>
-              ))}
-            </div>
-            <div role="group" aria-label={t('scan.title')} className={tabGroup}>
-              {(['idx', 'crypto'] as const).map((id) => (
-                <button key={id} type="button" aria-pressed={id === marketId} onClick={() => pick(id)} className={tab(id === marketId)}>
-                  {t(`scan.market.${id}`)}
-                </button>
-              ))}
-            </div>
+            <PixelTabs label={t('short.styleLabel')} options={MODES.map((id) => ({ id, label: t(`scan.mode.${id}`) }))} value={mode} onChange={pickMode} />
+            <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={marketId} onChange={pick} />
           </div>
         </div>
         <p className="mt-2 text-sm text-text-muted">{t(mode === 'swing' ? 'scan.intro' : `short.intro.${mode}`)}</p>

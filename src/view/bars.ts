@@ -1,5 +1,6 @@
 // Pure builders for the segmented game bars (XP, heat, trade risk). No React, no i18n.
 import type { CssColor, RiskBar, RiskStatus, Segment, TradeRisk } from '@/types'
+import { LT_LOW_SCORE } from '@/market/scoreLog'
 import { COLOR } from './tokens'
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i)
@@ -118,4 +119,13 @@ export function shareBar(pct: number, color: CssColor, n = 10): Segment[] {
   const p = Math.min(100, Math.max(0, pct))
   const filled = p > 0 ? Math.max(1, Math.round((p / 100) * n)) : 0
   return range(n).map((i) => ({ bg: i < filled ? color : COLOR.empty }))
+}
+
+/**
+ * Colour of a long-term score (out of `max`): green from two thirds, warn from the low mark (8 of 15, scaled), red
+ * below it.
+ */
+export function ltScoreColor(total: number, max = 15): CssColor {
+  const r = max > 0 ? total / max : 0
+  return r >= 2 / 3 ? COLOR.up : r >= LT_LOW_SCORE / 15 ? COLOR.warn : COLOR.down
 }
