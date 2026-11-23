@@ -63,3 +63,21 @@ export function Field({ label, hint, error, className, children }: FieldProps) {
 /** Shared class for text inputs and selects. */
 export const fieldClass =
   'h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-down'
+
+/**
+ * A tinted panel inside a play-skin card, in its own colour (data-tone): e.g. the parts of total money on the
+ * Dashboard, the heat inside Portfolio's Trading card. Its .bg-surface-2 tiles take its colour (index.css).
+ */
+export function TonePanel({ tone, className, children, ...rest }: ComponentProps<'div'> & { tone: string }) {
+  return (
+    <div
+      data-tone={tone}
+      data-part
+      className={cn('flex min-w-0 flex-col gap-2 rounded-xl border-2 p-3', className)}
+      style={{ background: 'color-mix(in srgb, var(--tone) 16%, var(--surface))', borderColor: 'color-mix(in srgb, var(--tone) 60%, var(--surface))' }}
+      {...rest}
+    >
+      {children}
+    </div>
+  )
+}
