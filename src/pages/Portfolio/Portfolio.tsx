@@ -85,9 +85,9 @@ function Hero({ summary, onEdit, sync }: { summary: Summary; onEdit: (holdingId:
   const realized = summary.realized + summary.dividends
 
   return (
-    // Phone: title and number, the tiles, then the fix list. Wide: number and tiles left, the fix list right.
-    <Card aria-labelledby="pf-title" data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-      <div className="flex min-w-0 flex-col gap-2">
+    // Phone: number, then what to fix, then the jump buttons. Wide: number and jump buttons left, the fix list right.
+    <Card aria-labelledby="pf-title" data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+      <div className="flex min-w-0 flex-col gap-2 lg:col-start-1 lg:row-start-1">
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 id="pf-title" className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">
             {t('pf.title')}
@@ -115,41 +115,46 @@ function Hero({ summary, onEdit, sync }: { summary: Summary; onEdit: (holdingId:
             <span className="text-text-muted">{t('dash.vsInvested', { amount: compact(cost) })}</span>
           </p>
         )}
-        {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
-        <div className="grid grid-cols-3 gap-2 pt-1">
-          <GroupTile tone="purple" icon="sword" label={t('pf.trading')} g={tr} card="pf-trading" />
-          <GroupTile tone="blue" icon="chest" label={t('pf.investing')} g={inv} card="pf-investing" />
-          <div className="flex min-w-0 flex-col gap-1 rounded-lg bg-surface-2 px-2.5 py-2">
-            <Label className="truncate text-text">{t('dash.realized')}</Label>
-            <span className="font-display text-[26px] leading-none" style={{ color: signColor(realized) }}>
+        {realized !== 0 && (
+          <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-text-muted">
+            <Label className="text-text">{t('dash.realized')}</Label>
+            <span className="font-mono font-medium" style={{ color: signColor(realized) }}>
               {signed(realized, compact)}
             </span>
-            <span className="text-[11px] leading-tight text-text-muted">{summary.dividends ? t('dash.withDividends', { amount: compact(summary.dividends) }) : t('dash.fromSells')}</span>
-          </div>
-        </div>
+            <span>{summary.dividends ? t('dash.withDividends', { amount: compact(summary.dividends) }) : t('dash.fromSells')}</span>
+          </p>
+        )}
+        {summary.missingFx.length > 0 && <p className="text-xs text-warn-text">{t('quest.fxRate')}</p>}
       </div>
-      <FixList summary={summary} onEdit={onEdit} />
-      <div className="min-w-0 lg:col-span-2">{sync}</div>
+      <div className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <FixList summary={summary} onEdit={onEdit} />
+      </div>
+      {/* Jump buttons to the two group cards (their amounts are in the cards' headers). */}
+      <div className="grid grid-cols-2 gap-2 lg:col-start-1 lg:row-start-2">
+        <GroupJump tone="purple" icon="sword" label={t('pf.trading')} g={tr} card="pf-trading" />
+        <GroupJump tone="blue" icon="chest" label={t('pf.investing')} g={inv} card="pf-investing" />
+      </div>
+      <div className="min-w-0 empty:hidden lg:col-span-2">{sync}</div>
     </Card>
   )
 }
 
-/** A group's value and gain in its own colour; tapping it scrolls to the group's card. */
-function GroupTile({ tone, icon, label, g, card }: { tone: string; icon: PixelIconName; label: string; g: GroupTotals; card: string }) {
-  const { compact, num } = useI18n()
+/** A small button in the group's colour: icon, name and gain since bought; tapping it scrolls to the group's card. */
+function GroupJump({ tone, icon, label, g, card }: { tone: string; icon: PixelIconName; label: string; g: GroupTotals; card: string }) {
+  const { num } = useI18n()
   return (
     <TonePanel tone={tone} className="p-0">
-      <button type="button" onClick={() => scrollToCard(card)} className="flex min-w-0 flex-col gap-1 rounded-xl px-2.5 py-2 text-left hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="grid size-5 shrink-0 place-items-center rounded border-2 border-text" style={{ background: 'var(--tone)' }}>
-            <PixelIcon name={icon} size={10} color="oklch(0.24 0.03 275)" />
+      <button type="button" onClick={() => scrollToCard(card)} className="flex min-w-0 items-center gap-1.5 rounded-xl px-2 py-2 text-left sm:gap-2 sm:px-2.5 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <span className="grid size-6 shrink-0 place-items-center rounded-md border-2 border-text" style={{ background: 'var(--tone)' }}>
+          <PixelIcon name={icon} size={12} color="oklch(0.24 0.03 275)" />
+        </span>
+        <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
+          <Label className="truncate text-text">{label}</Label>
+          <span className="font-mono text-[11px] font-medium sm:text-xs" style={{ color: signColor(g.pnl) }}>
+            {g.cost ? `${g.pnl >= 0 ? '▲' : '▼'}${num(Math.abs(g.pnlPct), 1)}%` : '—'}
           </span>
-          <Label className="text-text">{label}</Label>
         </span>
-        <span className="font-display text-[26px] leading-none">{compact(g.value)}</span>
-        <span className="font-mono text-[11px]" style={{ color: signColor(g.pnl) }}>
-          {g.cost ? `${g.pnl >= 0 ? '▲' : '▼'}${num(Math.abs(g.pnlPct), 1)}%` : '—'}
-        </span>
+        <span aria-hidden="true" className="ml-auto shrink-0 font-label text-[11px]">↓</span>
       </button>
     </TonePanel>
   )
@@ -177,7 +182,7 @@ function FixList({ summary, onEdit }: { summary: Summary; onEdit: (holdingId: st
   const shown = all ? list : list.slice(0, FIXES_SHOWN)
 
   return (
-    <TonePanel tone="orange" aria-label={t('pf.fix')} className="self-start lg:w-full">
+    <TonePanel tone="orange" aria-label={t('pf.fix')}>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <span className="grid size-7 place-items-center rounded-md border-2 border-text" style={{ background: 'var(--tone)' }}>
