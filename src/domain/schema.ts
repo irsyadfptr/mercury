@@ -190,6 +190,8 @@ export const Bill = z.object({
   amount: z.number().int().positive().optional(),
   /** Next due date, yyyy-mm-dd. */
   dueDate: yyyyMmDd,
+  /** Day of the month it is really due (29–31 survive a short month); none = the day of dueDate. */
+  dueDay: z.number().int().min(1).max(31).optional(),
   /** Monthly bills move to the next month when paid; one-time ones are archived. */
   monthly: z.boolean().default(true),
   /** Account the payment comes from (id); none = the default account. */

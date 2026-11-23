@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Account, CashEntry, CategoryTotal, EntryFilter, MonthSummary, MonthTotal } from '@/types'
+import type { Account, CashEntry, CategoryTotal, EntryFilter, MonthSummary, MonthTotal, SpendInsight } from '@/types'
 
 export interface MoneyNowProps {
   /** Every entry, all months: balances are all time. */
@@ -28,6 +28,8 @@ export interface SpendingMixProps {
   month: string
   /** Days of `month` covered (all of it for a past month). */
   days: number
+  /** A category well above its 3-month average, if any. */
+  insight?: SpendInsight
 }
 
 export interface BudgetEditorProps {

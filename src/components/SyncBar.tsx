@@ -35,7 +35,7 @@ export function SyncBar({ sync, compact = false }: SyncBarProps) {
         </span>
         <div className="flex flex-wrap gap-2">
           {sync.status === 'signedOut' && (
-            <Button size="sm" onClick={sync.connect}>
+            <Button size="sm" data-connect onClick={sync.connect}>
               {t('sync.connect')}
             </Button>
           )}

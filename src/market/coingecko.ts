@@ -25,12 +25,21 @@ export const fetchPrices = (symbols: readonly string[], key: string) =>
 export const fetchMood = async (key: string): Promise<Mood | undefined> =>
   (await get<{ data: { fear_and_greed_index?: Mood } }>('/global', key)).data.fear_and_greed_index
 
-/** Pure: new price per crypto holding id, in the holding's own currency. Unknown tickers are left out. */
+/** PAX Gold: one token is one troy ounce of London gold, so its price is the world spot gold price. */
+export const GOLD_TOKEN = 'paxg'
+export const GRAMS_PER_TROY_OUNCE = 31.1034768
+
+/**
+ * Pure: new price per crypto or gold holding id, in the holding's own currency. Gold is per gram at the world spot
+ * price (from PAXG), not Antam's own buy or buyback price. Unknown tickers are left out.
+ */
 export function pricesFor(holdings: readonly Holding[], prices: CryptoPrices): Record<string, number> {
   const out: Record<string, number> = {}
   for (const h of holdings) {
-    if (h.assetClass !== 'crypto') continue
-    const p = prices[h.symbol.toLowerCase()]?.[h.currency === 'IDR' ? 'idr' : 'usd']
+    const gold = h.assetClass === 'gold' && !h.byAmount
+    if (h.assetClass !== 'crypto' && !gold) continue
+    const quote = prices[gold ? GOLD_TOKEN : h.symbol.toLowerCase()]?.[h.currency === 'IDR' ? 'idr' : 'usd']
+    const p = quote != null && gold ? quote / GRAMS_PER_TROY_OUNCE : quote
     if (p != null && Number.isFinite(p) && p >= 0) out[h.id] = p
   }
   return out

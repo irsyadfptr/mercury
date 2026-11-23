@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CashEntry } from '@/types'
-import { addDays, addMonths, dailySpend, sameDaysLastMonth, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, padInput, rowsToEntries, validateCategoryName } from './cashflow'
+import { addDays, addMonths, dailySpend, sameDaysLastMonth, categoriesFor, entryToRow, lastMonths, mergeEntries, missingFromRows, monthSummary, overAverage, padInput, rowsToEntries, validateCategoryName } from './cashflow'
 
 let n = 0
 const e = (date: string, type: CashEntry['type'], amount: number, category: string): CashEntry => ({
@@ -140,5 +140,18 @@ describe('month comparisons', () => {
   it('sums spending per day, leaving income out', () => {
     expect(dailySpend(list, '2026-11')).toEqual({ '2026-11-03': 100 })
     expect(dailySpend(list, '2026-10')).toEqual({ '2026-10-05': 100, '2026-10-25': 900 })
+  })
+})
+
+describe('spending insight', () => {
+  const history = [e('2026-08-05', 'expense', 900_000, 'food'), e('2026-09-05', 'expense', 1_000_000, 'food'), e('2026-10-05', 'expense', 1_100_000, 'food'), e('2026-10-25', 'expense', 5_000_000, 'food'), e('2026-10-06', 'expense', 50_000, 'fun')]
+  it('names the category furthest above its 3-month same-days average', () => {
+    // Food averages 1,000,000 over Aug–Oct 1–22 (the Oct 25 entry is after day 22); fun is above too but under Rp100k.
+    const r = overAverage(history, '2026-11', 22, [{ category: 'food', amount: 1_500_000, pct: 90 }, { category: 'fun', amount: 100_000, pct: 10 }])
+    expect(r).toEqual({ category: 'food', amount: 1_500_000, average: 1_000_000, pct: 50 })
+  })
+  it('stays quiet when close to average or with under 2 months of history', () => {
+    expect(overAverage(history, '2026-11', 22, [{ category: 'food', amount: 1_100_000, pct: 100 }])).toBeUndefined()
+    expect(overAverage(history.slice(2), '2026-11', 22, [{ category: 'food', amount: 9_000_000, pct: 100 }])).toBeUndefined()
   })
 })

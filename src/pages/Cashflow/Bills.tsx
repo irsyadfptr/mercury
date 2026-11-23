@@ -53,7 +53,10 @@ export function Bills() {
     const name = draft.name.trim()
     const amount = Math.round(Number(draft.amount))
     if (!name || !draft.dueDate) return setError(true)
-    saveBill({ id: draft.id, name, amount: amount > 0 ? amount : undefined, dueDate: draft.dueDate, monthly: draft.monthly, income: draft.income, account: draft.account })
+    // An unchanged date keeps its real day (a 31st bill shown as Feb 28 stays a 31st bill).
+    const old = bills.find((b) => b.id === draft.id)
+    const dueDay = old && old.dueDate === draft.dueDate ? old.dueDay : Number(draft.dueDate.slice(8, 10))
+    saveBill({ id: draft.id, name, amount: amount > 0 ? amount : undefined, dueDate: draft.dueDate, dueDay, monthly: draft.monthly, income: draft.income, account: draft.account })
     setDraft(undefined)
   }
 

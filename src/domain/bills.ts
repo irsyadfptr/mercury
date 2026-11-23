@@ -13,10 +13,10 @@ export const INCOME_LATE_DAYS = 2
 const DAY_MS = 86_400_000
 const dayNumber = (yyyyMmDd: string) => Date.parse(`${yyyyMmDd}T00:00:00Z`) / DAY_MS
 
-/** Same day next month, clamped to the month's length (Jan 31 → Feb 28). */
-export function nextMonthly(dueDate: string): string {
+/** `dueDay` (default: dueDate's day) next month, clamped to the month's length (Jan 31 → Feb 28 → Mar 31). */
+export function nextMonthly(dueDate: string, dueDay = Number(dueDate.slice(8, 10))): string {
   const month = addMonths(monthOf(dueDate), 1)
-  const day = Math.min(Number(dueDate.slice(8, 10)), daysInMonth(month))
+  const day = Math.min(dueDay, daysInMonth(month))
   return `${month}-${String(day).padStart(2, '0')}`
 }
 
@@ -38,8 +38,9 @@ export function billsDue(bills: readonly Bill[], today: string, remindDays = BIL
  * or "salary" income, note = name. The store stamps updatedAt when the bill is saved.
  */
 export function payBill(bill: Bill, today: string): { bill: Bill; expense?: NewCashEntry } {
-  // shortcut: a bill due on the 29th–31st drifts to the shorter month's last day and stays there; store the original day if that matters.
-  const next = bill.monthly ? { dueDate: nextMonthly(bill.dueDate) } : { archived: true }
+  // Bills saved before dueDay existed keep the day they are on now.
+  const dueDay = bill.dueDay ?? Number(bill.dueDate.slice(8, 10))
+  const next = bill.monthly ? { dueDate: nextMonthly(bill.dueDate, dueDay), dueDay } : { archived: true }
   const expense: NewCashEntry | undefined = bill.amount
     ? {
         type: bill.income ? 'income' : 'expense',
@@ -71,6 +72,7 @@ export const BILL_COLUMNS: readonly ColumnSpec[] = [
   ['archived', 'boolean'],
   ['updatedAt', 'string'],
   ['income', 'boolean'],
+  ['dueDay', 'number'],
 ]
 
 export const billsFromSheet = (rows: readonly unknown[][]) => parseTable(BILL_COLUMNS, rows, BillSchema)

@@ -5,7 +5,7 @@ import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, fieldClass, Label, Segments } from '@/components/ui-bits'
 import { accountBalances, accountsTotal, balanceAdjustment, filterEntries, resolveAccount, runningBalances, validateAccountName } from '@/domain/accounts'
-import { addDays, addMonths, daysInMonth, isCashflow, lastMonths, localDate, monthOf, monthSummary, sameDaysLastMonth } from '@/domain/cashflow'
+import { addDays, addMonths, daysInMonth, isCashflow, lastMonths, localDate, monthOf, monthSummary, overAverage, sameDaysLastMonth } from '@/domain/cashflow'
 import { ADJUSTMENT, DEFAULT_ACCOUNT_ID, EXPENSE_CATEGORIES, MAX_ACCOUNT_NAME, TRANSFER } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { href, routeParam } from '@/routes'
@@ -99,7 +99,7 @@ export function Cashflow() {
       */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[repeat(9,auto)_1fr] lg:items-start">
         <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-10 lg:row-start-1">
-          <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} lastMonth={sameDaysLastMonth(entries, month, summary.daysElapsed)} month={month} days={summary.daysElapsed} />
+          <SpendingMix totals={summary.expenseByCategory} budgets={categoryBudgets ?? {}} lastMonth={sameDaysLastMonth(entries, month, summary.daysElapsed)} month={month} days={summary.daysElapsed} insight={overAverage(entries, month, summary.daysElapsed, summary.expenseByCategory)} />
           <EntryList entries={shown} all={entries} accounts={accounts} pendingIds={pendingIds} onRemove={remove} filter={filter} onFilter={setFilter} filtering={filtering} today={today} fold={isCurrent && !filtering} />
           {/* Wide screens: the month score and six months fill the left column under the entries (on phones they stay
               further down, in the order below). Both only display, so drawing them in two places is safe. */}
@@ -265,7 +265,7 @@ const MIX_ROWS = 5
  * column by column so each category is one block. The legend below is the readable table (icon, name, amount, share
  * or budget); pointing at a row lights up its pixels. "Budgets" edits the monthly limit per category.
  */
-function SpendingMix({ totals, budgets, lastMonth, month: viewed, days }: SpendingMixProps) {
+function SpendingMix({ totals, budgets, lastMonth, month: viewed, days, insight }: SpendingMixProps) {
   const { t, money, num, category, month } = useI18n()
   const [editing, setEditing] = useState(false)
   const [lit, setLit] = useState<string>()
@@ -308,6 +308,11 @@ function SpendingMix({ totals, budgets, lastMonth, month: viewed, days }: Spendi
             <p className="flex items-center gap-2 text-sm">
               <PixelIcon name={categoryIcon(top.category)} color={categoryColor(top.category)} size={22} className="shrink-0" />
               <span>{t('cf.topShare', { n: num(top.pct, 0), s: category(top.category) })}</span>
+            </p>
+          )}
+          {insight && (
+            <p className="text-sm">
+              <span style={{ color: COLOR.down }}>▲</span> {t('cf.overAverage', { s: category(insight.category), n: num(insight.pct, 0), avg: money(insight.average) })}
             </p>
           )}
           {hasPrev && (

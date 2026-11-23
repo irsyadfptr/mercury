@@ -1,8 +1,8 @@
 // Google sign-in (token flow) for the browser.
 // The access token is kept in localStorage until it expires (~1 hour) so a refresh or reopening the PWA stays
 // connected. It only opens the one sheet this app made (drive.file) and is dropped as soon as Google rejects it.
-// shortcut: browser token flow has no refresh token, so after ~1h the user taps Connect again (no consent screen);
-// a Vercel function holding a refresh token would keep the connection for weeks.
+// shortcut: browser token flow has no refresh token, so after ~1h the next tap anywhere reconnects (useSheetSync);
+// a Vercel function holding a refresh token would keep the connection for weeks without the popup flash.
 import type { AccessToken } from '@/types'
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
@@ -16,6 +16,25 @@ const EXPIRY_MARGIN_MS = 60_000
 export const isFresh = (t: AccessToken | undefined, now: number): t is AccessToken => Boolean(t && t.expiresAt - EXPIRY_MARGIN_MS > now)
 
 const TOKEN_KEY = 'mercury.googleToken'
+/** Set once the user has connected on this device, so an expired token can reconnect on the next tap. */
+const CONNECTED_KEY = 'mercury.googleConnected'
+
+function setConnected(on: boolean) {
+  try {
+    if (on) localStorage.setItem(CONNECTED_KEY, '1')
+    else localStorage.removeItem(CONNECTED_KEY)
+  } catch {
+    // Storage blocked: auto-reconnect just stays off.
+  }
+}
+
+export function wasConnected(): boolean {
+  try {
+    return localStorage.getItem(CONNECTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 /** Pure: a stored token string → token, or undefined if missing, malformed or expired at `now`. */
 export function parseStoredToken(raw: string | null, now: number): AccessToken | undefined {
@@ -48,6 +67,8 @@ function readStoredToken(): AccessToken | undefined {
 
 let client: google.accounts.oauth2.TokenClient | undefined
 let token: AccessToken | undefined = readStoredToken()
+// Devices connected before the flag existed still count as connected.
+if (token) setConnected(true)
 let pending: { resolve: (t: string) => void; reject: (e: Error) => void } | undefined
 let loading: Promise<void> | undefined
 
@@ -74,6 +95,7 @@ export function prepareGoogle(): Promise<void> {
           if (r.error) pending?.reject(new Error(r.error_description ?? r.error))
           else {
             storeToken({ value: r.access_token, expiresAt: Date.now() + r.expires_in * 1000 })
+            setConnected(true)
             pending?.resolve(r.access_token)
           }
           pending = undefined
@@ -108,6 +130,7 @@ export function signIn(): Promise<string> {
 export function signOut(): void {
   if (token) google.accounts.oauth2.revoke(token.value)
   storeToken(undefined)
+  setConnected(false)
 }
 
 /** Called when Google rejects the token (401) so the next action asks to connect again. */

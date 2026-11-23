@@ -10,4 +10,9 @@ describe('pricesFor', () => {
     const holdings = [h({ symbol: 'BTC' }), h({ symbol: 'ETH', currency: 'USD' }), h({ symbol: 'ETH2' }), h({ symbol: 'ETH', id: 'x', currency: 'IDR' }), h({ symbol: 'btc', id: 'gold', assetClass: 'gold' })]
     expect(pricesFor(holdings, prices)).toEqual({ BTC: 1_247_246_577, ETH: 1927.06 })
   })
+
+  it('prices gold per gram from PAXG (one troy ounce)', () => {
+    const holdings = [h({ symbol: 'ANTAM', id: 'g', assetClass: 'gold' })]
+    expect(pricesFor(holdings, { paxg: { idr: 62_207_000 } }).g).toBeCloseTo(2_000_000, -2)
+  })
 })

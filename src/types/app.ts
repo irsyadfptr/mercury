@@ -170,6 +170,8 @@ export interface SheetSync {
 
 /** installed = opened from the home screen; available = Chrome can show its install dialog; manual = follow browser menu steps. */
 export type InstallState = 'installed' | 'available' | 'manual'
+/** Bill reminder notifications (src/billReminders.ts). needsInstall = this browser has them, but only for the installed app. */
+export type ReminderState = 'unsupported' | 'needsInstall' | 'blocked' | 'off' | 'on'
 
 // ---- i18n ----
 

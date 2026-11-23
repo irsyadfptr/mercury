@@ -1,5 +1,5 @@
 // Pure cashflow math and Sheet row mapping. No clock, storage or network: every input is a parameter.
-import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows, Shortcut } from '@/types'
+import type { CashEntry, CashType, CategoryNameError, CategoryTotal, CustomCategory, MonthKey, MonthSummary, MonthTotal, ParsedRows, Shortcut, SpendInsight } from '@/types'
 import { ADJUSTMENT, CashEntry as CashEntrySchema, INVEST, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from './schema'
 
 export const monthOf = (yyyyMmDd: string): MonthKey => yyyyMmDd.slice(0, 7)
@@ -229,4 +229,33 @@ export function dailySpend(entries: readonly CashEntry[], month: MonthKey): Reco
   const out: Record<string, number> = {}
   for (const e of entries) if (monthOf(e.date) === month && isCashflow(e, 'expense')) out[e.date] = (out[e.date] ?? 0) + e.amount
   return out
+}
+
+/** An insight needs the category this far above its average, both in % and in rupiah (so small categories stay quiet). */
+export const INSIGHT_MIN_PCT = 25
+export const INSIGHT_MIN_IDR = 100_000
+
+/**
+ * The category furthest above its average over the 3 months before `month` (each over its first `days` days, like
+ * sameDaysLastMonth), or undefined. Needs at least 2 of those months with spending, so a fresh start says nothing.
+ */
+export function overAverage(entries: readonly CashEntry[], month: MonthKey, days: number, spent: readonly CategoryTotal[]): SpendInsight | undefined {
+  const months = [1, 2, 3].map((i) => addMonths(month, -i))
+  const by: Record<string, number> = {}
+  const seen = new Set<string>()
+  for (const e of entries) {
+    const m = monthOf(e.date)
+    if (!months.includes(m) || Number(e.date.slice(8, 10)) > days || !isCashflow(e, 'expense')) continue
+    seen.add(m)
+    by[e.category] = (by[e.category] ?? 0) + e.amount
+  }
+  if (seen.size < 2) return undefined
+  let best: SpendInsight | undefined
+  for (const c of spent) {
+    const average = Math.round((by[c.category] ?? 0) / seen.size)
+    if (!average) continue
+    const pct = ((c.amount - average) / average) * 100
+    if (pct >= INSIGHT_MIN_PCT && c.amount - average >= INSIGHT_MIN_IDR && (!best || pct > best.pct)) best = { category: c.category, amount: c.amount, average, pct }
+  }
+  return best
 }

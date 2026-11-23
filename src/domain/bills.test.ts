@@ -23,7 +23,7 @@ describe('expected income', () => {
     expect(billsDue([salary], '2026-11-15')).toEqual([])
     expect(billsDue([salary], '2026-11-16').map((d) => d.days)).toEqual([-2])
     expect(payBill(salary, '2026-11-16')).toEqual({
-      bill: { ...salary, dueDate: '2026-12-14' },
+      bill: { ...salary, dueDate: '2026-12-14', dueDay: 14 },
       expense: { type: 'income', amount: 10_000_000, category: 'salary', date: '2026-11-16', note: 'salary', account: 'bca' },
     })
   })
@@ -45,6 +45,12 @@ describe('paying', () => {
   it('clamps to the month length', () => {
     expect(nextMonthly('2027-01-31')).toBe('2027-02-28')
     expect(nextMonthly('2026-12-15')).toBe('2027-01-15')
+  })
+
+  it('a bill due on the 31st goes back to the 31st after February', () => {
+    const feb = payBill(bill('rent', '2027-01-31', { dueDay: 31 }), '2027-01-31').bill
+    expect(feb).toMatchObject({ dueDate: '2027-02-28', dueDay: 31 })
+    expect(payBill(feb, '2027-02-28').bill.dueDate).toBe('2027-03-31')
   })
 })
 

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SheetSync, SyncStatus } from '@/types'
 import { useCashflow } from './cashflowStore'
-import { currentToken, forgetToken, isConfigured, prepareGoogle, signIn, signOut } from './sync/google'
+import { currentToken, forgetToken, isConfigured, prepareGoogle, signIn, signOut, wasConnected } from './sync/google'
 import { useStore } from './store'
 import { SheetsError } from './sync/sheets'
 import { syncSheets } from './sync/syncSheets'
+
+/** One automatic reconnect try per page load: if the user closes that popup, they tap Connect themselves. */
+let autoTried = false
 
 const initialStatus = (): SyncStatus => (!isConfigured() ? 'unconfigured' : currentToken() ? 'idle' : 'signedOut')
 
@@ -64,6 +67,20 @@ export function useSheetSync(): SheetSync {
   useEffect(() => {
     if (currentToken()) sync()
   }, [sync, pendingCount, deletedCount, edited, portfolioChangedAt])
+
+  // Token ran out (~1 h): the next tap anywhere reconnects. The popup needs a tap, and Google closes it by itself
+  // when the user already said yes. The Connect button handles its own tap.
+  useEffect(() => {
+    if (status !== 'signedOut' || autoTried || !wasConnected()) return
+    const onTap = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest('[data-connect]')) return
+      autoTried = true
+      document.removeEventListener('click', onTap, true)
+      connect()
+    }
+    document.addEventListener('click', onTap, true)
+    return () => document.removeEventListener('click', onTap, true)
+  }, [status, connect])
 
   useEffect(() => {
     window.addEventListener('online', sync)

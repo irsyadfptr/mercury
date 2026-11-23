@@ -365,3 +365,11 @@ From the drawdown-circuit-breaker and pre-trade-discipline-gate skills (tradermo
   - Where: new trading holdings and buys added to a trading holding (HoldingDialog), and the Scanner paper-trade buttons (swing and short-term).
   - **Decision (2026-11-18):** Scanner paper trades need GO. A real trade can still be recorded on REVIEW / NO-GO after ticking "checked myself" / "record anyway as a rule break", because the app records trades already placed at the broker; blocking would make the records wrong. Each gated entry writes an Entry journal note with the decision and the failed checks, and the holding keeps `gate` (Sheet column), so the trade review shows results by gate decision.
   - Not built from the skill: the approved-rules ledger and the two-week rule experiment.
+
+## Non-trading batch (2026-11-23)
+
+- **Sync reconnect:** Google's browser token lasts ~1 h and can't be renewed without a server (user chose no server). Once a device has connected (`mercury.googleConnected`), an expired token reconnects on the next tap anywhere in the app (one try per page load; Google's popup flashes and closes). Connect stays as the fallback.
+- **Bills keep their real day:** bills store `dueDay` (new 10th Bills column). A bill due on the 31st shows Feb 28, then goes back to Mar 31. Older bills pick up the day they're on at their next Pay.
+- **Bill reminders:** Settings → Phone app → Bill reminders. The app copies active bills to Cache Storage (`mercury-data/bills.json`); the service worker checks them on a Periodic Background Sync (~daily, browser's choice) and shows one notification a day per bill due within 3 days or overdue. Works only in Chrome/Edge on an installed app (Android); not iPhone or Firefox. Not yet seen firing on a real phone.
+- **Spending insight:** Where it went shows the category furthest above its average over the previous 3 months (same days of each month), when ≥ 25% and ≥ Rp100k above, with ≥ 2 months of history.
+- **Gold price:** gold holdings are priced per gram from CoinGecko's PAX Gold (1 token = 1 troy oz) at the world spot price, on each crypto price refresh (needs the CoinGecko key). This is not Antam's buy or buyback price.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { fetchMood, fetchPrices, pricesFor, WATCHLIST, type CryptoPrices, type Mood } from './market/coingecko'
+import { fetchMood, fetchPrices, GOLD_TOKEN, pricesFor, WATCHLIST, type CryptoPrices, type Mood } from './market/coingecko'
 import { useSettings } from './settings'
 import { useStore } from './store'
 
@@ -17,7 +17,7 @@ interface MarketState {
 // Kept outside React so it survives page switches during a visit.
 let cache: MarketState = { status: 'idle' }
 
-/** Live crypto prices (written into each crypto holding's price) and crypto fear & greed. */
+/** Live crypto and spot gold prices (written into each crypto / gold holding's price) and crypto fear & greed. */
 export function useCryptoMarket() {
   const key = useSettings((s) => s.coingeckoKey) || ENV_KEY
   const watched = useSettings((s) => s.watchlist?.crypto)
@@ -29,7 +29,7 @@ export function useCryptoMarket() {
     update({ ...cache, status: 'loading' })
     try {
       const { holdings, updateHolding } = useStore.getState()
-      const symbols = [...new Set([...WATCHLIST, ...(watched ?? []).map((x) => x.toLowerCase()), ...holdings.filter((h) => h.assetClass === 'crypto').map((h) => h.symbol.toLowerCase())])]
+      const symbols = [...new Set([...WATCHLIST, ...(watched ?? []).map((x) => x.toLowerCase()), ...holdings.filter((h) => h.assetClass === 'crypto').map((h) => h.symbol.toLowerCase()), ...(holdings.some((h) => h.assetClass === 'gold') ? [GOLD_TOKEN] : [])])]
       const [prices, mood] = await Promise.all([fetchPrices(symbols, key), fetchMood(key)])
       const at = new Date().toISOString()
       for (const [id, price] of Object.entries(pricesFor(holdings, prices))) updateHolding(id, { manualPrice: price, manualPriceAt: at })

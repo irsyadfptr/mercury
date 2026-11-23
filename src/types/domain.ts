@@ -269,6 +269,16 @@ export interface CustomCategory {
 
 export type CategoryNameError = 'required' | 'tooLong' | 'duplicate'
 
+/** A category running well above its usual spending (src/domain/cashflow.ts overAverage). */
+export interface SpendInsight {
+  category: string
+  amount: number
+  /** Average over the months before, same days. */
+  average: number
+  /** How far above the average, %. */
+  pct: number
+}
+
 export interface CategoryTotal {
   category: string
   amount: number

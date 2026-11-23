@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { disableReminders, enableReminders, reminderState } from '@/billReminders'
 import { useCashflow } from '@/cashflowStore'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { install, useInstallState } from '@/pwa'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import { ENV_KEY } from '@/useCryptoMarket'
-import type { Lang, ThemePref } from '@/types'
+import type { Lang, ReminderState, ThemePref } from '@/types'
 import { useCashEntries } from '@/useCashEntries'
 import { currentToken } from '@/sync/google'
 import { testConnection } from '@/sync/sheets'
@@ -70,7 +71,38 @@ function PhoneApp() {
           <li>{t('pwa.needsHttps')}</li>
         </ul>
       )}
+      <BillReminders />
     </Card>
+  )
+}
+
+/** Phone notifications for bills due soon (src/billReminders.ts). */
+function BillReminders() {
+  const { t } = useI18n()
+  const [state, setState] = useState<ReminderState>()
+  useEffect(() => {
+    void reminderState().then(setState)
+  }, [])
+  if (!state) return null
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm">{t('remind.title')}</span>
+        {(state === 'off' || state === 'needsInstall') && (
+          <Button size="sm" onClick={() => void enableReminders().then(setState)}>
+            {t('remind.on')}
+          </Button>
+        )}
+        {state === 'on' && (
+          <Button size="sm" variant="outline" onClick={() => void disableReminders().then(setState)}>
+            {t('remind.off')}
+          </Button>
+        )}
+      </div>
+      <p role="status" className="text-xs text-text-muted">
+        {t(`remind.state.${state}`)}
+      </p>
+    </div>
   )
 }
 
