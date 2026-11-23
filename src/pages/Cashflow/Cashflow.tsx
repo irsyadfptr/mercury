@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useCashflow } from '@/cashflowStore'
+import { PixelFab } from '@/components/PixelFab'
 import { PixelIcon } from '@/components/PixelIcon'
 import { SyncBar } from '@/components/SyncBar'
 import { Button } from '@/components/ui/button'
@@ -138,21 +139,7 @@ export function Cashflow() {
 
       {/* Room under the last card so the add button never covers it. */}
       <div aria-hidden="true" className="h-16" />
-      <a
-        href={href('add')}
-        aria-label={t('cf.add')}
-        title={t('cf.add')}
-        className="fab fab-enter group fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40 block size-16 rounded-lg focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none sm:right-6 sm:bottom-6"
-      >
-        <span aria-hidden="true" className="fab-shadow pixel-block absolute inset-0" />
-        <span aria-hidden="true" className="fab-body pixel-block absolute inset-0 grid place-items-center">
-          <span className="fab-face pixel-block absolute inset-[3px] grid place-items-center">
-            <PixelIcon name="plus" size={26} color="oklch(0.24 0.03 275)" className="relative" />
-          </span>
-        </span>
-        <span aria-hidden="true" className="fab-spark -top-1.5 -left-1" />
-        <span aria-hidden="true" className="fab-spark top-2 -right-2" />
-      </a>
+      <PixelFab href={href('add')} label={t('cf.add')} />
       {added && !hidden && (
         <div role="status" className="fixed inset-x-4 bottom-[calc(88px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-3 shadow-lg">
           <span className="min-w-0 truncate text-sm">

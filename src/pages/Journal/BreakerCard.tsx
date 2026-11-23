@@ -16,8 +16,10 @@ export function BreakerCard() {
   const { t } = f
   const b = useBreakers()
   const s = useSettings((x) => x.breaker) ?? DEFAULT_BREAKER
+  // The card takes the colour of the real side's answer: green go, gold cooling down, red halted.
+  const tone = b.real.status === 'halted' ? 'red' : b.real.status === 'cooldown' ? 'gold' : 'green'
   return (
-    <Card>
+    <Card data-tone={tone}>
       <CardTitle icon="heart" aside={<a className="hover:underline" href={href('settings')}>{t('cb.limits', { d: s.dailyPct, w: s.weeklyPct, m: s.monthlyPct, n: s.streak })}</a>}>
         {t('cb.title')}
       </CardTitle>
@@ -34,7 +36,7 @@ function Side({ title, b }: { title: string; b: Breaker }) {
   const f = useI18n()
   const { t } = f
   return (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
+    <div className="rounded-lg bg-surface-2 px-3 py-2">
       <Label>{title}</Label>
       <div className={`font-display text-3xl leading-none uppercase ${STATUS_CLASS[b.status]}`}>{t(`cb.status.${b.status}`)}</div>
       <ul className="mt-1 text-sm">

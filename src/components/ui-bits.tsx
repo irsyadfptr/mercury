@@ -63,3 +63,48 @@ export function Field({ label, hint, error, className, children }: FieldProps) {
 /** Shared class for text inputs and selects. */
 export const fieldClass =
   'h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-down'
+
+/**
+ * A tinted panel inside a play-skin card, in its own colour (data-tone): e.g. the parts of total money on the
+ * Dashboard, the heat inside Portfolio's Trading card. Its .bg-surface-2 tiles take its colour (index.css).
+ */
+export function TonePanel({ tone, className, children, ...rest }: ComponentProps<'div'> & { tone: string }) {
+  return (
+    <div
+      data-tone={tone}
+      data-part
+      className={cn('flex min-w-0 flex-col gap-2 rounded-xl border-2 p-3', className)}
+      style={{ background: 'color-mix(in srgb, var(--tone) 16%, var(--surface))', borderColor: 'color-mix(in srgb, var(--tone) 60%, var(--surface))' }}
+      {...rest}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Chunky pixel tabs (play skin): the chosen one is a block in the card's colour (var(--tone)) with an ink outline
+ * and hard shadow. Each option is a toggle button (aria-pressed).
+ */
+export function PixelTabs<T extends string>({ options, value, onChange, label }: { options: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border-2 border-border bg-surface p-1">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          aria-pressed={o.id === value}
+          onClick={() => onChange(o.id)}
+          className={cn(
+            'rounded-md border-2 px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            o.id === value
+              ? 'border-text bg-[var(--tone,var(--accent))] text-[oklch(0.24_0.03_275)] shadow-[2px_2px_0_var(--text)]'
+              : 'border-transparent text-text-muted hover:bg-surface-2 hover:text-text',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}

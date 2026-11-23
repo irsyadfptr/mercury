@@ -3,8 +3,10 @@ import type {
   AssetClass,
   Dividend,
   Group,
+  GroupTotals,
   HeatInfo,
   Holding,
+  HoldingQuest,
   LevelInfo,
   Liquidity,
   PositionSizeInput,
@@ -213,4 +215,29 @@ export function winnersLosers(rows: readonly Row[], n = 3): { winners: Row[]; lo
     winners: sorted.filter((r) => r.v.unrealizedPct > 0).slice(0, n),
     losers: sorted.filter((r) => r.v.unrealizedPct < 0).reverse().slice(0, n),
   }
+}
+
+/** A holding's unrealized gain or loss in rupiah (a USD holding without a rate counts its dollars as-is). */
+export const idrPnl = (r: Row): number => r.v.unrealized * (Number.isFinite(r.v.fx) ? r.v.fx : 1)
+
+/**
+ * The open holdings of one group (Investing or Trading) and their totals in rupiah: value (holdings valued at cost
+ * included, like Summary.byGroup), and gain or loss with its cost, from holdings with a real price only. Holdings
+ * without a USD/IDR rate are listed but left out of every total.
+ */
+export function openGroup(rows: readonly Row[], group: Group): GroupTotals {
+  const open = rows.filter((r) => r.holding.group === group && r.v.quantity > 0)
+  const inIdr = open.filter((r) => Number.isFinite(r.v.valueIdr))
+  const priced = inIdr.filter((r) => r.v.priceSource !== 'cost')
+  const cost = sum(priced.map((r) => r.v.costIdr))
+  const pnl = sum(priced.map((r) => r.v.valueIdr - r.v.costIdr))
+  return { rows: open, value: sum(inIdr.map((r) => r.v.valueIdr)), cost, pnl, pnlPct: cost ? (pnl / cost) * 100 : 0 }
+}
+
+/** Fix-first order for a holding's to-dos: risk over the limit, then a missing stop, a review date, an old price. */
+const FIX_ORDER: Record<HoldingQuest['kind'], number> = { overRisk: 0, setStop: 1, review: 2, stalePrice: 3 }
+
+/** The quests about one holding (not backup or the USD rate), most urgent kind first, list order kept within a kind. */
+export function holdingQuests(qs: readonly Quest[]): HoldingQuest[] {
+  return qs.filter((q): q is HoldingQuest => 'holding' in q).sort((a, b) => FIX_ORDER[a.kind] - FIX_ORDER[b.kind])
 }

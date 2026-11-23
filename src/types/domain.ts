@@ -144,6 +144,20 @@ export type Quest =
   | { kind: 'review'; holding: Holding; since: string }
   | { kind: 'fxRate' }
 
+/** A quest about one holding (Portfolio's fix list). */
+export type HoldingQuest = Extract<Quest, { holding: Holding }>
+
+/** Open holdings of one group, with their rupiah totals (openGroup in domain/portfolio.ts). */
+export interface GroupTotals {
+  rows: Row[]
+  /** Value of the open holdings, those valued at cost included. */
+  value: number
+  /** Cost and gain or loss of the holdings with a real price. */
+  cost: number
+  pnl: number
+  pnlPct: number
+}
+
 export interface QuestOptions {
   tradeLimit: number
   lastExportAt?: string

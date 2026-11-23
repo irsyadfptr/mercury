@@ -218,7 +218,7 @@
 @keyframes fab-twinkle { 50% { opacity: 0; transform: scale(0.4); } }
 @keyframes fab-enter { from { transform: translateY(120%) scale(0.6); } 70% { transform: translateY(-12%) scale(1.05); } }
 /*
- * The playful skin (scoped to .play-skin; Cashflow and Dashboard): each card has its own colour (data-tone) for a tinted face, a chunky
+ * The playful skin (scoped to .play-skin; Cashflow, Dashboard and Portfolio): each card has its own colour (data-tone) for a tinted face, a chunky
  * ink outline with a hard offset shadow, a pixel stripe along the top and its icon in a coloured badge. Behind the
  * cards, scattered pixel confetti.
  */
@@ -267,7 +267,7 @@
 }
 [data-theme="dark"] .play-confetti { opacity: 0.22; }
 /*
- * The header on Cashflow, in the same skin as its cards: ink outline, hard shadow, MERCURY with an offset
+ * The header on the playful pages, in the same skin as its cards: ink outline, hard shadow, MERCURY with an offset
  * shadow, and chunky nav chips that light up soft gold on hover (the current page is a gold block).
  */
 .play-header { --play-ink: var(--text); --on-tone: oklch(0.24 0.03 275); position: relative; border: 2px solid var(--play-ink) !important; border-radius: 14px !important; box-shadow: 4px 5px 0 var(--play-ink); }
@@ -280,6 +280,22 @@
 .play-header nav ~ div button { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }
 .play-header nav ~ div button:active { transform: translate(2px, 2px); box-shadow: none; }
 [data-theme="dark"] .play-header nav a[aria-current="page"], [data-theme="dark"] .play-header nav ~ div button { border-color: oklch(0.45 0.05 280); }
+
+/*
+ * Quick add: chunky pixel keys (ink outline, hard shadow, squash on press) and the amount "screen". A chosen key
+ * (aria-checked / aria-pressed) fills with its own colour (--tone, set inline or by data-tone; gold by default).
+ */
+.play-key { border: 2px solid var(--play-ink); box-shadow: 2px 3px 0 var(--play-ink); transition: transform 0.08s steps(2), box-shadow 0.08s steps(2); }
+.play-key:active:not(:disabled) { transform: translate(2px, 3px); box-shadow: none; }
+.play-key:disabled { box-shadow: none; }
+.play-key[aria-checked="true"], .play-key[aria-pressed="true"] { background: color-mix(in srgb, var(--tone, oklch(0.86 0.15 92)) 45%, var(--surface)); color: var(--text); }
+[data-theme="dark"] .play-skin .play-key { border-color: oklch(0.45 0.05 280); box-shadow: 2px 3px 0 oklch(0.1 0.02 280); }
+.play-screen { border: 2px solid var(--play-ink); border-radius: 14px; background: color-mix(in srgb, oklch(0.86 0.15 92) 18%, var(--surface)); box-shadow: 4px 5px 0 var(--play-ink); }
+[data-theme="dark"] .play-skin .play-screen { border-color: oklch(0.45 0.05 280); }
+.play-save { background: var(--fire-yellow); color: oklch(0.24 0.03 275); border: 2px solid var(--play-ink); box-shadow: 0 4px 0 var(--fire-orange), 2px 6px 0 var(--play-ink); }
+.play-save:disabled { background: var(--surface-2); color: var(--text-muted); box-shadow: none; }
+.play-save:active:not(:disabled) { transform: translateY(4px); box-shadow: none; }
+[data-theme="dark"] .play-skin .play-save { border-color: oklch(0.45 0.05 280); }
 
 /* A coin that turns, beside "Money now". */
 .coin-spin { animation: coin-spin 1.6s steps(4) infinite; }

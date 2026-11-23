@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { PixelIcon } from '@/components/PixelIcon'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardTitle, Field, Label, fieldClass } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Field, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
 import { localDate } from '@/domain/cashflow'
-import { byDay, journalStreak } from '@/domain/journal'
+import { byDay, journalCalendar, journalStreak } from '@/domain/journal'
 import { JOURNAL_TAGS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { routeParam } from '@/routes'
@@ -64,48 +64,72 @@ export function Journal() {
   const sorted = [...holdings].sort((a, b) => a.symbol.localeCompare(b.symbol))
 
   return (
-    <>
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase">{t('jr.title')}</h1>
-          <div className="flex items-center gap-2" aria-label={t('jr.streak', { n: streak })}>
-            {streak > 0 && <PixelIcon name="flame" />}
-            <span className="font-display text-4xl leading-none">{streak}</span>
-            <Label>{t('jr.streakLabel')}</Label>
+    <div className="play-skin contents">
+      <div aria-hidden="true" className="play-confetti" />
+      <Card data-tone="gold" className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('jr.title')}</h1>
+            <div className="flex items-center gap-2" aria-label={t('jr.streak', { n: streak })}>
+              {streak > 0 && <PixelIcon name="flame" size={28} className="flame" />}
+              <span className="font-display text-5xl leading-none">{streak}</span>
+              <Label>{t('jr.streakLabel')}</Label>
+            </div>
           </div>
+          <p className="text-sm text-text-muted">{t(`jr.intro.${view}`)}</p>
+          <PixelTabs label={t('jr.viewLabel')} options={VIEWS.map((v) => ({ id: v, label: t(`jr.view.${v}`) }))} value={view} onChange={pickView} />
         </div>
-        <p className="mt-2 text-sm text-text-muted">{t(`jr.intro.${view}`)}</p>
-        <div role="group" aria-label={t('jr.viewLabel')} className="mt-3 flex w-fit gap-1 rounded-md border border-border p-1">
-          {VIEWS.map((v) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={v === view}
-              onClick={() => pickView(v)}
-              className={`rounded px-3 py-1.5 font-label text-xs uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${v === view ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`}
-            >
-              {t(`jr.view.${v}`)}
-            </button>
-          ))}
-        </div>
+        <NoteCalendar today={today} />
       </Card>
       {view === 'trades' ? (
         <TradesView />
       ) : view === 'signals' ? (
         <SignalsView />
       ) : (
-        <div className="flex flex-wrap gap-4">
-          <div className="min-w-0 flex-[2_1_320px]">
+        // Write first (the point of a journal), then what you wrote. Wide: side by side.
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          <div className="min-w-0 lg:sticky lg:top-4">
             <NewEntry today={today} holdings={sorted} />
           </div>
-          <div className="min-w-0 flex-[3_1_520px]">
-            <Entries byId={byId} holdings={sorted} />
-          </div>
+          <Entries byId={byId} holdings={sorted} />
         </div>
       )}
-    </>
+    </div>
   )
 }
+
+/** The last five weeks of notes as a pixel calendar: darker = more notes that day; today outlined. */
+function NoteCalendar({ today }: { today: string }) {
+  const { t, day } = useI18n()
+  const journal = useStore((s) => s.journal)
+  const cells = journalCalendar(journal, today)
+  const written = cells.filter((c) => c.count > 0).length
+  return (
+    <div className="flex w-full max-w-[15rem] min-w-0 flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-text">{t('jr.calendar')}</Label>
+        <Label>{t('jr.calendarDays', { n: written })}</Label>
+      </div>
+      <div role="img" aria-label={t('jr.calendarDays', { n: written })} className="grid grid-cols-7 gap-1">
+        {cells.map((c) => (
+          <span
+            key={c.date}
+            title={`${day(c.date)}: ${c.count}`}
+            className="aspect-square rounded-[3px] border-2"
+            style={{
+              background: c.future ? 'transparent' : c.count ? `color-mix(in srgb, var(--tone) ${Math.min(100, 45 + c.count * 25)}%, var(--text) ${c.count > 2 ? 15 : 0}%)` : 'var(--empty)',
+              borderColor: c.date === today ? 'var(--text)' : c.future ? 'var(--border)' : 'transparent',
+              borderStyle: c.future ? 'dashed' : 'solid',
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** One colour per tag, so a day's notes read at a glance. */
+const TAG_TONE: Record<JournalTag, string> = { note: 'teal', plan: 'blue', entry: 'green', exit: 'orange', lesson: 'purple' }
 
 const holdingLabel = (h: Holding, paper: string) => `${h.symbol}${h.name ? ` · ${h.name}` : ''}${h.paper ? ` · ${paper}` : ''}`
 
@@ -128,21 +152,31 @@ function NewEntry({ today, holdings }: { today: string; holdings: Holding[] }) {
   }
 
   return (
-    <Card>
+    <Card data-tone="pink" className="min-w-0">
       <CardTitle icon="plus">{t('jr.new')}</CardTitle>
       <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-        <Field label={t('jr.date')}>
+        <Field label={t('jr.date')} className="col-span-2">
           <input type="date" required max={today} value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} font-mono`} />
         </Field>
-        <Field label={t('jr.tag')}>
-          <select value={tag} onChange={(e) => setTag(e.target.value as JournalTag)} className={fieldClass}>
+        <div className="col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-medium text-text-muted">{t('jr.tag')}</span>
+          <div role="group" aria-label={t('jr.tag')} className="flex flex-wrap gap-1.5">
             {JOURNAL_TAGS.map((x) => (
-              <option key={x} value={x}>
+              <button
+                key={x}
+                type="button"
+                data-tone={TAG_TONE[x]}
+                aria-pressed={x === tag}
+                onClick={() => setTag(x)}
+                className={`rounded-md border-2 px-2.5 py-1 font-label text-[11px] uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
+                  x === tag ? 'border-text bg-[var(--tone)] text-[oklch(0.24_0.03_275)] shadow-[2px_2px_0_var(--text)]' : 'border-transparent bg-surface-2 text-text-muted hover:text-text'
+                }`}
+              >
                 {t(`jr.tag.${x}`)}
-              </option>
+              </button>
             ))}
-          </select>
-        </Field>
+          </div>
+        </div>
         <Field label={t('jr.holding')} hint={t('jr.holdingHint')} className="col-span-2">
           <select value={holdingId} onChange={(e) => setHoldingId(e.target.value)} className={fieldClass}>
             <option value={ALL}>{t('jr.noHolding')}</option>
@@ -190,7 +224,7 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
   const linked = holdings.filter((h) => journal.some((j) => j.holdingId === h.id))
 
   return (
-    <Card>
+    <Card data-tone="blue" className="min-w-0">
       <CardTitle icon="receipt" aside={t('jr.count', { n: shown.length })}>
         {t('jr.entries')}
       </CardTitle>
@@ -220,14 +254,16 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
         {byDay(shown).map(([date, entries]) => (
           <section key={date}>
             <Label>{day(date)}</Label>
-            <ul className="mt-1 flex flex-col divide-y divide-border rounded-md border border-border">
+            <ul className="mt-1 flex flex-col gap-1.5">
               {entries.map((j) => {
                 const h = j.holdingId ? byId.get(j.holdingId) : undefined
                 return (
-                  <li key={j.id} className="flex items-start gap-3 px-3 py-2 text-sm">
+                  <li key={j.id} data-tone={TAG_TONE[j.tag]} className="flex items-start gap-3 rounded-lg bg-surface-2 px-3 py-2 text-sm" style={{ borderLeft: '4px solid var(--tone)' }}>
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        <Badge tone="neutral">{t(`jr.tag.${j.tag}`)}</Badge>
+                        <span className="rounded px-1.5 py-px font-label text-[11px] text-[oklch(0.24_0.03_275)] uppercase" style={{ background: 'var(--tone)' }}>
+                          {t(`jr.tag.${j.tag}`)}
+                        </span>
                         {h && <span className="font-mono text-xs">{h.symbol}</span>}
                         {h?.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
                       </div>
