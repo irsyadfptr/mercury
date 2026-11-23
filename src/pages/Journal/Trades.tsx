@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Explain } from '@/components/Explain'
 import { HoldingDialog } from '@/components/HoldingDialog'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardTitle, Label } from '@/components/ui-bits'
+import { Badge, Card, CardTitle, Label, PixelTabs } from '@/components/ui-bits'
 import { localDate } from '@/domain/cashflow'
 import { tradeStatus } from '@/domain/tradeMemory'
 import { closedTrades, excursion, filterTrades, KELLY_MIN, reviewStats, type ClosedTrade, type GroupStats, type ReviewKind, type ReviewPeriod } from '@/domain/tradeReview'
@@ -45,8 +45,8 @@ export function TradesView() {
   return (
     <>
       <BreakerCard />
-      <Card>
-        <CardTitle icon="chest" aside={t('tm.openCount', { n: open.length })}>
+      <Card data-tone="purple">
+        <CardTitle icon="sword" aside={t('tm.openCount', { n: open.length })}>
           {t('tm.openTitle')}
         </CardTitle>
         {open.length === 0 ? (
@@ -77,7 +77,7 @@ function OpenTrade({ h, txns, today, onEdit }: { h: Holding; txns: Transaction[]
   const moved = h.initialStop !== undefined && h.stop !== undefined && h.stop !== h.initialStop
   const price = (n: number) => (h.currency === 'USD' ? `$${f.num(n, n < 1 ? 6 : 2)}` : f.money(n))
   return (
-    <li className="flex flex-col gap-1 rounded-md border border-border px-3 py-2 text-sm">
+    <li className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 text-sm" style={{ borderLeft: `4px solid ${due ? 'var(--warn)' : 'var(--tone)'}` }}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono font-medium">{h.symbol}</span>
         {h.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
@@ -144,8 +144,6 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
     setTick((n) => n + 1)
   }
 
-  const tab = (on: boolean) =>
-    `rounded px-2.5 py-1 font-label text-[11px] uppercase focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${on ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:bg-surface-2 hover:text-text'}`
   const facts = [
     t('tr.f.filter', { p: t(`tr.period.${period}`), k: t(`tr.kind.${kind}`) }),
     `Closed trades: ${s.n} (${s.wins} won, ${s.losses} lost); trades with an R: ${s.rCount}`,
@@ -164,25 +162,13 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
   ]
 
   return (
-    <Card>
+    <Card data-tone="teal">
       <CardTitle icon="chartUp" aside={t('tr.count', { n: trades.length })}>
         {t('tr.title')}
       </CardTitle>
       <div className="mb-3 flex flex-wrap gap-2">
-        <div role="group" aria-label={t('tr.periodLabel')} className="flex gap-1 rounded-md border border-border p-1">
-          {PERIODS.map((p) => (
-            <button key={p} type="button" aria-pressed={p === period} onClick={() => setPeriod(p)} className={tab(p === period)}>
-              {t(`tr.period.${p}`)}
-            </button>
-          ))}
-        </div>
-        <div role="group" aria-label={t('tr.kindLabel')} className="flex gap-1 rounded-md border border-border p-1">
-          {KINDS.map((k) => (
-            <button key={k} type="button" aria-pressed={k === kind} onClick={() => setKind(k)} className={tab(k === kind)}>
-              {t(`tr.kind.${k}`)}
-            </button>
-          ))}
-        </div>
+        <PixelTabs label={t('tr.periodLabel')} options={PERIODS.map((p) => ({ id: p, label: t(`tr.period.${p}`) }))} value={period} onChange={setPeriod} />
+        <PixelTabs label={t('tr.kindLabel')} options={KINDS.map((k) => ({ id: k, label: t(`tr.kind.${k}`) }))} value={kind} onChange={setKind} />
       </div>
 
       {trades.length === 0 ? (
@@ -200,7 +186,7 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
             <Tile label={t('tr.maeMfe')} value={avgMae === undefined ? '—' : `${signed(f, avgMae)} / ${signed(f, avgMfe)}R`} note={t('tr.maeMfeNote', { n: exc.length })} />
           </div>
 
-          <p className="rounded-md bg-surface-2 px-3 py-2 text-sm">
+          <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
             {s.halfKelly !== undefined ? t('tr.kelly', { k: num(s.halfKelly, 2), n: s.rCount, limit: tradeLimit }) : t('tr.kellyWait', { n: s.rCount, min: KELLY_MIN })}
           </p>
 
@@ -217,50 +203,42 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
             <span className="text-xs text-text-muted">{t(IDX_AVAILABLE ? 'tr.loadPricesNote' : 'tr.loadPricesNoteDeployed')}</span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-left">
-                <tr>
-                  {(['tr.col.closed', 'tr.col.ticker', 'tr.col.r', 'tr.col.pnl', 'tr.col.days', 'tr.col.exit', 'tr.col.maeMfe', 'tr.col.lesson'] as const).map((k) => (
-                    <th key={k} className="px-2 py-1.5 font-label text-[11px] font-normal text-text-muted uppercase">
-                      {t(k)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {trades.map((x) => {
-                  const e = excursions.get(x.key)
-                  const lesson = journal.some((j) => j.holdingId === x.holding.id && (j.tag === 'lesson' || j.tag === 'exit') && j.date >= x.exitDate)
-                  return (
-                    <tr key={x.key}>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{f.day(x.exitDate)}</td>
-                      <td className="px-2 py-1.5">
-                        <button type="button" onClick={() => onEdit(x.holding)} className="font-mono underline-offset-2 hover:underline">
-                          {x.holding.symbol}
-                        </button>{' '}
-                        {x.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
-                      </td>
-                      <td className={`px-2 py-1.5 font-mono ${x.r === undefined ? '' : x.r > 0 ? 'text-up' : 'text-down'}`}>{rText(f, x)}</td>
-                      <td className="px-2 py-1.5 font-mono">{f.change(x.pnlPct, 1)}</td>
-                      <td className="px-2 py-1.5 font-mono">{x.days}</td>
-                      <td className="px-2 py-1.5">{x.exitReason ? t(`tm.exit.${x.exitReason}`) : <span className="text-text-muted">—</span>}</td>
-                      <td className="px-2 py-1.5 font-mono whitespace-nowrap">{e ? `${signed(f, e.maeR, 1)} / ${signed(f, e.mfeR, 1)}` : '—'}</td>
-                      <td className="px-2 py-1.5">
-                        {lesson ? (
-                          '✓'
-                        ) : (
-                          <a className="text-xs underline" href={href('journal', { holding: x.holding.id, tag: 'lesson' })}>
-                            {t('tr.writeLesson')}
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          {/* One row per closed trade: R in big, the rest on a second line (no sideways scroll on phones). */}
+          <ul className="flex flex-col gap-1.5">
+            {trades.map((x) => {
+              const e = excursions.get(x.key)
+              const lesson = journal.some((j) => j.holdingId === x.holding.id && (j.tag === 'lesson' || j.tag === 'exit') && j.date >= x.exitDate)
+              return (
+                <li key={x.key} className="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
+                  <span className={`w-16 shrink-0 font-display text-2xl leading-none ${x.r === undefined ? '' : x.r > 0 ? 'text-up' : 'text-down'}`}>{rText(f, x)}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-baseline gap-1.5">
+                      <button type="button" onClick={() => onEdit(x.holding)} className="font-semibold underline-offset-2 hover:underline">
+                        {x.holding.symbol}
+                      </button>
+                      {x.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
+                      <span className="font-mono text-xs">{f.change(x.pnlPct, 1)}</span>
+                    </span>
+                    <span className="font-label text-[10px] text-text-muted uppercase">
+                      {f.day(x.exitDate)} · {t('tr.col.days')} {x.days} · {x.exitReason ? t(`tm.exit.${x.exitReason}`) : '—'}
+                      {e && ` · MAE/MFE ${signed(f, e.maeR, 1)} / ${signed(f, e.mfeR, 1)}R`}
+                    </span>
+                  </span>
+                  <span className="shrink-0">
+                    {lesson ? (
+                      <span className="font-label text-[11px] text-up uppercase" title={t('tr.col.lesson')}>
+                        ✓ {t('tr.col.lesson')}
+                      </span>
+                    ) : (
+                      <a className="font-label text-[11px] uppercase underline underline-offset-4" href={href('journal', { holding: x.holding.id, tag: 'lesson' })}>
+                        {t('tr.writeLesson')}
+                      </a>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
           <p className="text-xs text-text-muted">{t('tr.note')}</p>
           <Explain mode="coach" title={t('tr.aiTitle')} facts={facts} />
         </div>
@@ -272,9 +250,9 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
 function Tile({ label, value, note, tone }: { label: string; value: string; note?: string; tone?: number }) {
   const color = tone === undefined || !Number.isFinite(tone) || tone === 0 ? '' : tone > 0 ? 'text-up' : 'text-down'
   return (
-    <div className="rounded-md bg-surface-2 px-3 py-2">
+    <div className="rounded-lg bg-surface-2 px-3 py-2">
       <Label>{label}</Label>
-      <div className={`font-mono text-lg ${color}`}>{value}</div>
+      <div className={`font-display text-[26px] leading-none ${color}`}>{value}</div>
       {note && <div className="text-xs text-text-muted">{note}</div>}
     </div>
   )
