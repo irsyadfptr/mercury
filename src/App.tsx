@@ -2,21 +2,23 @@ import { useSyncExternalStore } from 'react'
 import { Shell } from '@/components/Shell'
 import { Cashflow } from '@/pages/Cashflow/Cashflow'
 import { Dashboard } from '@/pages/Dashboard/Dashboard'
-import { Journal } from '@/pages/Journal/Journal'
-import { LongTerm } from '@/pages/LongTerm/LongTerm'
-import { Portfolio } from '@/pages/Portfolio/Portfolio'
+import { Market } from '@/pages/Market/Market'
 import { QuickAdd } from '@/pages/QuickAdd/QuickAdd'
-import { Scanner } from '@/pages/Scanner/Scanner'
 import { Settings } from '@/pages/Settings/Settings'
-import { parseRoute } from '@/routes'
+import { legacyHash, parseRoute } from '@/routes'
 import type { Route } from '@/types'
 
-// shortcut: hash routing (#/portfolio) is enough for a handful of pages and static hosting; switch to a router if pages need params.
+// shortcut: hash routing (#/crypto) is enough for a handful of pages and static hosting; switch to a router if pages need params.
 const subscribe = (onChange: () => void) => {
   window.addEventListener('hashchange', onChange)
   return () => window.removeEventListener('hashchange', onChange)
 }
-const currentRoute = (): Route => parseRoute(location.hash)
+const currentRoute = (): Route => {
+  // An old link (#/scanner, #/journal …) is rewritten in place, so Back doesn't bounce through it.
+  const moved = legacyHash(location.hash)
+  if (moved) history.replaceState(null, '', moved)
+  return parseRoute(location.hash)
+}
 
 export default function App() {
   const route = useSyncExternalStore(subscribe, currentRoute)
@@ -24,11 +26,8 @@ export default function App() {
   if (route === 'add') return <QuickAdd />
   return (
     <Shell route={route}>
-      {route === 'dashboard' && <Dashboard />}
-      {route === 'portfolio' && <Portfolio />}
-      {route === 'scanner' && <Scanner />}
-      {route === 'longterm' && <LongTerm />}
-      {route === 'journal' && <Journal />}
+      {route === 'home' && <Dashboard />}
+      {(route === 'crypto' || route === 'stocks' || route === 'funds') && <Market key={route} market={route} />}
       {route === 'cashflow' && <Cashflow />}
       {route === 'settings' && <Settings />}
     </Shell>

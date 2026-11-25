@@ -67,13 +67,13 @@ export function HoldingDialog({ target, onClose }: HoldingDialogProps) {
       className="m-auto w-[min(640px,calc(100vw-32px))] rounded-[10px] border border-border bg-surface p-0 text-text backdrop:bg-black/50"
     >
       {target.mode !== 'closed' && (
-        <HoldingForm key={target.mode === 'edit' ? target.holdingId : 'new'} holdingId={target.mode === 'edit' ? target.holdingId : undefined} account={target.account} onDone={onClose} />
+        <HoldingForm key={target.mode === 'edit' ? target.holdingId : 'new'} holdingId={target.mode === 'edit' ? target.holdingId : undefined} account={target.account} assetClass={target.mode === 'create' ? target.assetClass : undefined} onDone={onClose} />
       )}
     </dialog>
   )
 }
 
-function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingFormProps) {
+function HoldingForm({ holdingId, onDone, account: initialAccount, assetClass: startClass }: HoldingFormProps) {
   const f = useI18n()
   const { t } = f
   const { holdings, transactions, addHolding, updateHolding, removeHolding, addTransaction } = useStore()
@@ -83,7 +83,7 @@ function HoldingForm({ holdingId, onDone, account: initialAccount }: HoldingForm
   const own = existing ? transactions.filter((x) => x.holdingId === existing.id) : []
 
   const [today] = useState(todayIso)
-  const [values, setValues] = useState<HoldingFormValues>(() => holdingToForm(existing, today, own))
+  const [values, setValues] = useState<HoldingFormValues>(() => holdingToForm(existing, today, own, startClass))
   const [account, setAccount] = useState(initialAccount ?? '')
   const amountMode = formByAmount(existing, values.assetClass)
   const [errors, setErrors] = useState<HoldingFormErrors>({})

@@ -41,6 +41,7 @@ import {
   type ShortRuleId,
   type StyleId,
 } from '@/market/shortSwing'
+import { tradeMarketOfScan } from '@/domain/markets'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
@@ -513,7 +514,7 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
     })
     addJournal({ date: localDate(Date.now()), tag: 'entry', text: gateNote(gate, f), holdingId: id })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
-    location.hash = href('portfolio')
+    location.hash = href(tradeMarketOfScan(mk), { view: 'holdings' })
   }
 
   return (

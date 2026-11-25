@@ -277,9 +277,9 @@
 .play-header nav a:hover { background: color-mix(in srgb, oklch(0.86 0.15 92) 45%, var(--surface)) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); transform: translateY(-2px) rotate(-2deg); }
 .play-header nav a[aria-current="page"] { background: var(--tone) !important; color: var(--on-tone) !important; border-color: var(--play-ink); box-shadow: 2px 3px 0 var(--play-ink); }
 .play-header nav a[aria-current="page"]:hover { transform: none; }
-.play-header nav ~ div button { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }
-.play-header nav ~ div button:active { transform: translate(2px, 2px); box-shadow: none; }
-[data-theme="dark"] .play-header nav a[aria-current="page"], [data-theme="dark"] .play-header nav ~ div button { border-color: oklch(0.45 0.05 280); }
+.play-header nav ~ div :is(button, a) { border: 2px solid var(--play-ink); box-shadow: 2px 2px 0 var(--play-ink); background: color-mix(in srgb, oklch(0.86 0.15 92) 25%, var(--surface)); }
+.play-header nav ~ div :is(button, a):active { transform: translate(2px, 2px); box-shadow: none; }
+[data-theme="dark"] .play-header nav a[aria-current="page"], [data-theme="dark"] .play-header nav ~ div :is(button, a) { border-color: oklch(0.45 0.05 280); }
 
 /*
  * Quick add: chunky pixel keys (ink outline, hard shadow, squash on press) and the amount "screen". A chosen key

@@ -53,9 +53,11 @@ function initialMarket(): 'idx' | 'crypto' {
   return IDX_AVAILABLE ? 'idx' : 'crypto'
 }
 
-export function LongTerm() {
+/** The fundamentals check. market: the Crypto or Stocks page it sits on (fixed); without it, the old market switch. */
+export function LongTerm({ market: fixed }: { market?: 'idx' | 'crypto' }) {
   const { t } = useI18n()
-  const [market, setMarket] = useState(initialMarket)
+  const [chosen, setMarket] = useState(initialMarket)
+  const market = fixed ?? chosen
   const pickMarket = (v: 'idx' | 'crypto') => {
     setMarket(v)
     try {
@@ -94,12 +96,11 @@ export function LongTerm() {
   // IDX order, most-needed first: how your holdings score (and what scores better), the check, the screen for new
   // ideas, then score history. Wide: holdings + screen on the left, check + history on the right.
   return (
-    <div className="play-skin contents">
-      <div aria-hidden="true" className="play-confetti" />
-      <Card data-tone="gold">
+    <>
+      <Card data-tone="purple">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('lt.title')}</h1>
-          <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={market} onChange={pickMarket} />
+          <h2 className="font-display text-3xl leading-none uppercase">{t('mk.view.score')}</h2>
+          {!fixed && <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={market} onChange={pickMarket} />}
         </div>
         <p className="mt-2 text-sm text-text-muted">{t(market === 'idx' ? 'lt.intro' : 'cryf.intro')}</p>
       </Card>
@@ -133,7 +134,7 @@ export function LongTerm() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

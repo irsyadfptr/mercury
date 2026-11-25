@@ -46,8 +46,8 @@ const isPositive = (n: number | undefined): n is number => isNonNegative(n) && n
 export const dateToIso = (yyyyMmDd: string): string => new Date(`${yyyyMmDd}T00:00:00.000Z`).toISOString()
 
 /** txns: the holding's transactions, so a fund handled by amount shows its current value in the price field. */
-export function holdingToForm(h: Holding | undefined, today: string, txns: readonly Transaction[] = []): HoldingFormValues {
-  const assetClass = h?.assetClass ?? 'idx_stock'
+export function holdingToForm(h: Holding | undefined, today: string, txns: readonly Transaction[] = [], startClass: AssetClass = 'idx_stock'): HoldingFormValues {
+  const assetClass = h?.assetClass ?? startClass
   const price = h?.manualPrice == null ? '' : h.byAmount ? String(Math.round(h.manualPrice * position(txns).quantity)) : h.manualPrice.toString()
   return {
     assetClass,

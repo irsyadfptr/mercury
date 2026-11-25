@@ -40,4 +40,6 @@ export const ICONS = {
   shield: [pix(['XXXXXXXX', 'X..XX..X', 'X..XX..X', 'XXXXXXXX', 'X..XX..X', '.X.XX.X.', '..XXXX..', '...XX...'])],
   sword: [pix(['......XX', '.....XXX', '....XXX.', 'X..XXX..', '.XXXX...', '..XX....', '.XXXX...', 'XX..X...'])],
   bulb: [pix(['..XXXX..', '.XXXXXX.', 'XXXXXXXX', 'XXXXXXXX', '.XXXXXX.', '..XXXX..', '........', '..XXXX..'])],
+  // Settings.
+  gear: [pix(['...XX...', '.XXXXXX.', '.XX..XX.', 'XX....XX', 'XX....XX', '.XX..XX.', '.XXXXXX.', '...XX...'])],
 } as const

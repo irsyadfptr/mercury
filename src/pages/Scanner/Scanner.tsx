@@ -24,6 +24,7 @@ import { signalId } from '@/market/signalLog'
 import { addDays, REVIEW_DAYS } from '@/domain/tradeMemory'
 import { CryptoMoodParts } from './CryptoMoodParts'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
+import { tradeMarketOfScan } from '@/domain/markets'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
@@ -159,9 +160,11 @@ function initialMode(): Mode {
   }
 }
 
-export function Scanner() {
+/** market: the Crypto or Stocks page it sits on (fixed); without it, the old market switch. */
+export function Scanner({ market }: { market?: ScanMarket }) {
   const { t } = useI18n()
-  const [marketId, setMarketId] = useState(initialMarket)
+  const [chosen, setMarketId] = useState(initialMarket)
+  const marketId = market ?? chosen
   const [mode, setMode] = useState(initialMode)
   const m = MARKETS[marketId]
   const save = (key: string, v: string) => {
@@ -180,14 +183,13 @@ export function Scanner() {
     save(MODE_KEY, v)
   }
   return (
-    <div className="play-skin contents">
-      <div aria-hidden="true" className="play-confetti" />
-      <Card data-tone="gold">
+    <>
+      <Card data-tone="purple">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('scan.title')}</h1>
+          <h2 className="font-display text-3xl leading-none uppercase">{t('scan.title')}</h2>
           <div className="flex flex-wrap gap-2">
             <PixelTabs label={t('short.styleLabel')} options={MODES.map((id) => ({ id, label: t(`scan.mode.${id}`) }))} value={mode} onChange={pickMode} />
-            <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={marketId} onChange={pick} />
+            {!market && <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={marketId} onChange={pick} />}
           </div>
         </div>
         <p className="mt-2 text-sm text-text-muted">{t(mode === 'swing' ? 'scan.intro' : `short.intro.${mode}`)}</p>
@@ -201,7 +203,7 @@ export function Scanner() {
       ) : (
         <ShortView key={`${m.id}:${mode}`} mk={m.id} styleId={mode} />
       )}
-    </div>
+    </>
   )
 }
 
@@ -679,7 +681,7 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
     })
     addJournal({ date: localDate(Date.now()), tag: 'entry', text: gateNote(gate, f), holdingId: id })
     addTransaction({ holdingId: id, type: 'buy', date: now, quantity: units, price: c.entry, fee: 0 })
-    location.hash = href('portfolio')
+    location.hash = href(tradeMarketOfScan(m.id), { view: 'holdings' })
   }
 
   return (

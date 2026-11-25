@@ -92,6 +92,8 @@ export const JournalEntry = z.object({
   text: z.string().trim().min(1),
   holdingId: id.optional(),
   createdAt: isoDate,
+  /** Which market's journal (see domain/markets.ts); blank = from its holding, or a general note shown in both. */
+  market: z.enum(['crypto', 'stocks']).optional(),
 })
 
 /** A dividend received for a holding: rupiah actually received (after the 10% IDX final tax). */
