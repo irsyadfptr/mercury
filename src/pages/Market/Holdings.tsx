@@ -16,7 +16,7 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { scoreAlert } from '@/market/scoreLog'
 import { useSettings } from '@/settings'
-import type { GroupTotals, HoldingDialogTarget, HoldingQuest, PixelIconName, Summary, TypeGroup } from '@/types'
+import type { AssetClass, GroupTotals, HoldingDialogTarget, HoldingQuest, PixelIconName, Summary, TypeGroup } from '@/types'
 import { useCountUp } from '@/useCountUp'
 import { useNow } from '@/useNow'
 import { longTermSymbols, useScoreLog } from '@/useScoreLog'
@@ -33,10 +33,11 @@ import type { HoldingRowProps, HoldingRowsProps, SizeInputs } from './Holdings.t
  * position-size calculator. Funds: the holdings by type.
  * Phone: one column in that order. Wide: Trading on the left (its rows are tall), Investing and size on the right.
  */
-export function Holdings({ market }: { market: MarketPage }) {
+/** classes: narrow further (Stocks: IDX or US only); a new holding then starts on the first of them. */
+export function Holdings({ market, classes = MARKET_CLASSES[market] }: { market: MarketPage; classes?: readonly AssetClass[] }) {
   const { t } = useI18n()
   const all = useSummary()
-  const summary = useMemo(() => scopeSummary(all, MARKET_CLASSES[market]), [all, market])
+  const summary = useMemo(() => scopeSummary(all, classes), [all, classes])
   const [dialog, setDialog] = useState<HoldingDialogTarget>({ mode: 'closed' })
   const sync = useSheetSync()
   const scores = useScoreLog(longTermSymbols(summary.rows))
@@ -56,7 +57,7 @@ export function Holdings({ market }: { market: MarketPage }) {
           </div>
           <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
             <InvestingCard summary={summary} onEdit={edit} scores={scores} className="order-2 lg:order-none" />
-            {trade && <SizeCalculator netWorth={all.netWorth} lots={market === 'stocks'} className="order-3 lg:order-none" />}
+            {trade && <SizeCalculator netWorth={all.netWorth} lots={classes.includes('idx_stock')} className="order-3 lg:order-none" />}
           </div>
         </div>
       ) : (
@@ -65,7 +66,7 @@ export function Holdings({ market }: { market: MarketPage }) {
 
       {/* Room under the last card so the add button never covers it. */}
       <div aria-hidden="true" className="h-16" />
-      <PixelFab label={t('pf.addShort')} onClick={() => setDialog({ mode: 'create', assetClass: DEFAULT_CLASS[market] })} />
+      <PixelFab label={t('pf.addShort')} onClick={() => setDialog({ mode: 'create', assetClass: classes.length === 1 ? classes[0] : DEFAULT_CLASS[market] })} />
       <HoldingDialog target={dialog} onClose={() => setDialog({ mode: 'closed' })} />
     </>
   )

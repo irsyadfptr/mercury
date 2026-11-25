@@ -32,7 +32,7 @@ Code calculates every number (prices, indicators, scores, risk). The AI reads th
 
 - Pages (since 2026-11-25), one per kind of money: Home (net worth, quests, month, AI review), Crypto and Stocks (each: Holdings, Scan, Fundamentals, Journal), Funds (money market, bond funds, gold), Cashflow; Settings behind the header gear. See NOTES.md.
 - UI text in English and Bahasa Indonesia, switchable, from day one.
-- Undecided: US stocks/ETF data source.
+- US stocks/ETFs (2026-11-25): Yahoo through the local dev server (prices, bars, fundamentals) and Twelve Data with the user's own key (prices, bars, USD/IDR; works on the deployed site).
 
 ## Evidence on Hand
 

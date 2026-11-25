@@ -1,9 +1,10 @@
 // Quests as sentences, shared by Home's quest card and each market's fix list.
-import { marketOfClass } from '@/domain/markets'
+import { exchangeParamsOf, marketOfClass } from '@/domain/markets'
 import type { Holding, I18n, Quest, QuestView } from '@/types'
 
 /** A holding's own page: its market, on Holdings. */
-const atHolding = (h: Holding) => ({ route: marketOfClass(h.assetClass), params: { view: 'holdings' } })
+const stockEx = (h: Holding) => exchangeParamsOf(h.assetClass)
+const atHolding = (h: Holding) => ({ route: marketOfClass(h.assetClass), params: { view: 'holdings', ...stockEx(h) } })
 
 /** Pure: how a quest reads and where it sends you. */
 export function describeQuest(q: Quest, f: I18n): QuestView {
@@ -23,6 +24,6 @@ export function describeQuest(q: Quest, f: I18n): QuestView {
     case 'fxRate':
       return { label: f.t('quest.fxRate'), tag: '', route: 'settings' }
     case 'review':
-      return { label: f.t('quest.review', { s: q.holding.symbol }), tag: f.day(q.since), route: marketOfClass(q.holding.assetClass), params: { view: 'journal', jv: 'trades' } }
+      return { label: f.t('quest.review', { s: q.holding.symbol }), tag: f.day(q.since), route: marketOfClass(q.holding.assetClass), params: { view: 'journal', jv: 'trades', ...stockEx(q.holding) } }
   }
 }

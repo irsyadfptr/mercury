@@ -39,6 +39,8 @@ export const MAX_BETA = 1
 export const MAX_SWING_52W_PCT = 60
 export const MIN_CURRENT_RATIO = 1.5
 export const MIN_MARKET_CAP = 10e12
+/** US (USD): $1 bn, about the same size class as Rp10 tn. */
+export const MIN_MARKET_CAP_USD = 1e9
 
 export type PartId = 'quality' | 'value' | 'risk'
 export type MetricId =
@@ -99,7 +101,8 @@ function part(id: PartId, metrics: Metric[]): Part {
   return { id, metrics, score: metrics.filter((m) => m.pass).length, known: metrics.filter((m) => m.pass !== null).length }
 }
 
-export function scoreFundamentals(f: FundamentalInput): FundamentalScore {
+/** minMarketCap: in the input's currency (IDX rupiah by default; US passes MIN_MARKET_CAP_USD). */
+export function scoreFundamentals(f: FundamentalInput, { minMarketCap = MIN_MARKET_CAP }: { minMarketCap?: number } = {}): FundamentalScore {
   const netCash = ok(f.totalCash) && ok(f.totalDebt) ? f.totalCash! - f.totalDebt! : null
   const parts = [
     part('quality', [
@@ -122,7 +125,7 @@ export function scoreFundamentals(f: FundamentalInput): FundamentalScore {
       metric('beta', f.beta, atMost(MAX_BETA)),
       metric('swing52w', pct(f.high52, f.low52), atMost(MAX_SWING_52W_PCT)),
       metric('currentRatio', f.currentRatio, atLeast(MIN_CURRENT_RATIO)),
-      metric('marketCap', f.marketCap, atLeast(MIN_MARKET_CAP)),
+      metric('marketCap', f.marketCap, atLeast(minMarketCap)),
     ]),
   ]
   return { parts, total: parts.reduce((s, p) => s + p.score, 0), known: parts.reduce((s, p) => s + p.known, 0) }

@@ -4,7 +4,7 @@
 // test on signals it really showed: no hindsight, no survivorship in the list.
 import type { Bar } from './indicators'
 
-export type SignalMarket = 'idx' | 'crypto'
+export type SignalMarket = 'idx' | 'crypto' | 'us'
 /** Which scanner rules made it: the 3–6 month swing checklist, or the ≤ 1 month / ≤ 1 week short-term rules. */
 export type SignalStyle = 'swing' | 'month' | 'week'
 export const SIGNAL_STYLES: readonly SignalStyle[] = ['swing', 'month', 'week']

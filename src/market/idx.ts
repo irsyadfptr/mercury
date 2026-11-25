@@ -16,7 +16,7 @@ const candle = z.object({
 })
 const history = z.object({ data: z.object({ symbol: z.string(), name: z.string().nullish(), candles: z.array(candle) }) })
 
-export type IdxError = 'idx-missing' | 'not-found' | 'bad-symbol' | 'bad-screen' | 'idx-failed' | 'fetch-failed'
+export type IdxError = 'idx-missing' | 'not-found' | 'bad-symbol' | 'bad-screen' | 'idx-failed' | 'fetch-failed' | 'no-key' | 'rate-limited' | 'local-only'
 export class IdxFetchError extends Error {
   code: IdxError
   constructor(code: IdxError) {

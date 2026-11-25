@@ -27,8 +27,7 @@ import { saveShortLog } from '@/market/scanLog'
 import { clearShortCache, loadShort, type ShortData } from '@/market/shortData'
 import {
   MAX_ATR_STOP,
-  SHORT_CRYPTO,
-  SHORT_IDX,
+  SHORT_RULES,
   shortBacktest,
   shortCheck,
   STYLES,
@@ -41,7 +40,9 @@ import {
   type ShortRuleId,
   type StyleId,
 } from '@/market/shortSwing'
-import { tradeMarketOfScan } from '@/domain/markets'
+import { MARKET_SHORT, PAPER_CLASS, pricedInUsd, tradeMarketOfScan } from '@/domain/markets'
+import { fetchUsHistory, fetchUsHourly, toUs4h, US_INDEX, US_SYMBOL } from '@/market/us'
+import { DOW30 } from '@/market/usList'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
@@ -60,8 +61,11 @@ import { groupScan, rulePips, type ScanGroup } from '@/view/scanGroups'
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const SCAN_CONCURRENCY = 4
 const MIN_TRADES = 10
-const RULES: Record<ShortMarket, ShortMarketRules> = { idx: SHORT_IDX, crypto: SHORT_CRYPTO }
-const INDEX: Record<ShortMarket, string> = { idx: '^JKSE', crypto: 'BTC' }
+const RULES: Record<ShortMarket, ShortMarketRules> = SHORT_RULES
+const INDEX: Record<ShortMarket, string> = { idx: '^JKSE', crypto: 'BTC', us: US_INDEX }
+/** Ticker shape and an example, per market. */
+const TICKER: Record<ShortMarket, { pattern: RegExp; example: string }> = { idx: { pattern: /^[A-Z]{4}$/, example: 'BBCA' }, crypto: { pattern: COIN, example: 'BTC' }, us: { pattern: US_SYMBOL, example: 'AAPL' } }
+const badSymbolKey = (mk: ShortMarket) => (mk === 'crypto' ? 'scan.err.bad-coin' : mk === 'us' ? 'scan.err.bad-us' : 'scan.err.bad-symbol') as 'scan.err.bad-coin'
 
 const usd = (f: I18n, n: number) => `$${n.toLocaleString(f.locale, n >= 1e4 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 5 })}`
 const priceOf = (mk: ShortMarket, f: I18n) => (n: number | undefined) => (n === undefined ? '—' : mk === 'idx' ? f.money(n) : usd(f, n))
@@ -113,7 +117,7 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
   const start = async () => {
     clearShortCache()
     frameCache.clear()
-    const baseList = mk === 'idx' ? LQ45 : (await loadCoinList(cgKey)).coins
+    const baseList = mk === 'idx' ? LQ45 : mk === 'us' ? DOW30 : (await loadCoinList(cgKey)).coins
     const list = withWatched(baseList, watch)
     const extras = mk === 'crypto' ? fetchRegimeExtras(baseList, cgKey) : undefined
     const base = baseList.length
@@ -121,7 +125,7 @@ export function ShortView({ mk, styleId }: { mk: ShortMarket; styleId: StyleId }
     let index: Bar[] | undefined
     publish({ rows, running: true, list, base })
     try {
-      index = mk === 'idx' ? (await fetchHistory(INDEX.idx)).bars : (await fetchCryptoHistory(INDEX.crypto)).bars
+      index = (await (mk === 'idx' ? fetchHistory(INDEX.idx) : mk === 'us' ? fetchUsHistory(INDEX.us) : fetchCryptoHistory(INDEX.crypto))).bars
     } catch {
       // Mood falls back to breadth only.
     }
@@ -195,7 +199,7 @@ function MoodLine({ mk, mood, running }: { mk: ShortMarket; mood?: MarketMood; r
       <CardTitle icon="heart">{t('short.mood')}</CardTitle>
       {mood ? (
         <MoodMeter score={mood.score} light={mood.light}>
-          <span className="text-text-muted">{t(mood.light === 'red' ? 'short.moodRed' : 'short.moodOk', { m: mk === 'idx' ? 'IDX' : 'Crypto' })}</span>
+          <span className="text-text-muted">{t(mood.light === 'red' ? 'short.moodRed' : 'short.moodOk', { m: MARKET_SHORT[mk] })}</span>
         </MoodMeter>
       ) : (
         <p className="text-sm text-text-muted">{running ? t('short.moodWait') : '—'}</p>
@@ -212,7 +216,7 @@ function ScanTable({ mk, styleId, scan, defensive, onStart, onPick }: { mk: Shor
   const failed = scan?.rows.filter((r) => !isRow(r)) ?? []
   const missing = failed.find((r) => 'error' in r && r.error === 'idx-missing')
   const buys = rows.filter((r) => r.status === 'buy').length
-  const listName = mk === 'idx' ? 'LQ45' : `Top ${scan?.base ?? 50}`
+  const listName = mk === 'idx' ? 'LQ45' : mk === 'us' ? 'Dow 30' : `Top ${scan?.base ?? 50}`
   const watched = useWatchlist(mk).list
 
   return (
@@ -282,7 +286,7 @@ function Detail({
   const fromScan = rows.find((r) => r.symbol === symbol)
   const [load, setLoad] = useState<Load>(fromScan ? { status: 'done', row: fromScan } : { status: 'idle' })
   const [input, setInput] = useState(symbol ?? '')
-  const pattern = mk === 'idx' ? /^[A-Z]{4}$/ : COIN
+  const pattern = TICKER[mk].pattern
 
   useEffect(() => {
     if (!symbol || fromScan) return
@@ -309,7 +313,7 @@ function Detail({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value.toUpperCase())}
-          placeholder={mk === 'idx' ? 'BBCA' : 'BTC'}
+          placeholder={TICKER[mk].example}
           aria-label={t('scan.ticker')}
           className={`${fieldClass} max-w-32 font-mono uppercase`}
         />
@@ -318,7 +322,7 @@ function Detail({
         </Button>
       </form>
       {load.status === 'idle' && <p className="text-sm text-text-muted">{t('short.pickHint')}</p>}
-      {load.status === 'error' && <p className="text-sm text-down">{t(load.error === 'bad-symbol' && mk === 'crypto' ? 'scan.err.bad-coin' : `scan.err.${load.error}`)}</p>}
+      {load.status === 'error' && <p className="text-sm text-down">{t(load.error === 'bad-symbol' ? badSymbolKey(mk) : `scan.err.${load.error}`)}</p>}
       {load.status === 'done' && <Result mk={mk} styleId={styleId} row={load.row} defensive={defensive} skip={skip} />}
     </Card>
   )
@@ -354,7 +358,7 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         : t('rule.short'),
   }
   const timeStop = new Date(Date.parse(c.time.length <= 10 ? `${c.time}T00:00:00Z` : c.time))
-  timeStop.setUTCDate(timeStop.getUTCDate() + (mk === 'idx' ? Math.round(style.holdDays.idx * 1.4) : style.holdDays.crypto))
+  timeStop.setUTCDate(timeStop.getUTCDate() + (mk === 'crypto' ? style.holdDays.crypto : Math.round(style.holdDays[mk] * 1.4)))
   const levels = useMemo(() => ({ stop: c.stop, targets: c.target !== undefined ? [{ price: c.target, title: `${TARGET_R}R` }] : [] }), [c])
 
   return (
@@ -416,7 +420,7 @@ function Result({ mk, styleId, row, defensive, skip }: { mk: ShortMarket; styleI
         <PaperTrade mk={mk} styleId={styleId} row={row} defensive={defensive} />
       </div>
       <Explain
-        title={`${row.symbol}${row.data.name ? ` (${row.data.name})` : ''} ${mk === 'idx' ? 'IDX stock' : 'crypto'} short-term setup check (hold up to ${style.holdDays[mk]} days), ${c.score}/${c.rules.length} rules pass, status: ${status}, last ${frame} bar ${when(c.time)}`}
+        title={`${row.symbol}${row.data.name ? ` (${row.data.name})` : ''} ${mk === 'crypto' ? 'crypto' : `${MARKET_SHORT[mk]} stock`} short-term setup check (hold up to ${style.holdDays[mk]} days), ${c.score}/${c.rules.length} rules pass, status: ${status}, last ${frame} bar ${when(c.time)}`}
         facts={[
           ...c.rules.map((r) => factLine(r.pass, t(`short.rule.${r.id}`, { n: style.trendMa, a: style.fastMa, b: style.slowMa, f: frame }), detail[r.id])),
           `${t('short.col.entry')}: ${price(c.entry)} · ${t('scan.stop')}: ${price(c.stop)}${c.risk !== undefined ? ` (−${pct(c.risk / c.entry)})` : ''} · ${t('short.col.target')}: ${price(c.target)}${c.target !== undefined ? ` (+${pct((c.target - c.entry) / c.entry)})` : ''}`,
@@ -444,7 +448,9 @@ function ShortChart({ mk, styleId, row, levels }: { mk: ShortMarket; styleId: St
   const loadFrame = (tf: '1h' | '4h' | '1w' | '1M') =>
     mk === 'crypto'
       ? fetchCryptoFrame(row.symbol, tf)
-      : tf === '1h'
+      : mk === 'us' && (tf === '1h' || tf === '4h')
+        ? fetchUsHourly(row.symbol).then((b) => (tf === '4h' ? toUs4h(b) : b))
+        : tf === '1h'
         ? fetchHourly(row.symbol)
         : tf === '4h'
           ? fetchHourly(row.symbol).then(to4h)
@@ -473,12 +479,13 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
   const addHolding = useStore((s) => s.addHolding)
   const addTransaction = useStore((s) => s.addTransaction)
   const c = row.check
-  const crypto = mk === 'crypto'
+  // USD-priced (crypto in USDT, US stocks): net worth is in rupiah, so convert the capital first. IDX trades in lots.
+  const crypto = pricedInUsd(mk)
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
   const runGate = useGate()
   const addJournal = useStore((s) => s.addJournal)
-  const gate = runGate({ paper: true, assetClass: crypto ? 'crypto' : 'idx_stock', currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
+  const gate = runGate({ paper: true, assetClass: PAPER_CLASS[mk], currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
   const why = !c.signal
     ? t('short.paper.noSignal')
     : defensive
@@ -495,7 +502,7 @@ function PaperTrade({ mk, styleId, row, defensive }: { mk: ShortMarket; styleId:
   const add = () => {
     const now = new Date().toISOString()
     const id = addHolding({
-      assetClass: crypto ? 'crypto' : 'idx_stock',
+      assetClass: PAPER_CLASS[mk],
       group: 'trading',
       symbol: row.symbol,
       name: row.data.name,

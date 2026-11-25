@@ -1,5 +1,5 @@
 import { Badge, Label, Segments } from '@/components/ui-bits'
-import { marketOfClass } from '@/domain/markets'
+import { exchangeParamsOf, marketOfClass } from '@/domain/markets'
 import { idrPnl, openGroup, rarity } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { href } from '@/routes'
@@ -130,7 +130,7 @@ export function TradeList({ rows, onPick, detail = false }: { rows: readonly Row
                 {body}
               </button>
             ) : (
-              <a href={href(marketOfClass(h.assetClass), { view: 'holdings' })} className={rowClass}>
+              <a href={href(marketOfClass(h.assetClass), { view: 'holdings', ...exchangeParamsOf(h.assetClass) })} className={rowClass}>
                 {body}
               </a>
             )}

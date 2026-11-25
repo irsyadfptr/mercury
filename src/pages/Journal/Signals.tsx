@@ -4,6 +4,7 @@ import { Badge, Card, CardTitle, Label, PixelTabs } from '@/components/ui-bits'
 import { useI18n } from '@/i18n'
 import { fetchCryptoHistory } from '@/market/binance'
 import { fetchHistory, IDX_AVAILABLE } from '@/market/idx'
+import { fetchUsHistory, usAvailable } from '@/market/us'
 import type { Bar } from '@/market/indicators'
 import { loadShort } from '@/market/shortData'
 import { STYLES } from '@/market/shortSwing'
@@ -44,7 +45,7 @@ const priceText = (f: I18n, s: SignalRecord, n: number) => (s.market === 'idx' ?
 /** Bars the signal's rules trade on: 4-hour for ≤ 1 week, daily otherwise. */
 async function barsFor(market: SignalMarket, style: SignalStyle, symbol: string): Promise<Bar[]> {
   if (style === 'week') return (await loadShort(market, STYLES.week, symbol)).entry
-  return (market === 'idx' ? await fetchHistory(symbol) : await fetchCryptoHistory(symbol)).bars
+  return (market === 'idx' ? await fetchHistory(symbol) : market === 'us' ? await fetchUsHistory(symbol) : await fetchCryptoHistory(symbol)).bars
 }
 
 /** Signal postmortem: how the scanner's buy signals turned out, live vs paused by the mood, taken vs missed. */
@@ -70,11 +71,11 @@ export function SignalsView({ market: fixed }: { market?: SignalMarket }) {
   const shown = useMemo(() => log.filter((s) => (market === 'all' || s.market === market) && (style === 'all' || s.style === style)), [log, market, style])
   const taken = useMemo(() => {
     const candidates = holdings
-      .filter((h) => h.group === 'trading' && (h.assetClass === 'idx_stock' || h.assetClass === 'crypto'))
+      .filter((h) => h.group === 'trading' && (h.assetClass === 'idx_stock' || h.assetClass === 'crypto' || h.assetClass === 'us_stock'))
       .map((h) => ({
         id: h.id,
         symbol: h.symbol,
-        market: (h.assetClass === 'idx_stock' ? 'idx' : 'crypto') as SignalMarket,
+        market: (h.assetClass === 'idx_stock' ? 'idx' : h.assetClass === 'us_stock' ? 'us' : 'crypto') as SignalMarket,
         signalId: h.signalId,
         firstBuy: txns.filter((x) => x.holdingId === h.id && x.type === 'buy').map((x) => x.date).sort()[0],
       }))
@@ -87,7 +88,7 @@ export function SignalsView({ market: fixed }: { market?: SignalMarket }) {
   const missed = shown.filter((s) => !s.paused && !taken.has(s.id) && verdict(s) === 'won').length
 
   const check = async () => {
-    const todo = unfinished(log).filter((g) => g.market === 'crypto' || IDX_AVAILABLE)
+    const todo = unfinished(log).filter((g) => g.market === 'crypto' || (g.market === 'us' ? usAvailable() : IDX_AVAILABLE))
     let next = 0
     let done = 0
     let current = log
@@ -126,7 +127,7 @@ export function SignalsView({ market: fixed }: { market?: SignalMarket }) {
       </CardTitle>
       <p className="mb-3 text-sm text-text-muted">{t('sg.intro')}</p>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {!fixed && <PixelTabs label={t('sg.market')} options={(['all', 'idx', 'crypto'] as const).map((m) => ({ id: m, label: t(m === 'all' ? 'sg.all' : `scan.market.${m}`) }))} value={market} onChange={setMarket} />}
+        {!fixed && <PixelTabs label={t('sg.market')} options={(['all', 'idx', 'us', 'crypto'] as const).map((m) => ({ id: m, label: t(m === 'all' ? 'sg.all' : `scan.market.${m}`) }))} value={market} onChange={setMarket} />}
         <PixelTabs label={t('sg.style')} options={(['all', ...SIGNAL_STYLES] as const).map((x) => ({ id: x, label: t(x === 'all' ? 'sg.all' : `scan.mode.${x}`) }))} value={style} onChange={setStyle} />
         <Button onClick={() => void check()} disabled={!!progress || !log.length} className={primary}>
           {progress ? t('sg.checking', { n: progress.n, total: progress.total }) : t('sg.check')}

@@ -6,7 +6,9 @@ import { runTrade, summarize, type Backtest, type Trade } from './backtest'
 import { atr, ema, macd, roundTo, sma, type Bar } from './indicators'
 
 export type StyleId = 'week' | 'month'
-export type ShortMarket = 'idx' | 'crypto'
+import { usDayOf } from './usTime'
+
+export type ShortMarket = 'idx' | 'crypto' | 'us'
 
 export interface Style {
   id: StyleId
@@ -22,8 +24,8 @@ export interface Style {
 }
 
 export const STYLES: Record<StyleId, Style> = {
-  week: { id: 'week', entryFrame: '4h', trendMa: 20, fastMa: 20, slowMa: 50, holdDays: { idx: 5, crypto: 7 } },
-  month: { id: 'month', entryFrame: '1d', trendMa: 50, fastMa: 50, slowMa: 200, holdDays: { idx: 20, crypto: 28 } },
+  week: { id: 'week', entryFrame: '4h', trendMa: 20, fastMa: 20, slowMa: 50, holdDays: { idx: 5, crypto: 7, us: 5 } },
+  month: { id: 'month', entryFrame: '1d', trendMa: 50, fastMa: 50, slowMa: 200, holdDays: { idx: 20, crypto: 28, us: 20 } },
 }
 
 /** Big-picture filter for both styles: no longs below the daily MA200. */
@@ -75,6 +77,18 @@ export const SHORT_CRYPTO: ShortMarketRules = {
   barsPerDay: { '4h': 6, '1d': 1 },
   dayOf: (t) => t.slice(0, 10),
 }
+
+/** US stocks: $20M a day, cents; assumed 0.1% a side (check your broker), two 4H blocks a day like IDX (see toUs4h). */
+export const SHORT_US: ShortMarketRules = {
+  id: 'us',
+  minValue: 20e6,
+  fees: { buy: 0.001, sell: 0.001 },
+  step: (p) => (p < 1 ? 0.0001 : 0.01),
+  barsPerDay: { '4h': 2, '1d': 1 },
+  dayOf: usDayOf,
+}
+/** Each market's short-term rules. */
+export const SHORT_RULES: Record<ShortMarket, ShortMarketRules> = { idx: SHORT_IDX, crypto: SHORT_CRYPTO, us: SHORT_US }
 
 export type ShortRuleId = 'trend' | 'stack' | 'big' | 'trigger' | 'liquidity' | 'reach'
 export interface ShortRule {

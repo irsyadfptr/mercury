@@ -13,7 +13,7 @@ import { fetchHistory, IDX_AVAILABLE } from '@/market/idx'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
-import type { HoldingDialogTarget, Holding, I18n, Key, Transaction } from '@/types'
+import type { AssetClass, HoldingDialogTarget, Holding, I18n, Key, Transaction } from '@/types'
 import { useNow } from '@/useNow'
 import { BreakerCard } from './BreakerCard'
 
@@ -30,12 +30,12 @@ const signed = (f: I18n, x: number | undefined, d = 2) => (x === undefined || !N
 const rText = (f: I18n, t: Pick<ClosedTrade, 'r' | 'rApprox'>) => (t.r === undefined ? '—' : `${t.rApprox ? '~' : ''}${signed(f, t.r)}R`)
 
 /** Trade memory (open trades with their thesis and review date) and the trade review (closed trades, stats, AI coach). */
-export function TradesView({ market }: { market: TradeMarket }) {
+export function TradesView({ market, classes = MARKET_CLASSES[market] }: { market: TradeMarket; classes?: readonly AssetClass[] }) {
   const f = useI18n()
   const { t } = f
   const everything = useStore((s) => s.holdings)
-  // This market's trades only; the circuit breaker stays on all of them (it guards all your money).
-  const holdings = useMemo(() => everything.filter((h) => MARKET_CLASSES[market].includes(h.assetClass)), [everything, market])
+  // This market's (Stocks: this exchange's) trades only; the circuit breaker stays on all of them (it guards all your money).
+  const holdings = useMemo(() => everything.filter((h) => classes.includes(h.assetClass)), [everything, classes])
   const txns = useStore((s) => s.transactions)
   const usdIdr = useSettings((s) => s.usdIdr)
   const today = localDate(useNow())

@@ -4,7 +4,7 @@ import { cryptoMood, cryptoMoodSeries, type CryptoMood, type RegimeExtras } from
 import type { Bar } from './indicators'
 import { idxMood, moodSeries, type IdxMood, type MoodLight } from './mood'
 
-export type MoodMarket = 'idx' | 'crypto'
+export type MoodMarket = 'idx' | 'crypto' | 'us'
 export interface MarketMood {
   score: number
   light: MoodLight
@@ -24,7 +24,8 @@ const CRYPTO_INDEX = 'BTC'
 const alts = (rows: readonly MoodInput[]) => rows.filter((r) => r.symbol !== CRYPTO_INDEX).map((r) => r.bars)
 
 export function marketMood(market: MoodMarket, index: readonly Bar[] | undefined, rows: readonly MoodInput[], extras?: RegimeExtras): MarketMood | undefined {
-  if (market === 'idx') {
+  // IDX and US share one formula (breadth, index trend, index calm): IHSG or SPY as the index.
+  if (market !== 'crypto') {
     const m = idxMood(index ?? [], rows.map((r) => r.bars))
     return m && { score: m.score, light: m.light, idx: m }
   }
@@ -34,7 +35,7 @@ export function marketMood(market: MoodMarket, index: readonly Bar[] | undefined
 
 /** Mood score as of each past date (crypto: the price-only parts; see cryptoMoodSeries). */
 export const marketMoodSeries = (market: MoodMarket, index: readonly Bar[] | undefined, rows: readonly MoodInput[]): Map<string, number> =>
-  market === 'idx' ? moodSeries(index ?? [], rows.map((r) => r.bars)) : cryptoMoodSeries(index ?? [], alts(rows))
+  market !== 'crypto' ? moodSeries(index ?? [], rows.map((r) => r.bars)) : cryptoMoodSeries(index ?? [], alts(rows))
 
 // ---- Last mood per market, for the pre-trade gate (which runs outside the Scanner) ----
 

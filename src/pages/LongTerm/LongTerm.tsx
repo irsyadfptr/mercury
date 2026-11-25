@@ -6,7 +6,9 @@ import { Badge, Card, CardTitle, Label, PixelTabs, fieldClass } from '@/componen
 import { ltScoreColor } from '@/view/bars'
 import { ScorePips } from './ScorePips'
 import { useI18n } from '@/i18n'
-import { scoreFundamentals, type FundamentalScore, type Metric, type MetricId } from '@/market/fundamentals'
+import { MIN_MARKET_CAP_USD, scoreFundamentals, type FundamentalScore, type Metric, type MetricId } from '@/market/fundamentals'
+import { fetchUsFundamentals, US_LOCAL, US_SYMBOL } from '@/market/us'
+import { localDate } from '@/domain/cashflow'
 import { fetchFundamentals, fetchScreen, IDX_AVAILABLE, IdxFetchError, SCREENS, type FundamentalRow, type IdxError, type ScreenId } from '@/market/idx'
 import type { I18n } from '@/types'
 import { loadScoreLog } from '@/market/scoreLog'
@@ -18,23 +20,25 @@ import { BetterScored, ScoreHistory } from './History'
 const primary = 'font-label text-xs uppercase shadow-[0_3px_0_var(--accent-deep)] active:translate-y-0.5 active:shadow-none'
 const errorOf = (e: unknown): IdxError => (e instanceof IdxFetchError ? e.code : 'fetch-failed')
 
-type Scored = FundamentalRow & { score: FundamentalScore }
-const scored = (r: FundamentalRow): Scored => ({ ...r, score: scoreFundamentals(r.input) })
+/** usd: a US row (prices and market cap in dollars, the $1 bn market-cap floor). */
+type Scored = FundamentalRow & { score: FundamentalScore; usd?: boolean }
+const scored = (r: FundamentalRow, usd = false): Scored => ({ ...r, usd, score: scoreFundamentals(r.input, usd ? { minMarketCap: MIN_MARKET_CAP_USD } : {}) })
+const usdText = (f: I18n, v: number) => `$${v.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })}`
 
 // How each metric's value and threshold read.
 const PCT: MetricId[] = ['roe', 'netMargin', 'earningsGrowth', 'dividendYield', 'targetUpside', 'swing52w']
 const OP: Partial<Record<MetricId, string>> = { debtToEquity: '≤', beta: '≤', swing52w: '≤', earningsGrowth: '>', pe: '0 <', pb: '0 <', peg: '0 <' }
-function show(f: I18n, id: MetricId, v: number): string {
+function show(f: I18n, id: MetricId, v: number, usd = false): string {
   if (PCT.includes(id)) return `${f.num(v, 1)}%`
   if (id === 'dividendYears') return f.t('lt.years', { n: v })
-  if (id === 'marketCap') return f.compact(v)
+  if (id === 'marketCap') return usd ? usdText(f, v) : f.compact(v)
   // Cash minus debt is in the statements' currency (USD for some coal miners), so no Rp.
   if (id === 'netCash') return v.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })
   return id === 'beta' || id === 'currentRatio' ? f.num(v, 2) : `${f.num(v, 2)}×`
 }
-const limitText = (f: I18n, m: Metric) => {
+const limitText = (f: I18n, m: Metric, usd = false) => {
   const op = OP[m.id]
-  return op?.startsWith('0') ? `0 < x ≤ ${show(f, m.id, m.limit)}` : `${op ?? '≥'} ${show(f, m.id, m.limit)}`
+  return op?.startsWith('0') ? `0 < x ≤ ${show(f, m.id, m.limit, usd)}` : `${op ?? '≥'} ${show(f, m.id, m.limit, usd)}`
 }
 
 // Kept outside React so the last check and screen survive page switches.
@@ -54,10 +58,10 @@ function initialMarket(): 'idx' | 'crypto' {
 }
 
 /** The fundamentals check. market: the Crypto or Stocks page it sits on (fixed); without it, the old market switch. */
-export function LongTerm({ market: fixed }: { market?: 'idx' | 'crypto' }) {
+export function LongTerm({ market: fixed }: { market?: 'idx' | 'crypto' | 'us' }) {
   const { t } = useI18n()
   const [chosen, setMarket] = useState(initialMarket)
-  const market = fixed ?? chosen
+  const market: 'idx' | 'crypto' | 'us' = fixed ?? chosen
   const pickMarket = (v: 'idx' | 'crypto') => {
     setMarket(v)
     try {
@@ -100,12 +104,14 @@ export function LongTerm({ market: fixed }: { market?: 'idx' | 'crypto' }) {
       <Card data-tone="purple">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-3xl leading-none uppercase">{t('mk.view.score')}</h2>
-          {!fixed && <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={market} onChange={pickMarket} />}
+          {!fixed && <PixelTabs label={t('scan.title')} options={(['idx', 'crypto'] as const).map((id) => ({ id, label: t(`scan.market.${id}`) }))} value={chosen} onChange={pickMarket} />}
         </div>
-        <p className="mt-2 text-sm text-text-muted">{t(market === 'idx' ? 'lt.intro' : 'cryf.intro')}</p>
+        <p className="mt-2 text-sm text-text-muted">{t(market === 'idx' ? 'lt.intro' : market === 'us' ? 'lt.intro.us' : 'cryf.intro')}</p>
       </Card>
       {market === 'crypto' ? (
         <CryptoCheck />
+      ) : market === 'us' ? (
+        <UsFundamentals />
       ) : (
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
@@ -138,6 +144,51 @@ export function LongTerm({ market: fixed }: { market?: 'idx' | 'crypto' }) {
   )
 }
 
+let lastUsCheck: Check = { status: 'idle' }
+
+/**
+ * US fundamentals: the same 15-point score from Yahoo (local dev server only; Twelve Data's fundamentals are paid).
+ * Your US holdings are one tap away. No screen or score history yet (both read the IDX-only idx CLI).
+ */
+function UsFundamentals() {
+  const { t } = useI18n()
+  const [check, setCheckState] = useState(lastUsCheck)
+  const setCheck = (c: Check) => setCheckState((lastUsCheck = c))
+  const held = [...new Set(useSummary().rows.filter((r) => r.holding.assetClass === 'us_stock' && r.v.quantity > 0).map((r) => r.holding.symbol.toUpperCase()))].sort()
+  const run = async (symbol: string) => {
+    setCheck({ status: 'loading' })
+    try {
+      setCheck({ status: 'done', row: scored(await fetchUsFundamentals(symbol, localDate(Date.now())), true) })
+    } catch (e) {
+      setCheck({ status: 'error', error: errorOf(e) })
+    }
+  }
+  if (!US_LOCAL)
+    return (
+      <Card data-tone="red">
+        <p className="text-sm">{t('lt.usLocalOnly')}</p>
+      </Card>
+    )
+  return (
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+      <Card data-tone="teal" className="min-w-0">
+        <CardTitle icon="chest">{t('lt.usHeld')}</CardTitle>
+        {!held.length && <p className="text-sm text-text-muted">{t('lt.usHeldNone')}</p>}
+        <div className="flex flex-wrap gap-2">
+          {held.map((s) => (
+            <Button key={s} size="sm" variant="outline" onClick={() => void run(s)} className="font-mono">
+              {s}
+            </Button>
+          ))}
+        </div>
+      </Card>
+      <div className="min-w-0">
+        <TickerCheck key={check.status === 'done' ? check.row.symbol : 'input'} check={check} onCheck={run} us />
+      </div>
+    </div>
+  )
+}
+
 function ErrorText({ error }: { error: IdxError }) {
   const { t } = useI18n()
   return (
@@ -148,9 +199,9 @@ function ErrorText({ error }: { error: IdxError }) {
   )
 }
 
-function TickerCheck({ check, onCheck }: { check: Check; onCheck: (s: string) => Promise<void> }) {
+function TickerCheck({ check, onCheck, us = false }: { check: Check; onCheck: (s: string) => Promise<void>; us?: boolean }) {
   const { t } = useI18n()
-  const [symbol, setSymbol] = useState(check.status === 'done' ? check.row.symbol : 'PTBA')
+  const [symbol, setSymbol] = useState(check.status === 'done' ? check.row.symbol : us ? 'MSFT' : 'PTBA')
   // Follow a ticker picked from the screen.
   const [shown, setShown] = useState(check)
   if (shown !== check) {
@@ -169,8 +220,8 @@ function TickerCheck({ check, onCheck }: { check: Check; onCheck: (s: string) =>
           aria-label={t('scan.ticker')}
           value={symbol}
           onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          maxLength={4}
-          pattern="[A-Z]{4}"
+          maxLength={us ? 7 : 4}
+          pattern={us ? US_SYMBOL.source.slice(1, -1) : '[A-Z]{4}'}
           required
           className={`${fieldClass} max-w-32 font-mono uppercase`}
         />
@@ -195,7 +246,7 @@ function CheckResult({ row }: { row: Scored }) {
         <div>
           <div className="font-display text-4xl leading-none">{row.symbol}</div>
           <div className="text-sm text-text-muted">
-            {[row.name, row.sector, row.input.price !== null && f.money(row.input.price)].filter(Boolean).join(' · ')}
+            {[row.name, row.sector, row.input.price !== null && (row.usd ? `$${f.num(row.input.price, 2)}` : f.money(row.input.price))].filter(Boolean).join(' · ')}
           </div>
         </div>
         <div className="text-right">
@@ -231,7 +282,7 @@ function CheckResult({ row }: { row: Scored }) {
                   </span>
                   <span className="flex-1">{t(`lt.m.${m.id}`)}</span>
                   <span className="w-full pl-[4.25rem] font-mono text-xs text-text-muted">
-                    {m.value === null ? t('lt.noData') : show(f, m.id, m.value)} · {limitText(f, m)}
+                    {m.value === null ? t('lt.noData') : show(f, m.id, m.value, row.usd)} · {limitText(f, m, row.usd)}
                   </span>
                 </li>
               ))}
@@ -240,10 +291,10 @@ function CheckResult({ row }: { row: Scored }) {
         ))}
       </div>
       <Explain
-        title={`${row.symbol} (${row.name}) IDX stock long-term score ${s.total}/15, ${s.known} of 15 metrics have data`}
+        title={`${row.symbol} (${row.name}) ${row.usd ? 'US' : 'IDX'} stock long-term score ${s.total}/15, ${s.known} of 15 metrics have data`}
         facts={s.parts.flatMap((p) => [
           `${t(`lt.part.${p.id}`)} ${p.score}/5`,
-          ...p.metrics.map((m) => factLine(m.pass, t(`lt.m.${m.id}`), `${m.value === null ? t('lt.noData') : show(f, m.id, m.value)} (${limitText(f, m)})`)),
+          ...p.metrics.map((m) => factLine(m.pass, t(`lt.m.${m.id}`), `${m.value === null ? t('lt.noData') : show(f, m.id, m.value, row.usd)} (${limitText(f, m, row.usd)})`)),
         ])}
       />
       <p className="text-xs text-text-muted">{t('lt.note')}</p>
@@ -261,7 +312,7 @@ function ScreenCard({ onPick }: { onPick: (s: string) => void }) {
     setScreen({ status: 'loading', id })
     try {
       const r = await fetchScreen(id)
-      const rows = r.rows.map(scored).sort((a, b) => b.score.total - a.score.total || b.score.known - a.score.known || a.symbol.localeCompare(b.symbol))
+      const rows = r.rows.map((r) => scored(r)).sort((a, b) => b.score.total - a.score.total || b.score.known - a.score.known || a.symbol.localeCompare(b.symbol))
       setScreen({ status: 'done', id, universe: r.universe, rows })
     } catch (e) {
       setScreen({ status: 'error', id, error: errorOf(e) })

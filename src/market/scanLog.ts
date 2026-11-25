@@ -35,8 +35,8 @@ export function scanChanges(log: ScanLog) {
   }
 }
 
-export type ScanMarket = 'idx' | 'crypto'
-const key = (m: ScanMarket) => (m === 'idx' ? 'mercury.scanLog' : 'mercury.scanLog.crypto')
+export type ScanMarket = 'idx' | 'crypto' | 'us'
+const key = (m: ScanMarket) => (m === 'idx' ? 'mercury.scanLog' : `mercury.scanLog.${m}`)
 export function loadScanLog(market: ScanMarket = 'idx'): ScanLog {
   try {
     return JSON.parse(localStorage.getItem(key(market)) ?? '{}') as ScanLog

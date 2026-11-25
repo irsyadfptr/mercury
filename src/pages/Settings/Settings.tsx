@@ -10,6 +10,7 @@ import { DEFAULT_BREAKER, type BreakerSettings } from '@/domain/circuitBreaker'
 import { parseBackup, toBackup } from '@/domain/backup'
 import { useI18n } from '@/i18n'
 import { install, useInstallState } from '@/pwa'
+import { US_LOCAL } from '@/market/us'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
 import { ENV_KEY } from '@/useCryptoMarket'
@@ -261,7 +262,8 @@ function Preferences() {
 
 function RiskLimits() {
   const { t } = useI18n()
-  const { heatLimit, tradeLimit, usdIdr, monthlyBudget, set } = useSettings()
+  const { heatLimit, tradeLimit, usdIdr, usdIdrManual, usdIdrAt, monthlyBudget, set } = useSettings()
+  const f = useI18n()
   // Limits must stay positive; ignore empty or zero while typing.
   const setLimit = (key: 'heatLimit' | 'tradeLimit', raw: string) => {
     const n = optional(raw)
@@ -277,8 +279,23 @@ function RiskLimits() {
         <Field label={t('set.tradeLimit')}>
           <input className={fieldClass} type="number" min="0.1" step="0.1" value={tradeLimit} onChange={(e) => setLimit('tradeLimit', e.target.value)} />
         </Field>
-        <Field label={t('set.fx')} hint={t('set.fxHint')}>
-          <input className={fieldClass} type="number" min="0" step="any" value={usdIdr ?? ''} onChange={(e) => set({ usdIdr: optional(e.target.value) })} />
+        {/* Automatic unless set by hand: typing a rate switches to manual; the box below switches back. */}
+        <Field
+          label={t('set.fx')}
+          hint={usdIdrManual ? t('set.fxManual') : usdIdrAt ? t('set.fxAuto', { t: f.day(usdIdrAt.slice(0, 10)) }) : t('set.fxAutoWaiting')}
+        >
+          <input
+            className={fieldClass}
+            type="number"
+            min="0"
+            step="any"
+            value={usdIdr ?? ''}
+            onChange={(e) => set({ usdIdr: optional(e.target.value), usdIdrManual: true })}
+          />
+          <label className="mt-1 flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={!usdIdrManual} onChange={(e) => set({ usdIdrManual: !e.target.checked })} className="size-4 accent-[var(--accent)]" />
+            {t('set.fxAutoBox')}
+          </label>
         </Field>
         <Field label={t('set.budget')}>
           <input
@@ -343,10 +360,10 @@ function BreakerLimits() {
   )
 }
 
-/** Market data (CoinGecko) and AI (DeepSeek) keys; both stay in this browser. */
+/** Market data (CoinGecko, Twelve Data) and AI (DeepSeek) keys; all stay in this browser. */
 function ApiKeys() {
   const { t } = useI18n()
-  const { coingeckoKey, deepseekKey, set } = useSettings()
+  const { coingeckoKey, deepseekKey, twelveDataKey, set } = useSettings()
   const source = coingeckoKey ? 'set.keyActive' : ENV_KEY ? 'set.keyFromEnv' : 'set.keyMissing'
   return (
     <Card data-tone="purple">
@@ -365,6 +382,22 @@ function ApiKeys() {
               spellCheck={false}
               value={coingeckoKey ?? ''}
               onChange={(e) => set({ coingeckoKey: e.target.value.trim() || undefined })}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <Label className="text-text">{t('set.us')}</Label>
+            <Label>{t(twelveDataKey ? 'set.keyActive' : US_LOCAL ? 'set.usLocal' : 'set.keyMissing')}</Label>
+          </div>
+          <Field label={t('set.tdKey')} hint={t('set.tdKeyHint')}>
+            <input
+              className={fieldClass}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={twelveDataKey ?? ''}
+              onChange={(e) => set({ twelveDataKey: e.target.value.trim() || undefined })}
             />
           </Field>
         </div>
