@@ -20,8 +20,14 @@ export interface SettingsValues {
   heatLimit: number
   /** Max risk per trade, % of net worth. */
   tradeLimit: number
-  /** Manual USD → IDR rate for USD holdings. */
+  /** USD → IDR rate for USD holdings: updated by itself (src/useUsMarket.ts) unless `usdIdrManual`. */
   usdIdr?: number
+  /** true = the rate is typed in Settings and never overwritten. */
+  usdIdrManual?: boolean
+  /** When the automatic rate was last fetched (ISO). */
+  usdIdrAt?: string
+  /** Twelve Data API key (BYOK) for US stock prices on the deployed site. Stays in this browser. */
+  twelveDataKey?: string
   /** CoinGecko Demo API key (BYOK). Stays in this browser. */
   coingeckoKey?: string
   /** DeepSeek API key (BYOK) for AI summaries. Stays in this browser. */
@@ -34,7 +40,7 @@ export interface SettingsValues {
   /** Hide money amounts (shown as •••••) until switched off. */
   privacy?: boolean
   /** Tickers always added to the Scanner's scans, per market (upper case). */
-  watchlist?: { idx: string[]; crypto: string[] }
+  watchlist?: { idx: string[]; crypto: string[]; us?: string[] }
   /** Circuit breaker and pre-trade gate limits; unset = the defaults (src/domain/circuitBreaker.ts). */
   breaker?: BreakerSettings
 }

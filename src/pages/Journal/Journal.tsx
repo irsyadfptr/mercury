@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
 import { localDate } from '@/domain/cashflow'
 import { byDay, journalCalendar, journalStreak } from '@/domain/journal'
-import { journalMarket, MARKET_CLASSES, SCAN_MARKET, type TradeMarket } from '@/domain/markets'
+import { journalMarket, MARKET_CLASSES, scanMarketOf, type ScanMarketId, type TradeMarket } from '@/domain/markets'
 import { JOURNAL_TAGS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { routeParam } from '@/routes'
 import { useStore } from '@/store'
-import type { Holding, JournalEntry, JournalTag } from '@/types'
+import type { AssetClass, Holding, JournalEntry, JournalTag } from '@/types'
 import { useNow } from '@/useNow'
 import { SignalsView } from './Signals'
 import { TradesView } from './Trades'
@@ -38,8 +38,10 @@ function initialView(): View {
 /**
  * One market's journal (Crypto or Stocks): its notes, trades and signals. A note belongs to the market it was written
  * in (or its holding's market); old notes with neither are general and show in both, marked "All markets".
+ * Stocks follows the exchange picked: `classes` keeps that exchange's holdings (notes about the other exchange's
+ * holdings are hidden; unlinked Stocks notes show on both), `signals` that exchange's scanner signals.
  */
-export function Journal({ market }: { market: TradeMarket }) {
+export function Journal({ market, classes = MARKET_CLASSES[market], signals = scanMarketOf(market) }: { market: TradeMarket; classes?: readonly AssetClass[]; signals?: ScanMarketId }) {
   const { t } = useI18n()
   const [view, setView] = useState(initialView)
   // A link to '…?view=journal&jv=…' while the Journal is already open (e.g. a Home quest) still switches.
@@ -66,11 +68,12 @@ export function Journal({ market }: { market: TradeMarket }) {
   const byId = new Map(holdings.map((h) => [h.id, h]))
   const mine = journal.filter((j) => {
     const m = journalMarket(j, byId)
-    return !m || m === market
+    const h = j.holdingId ? byId.get(j.holdingId) : undefined
+    return (!m || m === market) && (!h || m !== market || classes.includes(h.assetClass))
   })
   const streak = journalStreak(mine, today)
   // This market's holdings; open holdings first would need positions, alphabetical is enough to find one.
-  const sorted = holdings.filter((h) => MARKET_CLASSES[market].includes(h.assetClass)).sort((a, b) => a.symbol.localeCompare(b.symbol))
+  const sorted = holdings.filter((h) => classes.includes(h.assetClass)).sort((a, b) => a.symbol.localeCompare(b.symbol))
 
   return (
     <>
@@ -90,9 +93,9 @@ export function Journal({ market }: { market: TradeMarket }) {
         <NoteCalendar journal={mine} today={today} />
       </Card>
       {view === 'trades' ? (
-        <TradesView market={market} />
+        <TradesView market={market} classes={classes} />
       ) : view === 'signals' ? (
-        <SignalsView market={SCAN_MARKET[market]} />
+        <SignalsView market={signals} />
       ) : (
         // Write first (the point of a journal), then what you wrote. Wide: side by side.
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">

@@ -1,13 +1,15 @@
 // Glue between the scanners and the signal log: the rules' holding time and fees per market and style, and one call a scan
 // makes at its end to save new signals and update old ones with the bars it already loaded (no extra fetches).
-import { CRYPTO_RULES, IDX_RULES, type Bar } from './indicators'
+import { CRYPTO_RULES, IDX_RULES, US_RULES, type Bar, type MarketRules } from './indicators'
 import { loadSignals, recordSignals, saveSignals, updateOutcomes, type EvalOptions, type NewSignal, type SignalMarket, type SignalStyle } from './signalLog'
-import { SHORT_CRYPTO, SHORT_IDX, STYLES, timeStopBars } from './shortSwing'
+import { SHORT_RULES, STYLES, timeStopBars } from './shortSwing'
 
-/** Same holding time as the scanner's backtest for those rules; fees as in the short-term backtests (IDX 0.15% + 0.25%, Binance 0.1% a side). */
+const SWING_RULES: Record<SignalMarket, MarketRules> = { idx: IDX_RULES, crypto: CRYPTO_RULES, us: US_RULES }
+
+/** Same holding time as the scanner's backtest for those rules; fees as in the short-term backtests (IDX 0.15% + 0.25%, Binance and US 0.1% a side). */
 export function evalOptions(market: SignalMarket, style: SignalStyle): EvalOptions {
-  const short = market === 'idx' ? SHORT_IDX : SHORT_CRYPTO
-  const hold = style === 'swing' ? (market === 'idx' ? IDX_RULES : CRYPTO_RULES).timeStopBars : timeStopBars(STYLES[style], short)
+  const short = SHORT_RULES[market]
+  const hold = style === 'swing' ? SWING_RULES[market].timeStopBars : timeStopBars(STYLES[style], short)
   return { timeStopBars: hold, fees: short.fees }
 }
 

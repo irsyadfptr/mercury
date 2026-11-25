@@ -9,7 +9,7 @@ import { Card, CardTitle, Label, Segments, TonePanel } from '@/components/ui-bit
 import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
-import { isTradeMarket, marketOfClass, MARKET_PAGES, tradeMarketOfScan, type TradeMarket } from '@/domain/markets'
+import { exchangeParams, exchangeParamsOf, isTradeMarket, marketOfClass, MARKET_PAGES, tradeMarketOfScan, type TradeMarket } from '@/domain/markets'
 import { heatTier, level, openGroup, quests, speedOf, winnersLosers } from '@/domain/portfolio'
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
@@ -88,7 +88,7 @@ function WinnersLosers({ rows }: { rows: readonly Row[] }) {
       <ul className="flex flex-col gap-1.5">
         {items.map((r) => (
           <li key={r.holding.id}>
-            <a href={href(marketOfClass(r.holding.assetClass), { view: 'holdings' })} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+            <a href={href(marketOfClass(r.holding.assetClass), { view: 'holdings', ...exchangeParamsOf(r.holding.assetClass) })} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
               <span className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">{r.holding.symbol}</span>
                 <span className="font-display text-xl leading-none" style={{ color: up ? COLOR.up : COLOR.down }}>
@@ -524,25 +524,25 @@ function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>, market: Tr
 
 /** New setups from each market's last scan vs the one before (the Scanner records them). */
 function scanAlerts(f: I18n): QuestView[] {
-  return (['idx', 'crypto'] as const).flatMap((m) => {
+  return (['idx', 'us', 'crypto'] as const).flatMap((m) => {
     const c = scanChanges(loadScanLog(m))
     if (!c) return []
     const tag = f.day(c.date)
     return [
-      ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan' } }] : []),
-      ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan' } }] : []),
+      ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan', ...exchangeParams(m) } }] : []),
+      ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan', ...exchangeParams(m) } }] : []),
     ]
   })
 }
 
 /** Fresh short-term buy signals from each market's last short-term scan (≤ 1 week and ≤ 1 month). */
 function shortAlerts(f: I18n): QuestView[] {
-  return (['idx', 'crypto'] as const).flatMap((m) =>
+  return (['idx', 'us', 'crypto'] as const).flatMap((m) =>
     (['week', 'month'] as const).flatMap((st) => {
       const fresh = freshSignals(loadShortLog(m, st), st)
       if (!fresh.length) return []
       const list = fresh.map((x) => x.symbol).join(', ')
-      return [{ label: f.t('quest.shortSignals', { s: list, h: f.t(`short.style.${st}`), m: f.t(`scan.market.${m}`) }), tag: f.t('quest.shortTag'), route: tradeMarketOfScan(m), params: { view: 'scan' } }]
+      return [{ label: f.t('quest.shortSignals', { s: list, h: f.t(`short.style.${st}`), m: f.t(`scan.market.${m}`) }), tag: f.t('quest.shortTag'), route: tradeMarketOfScan(m), params: { view: 'scan', ...exchangeParams(m) } }]
     }),
   )
 }
@@ -553,7 +553,7 @@ function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
     const a = scoreAlert(log[s])
     if (!a) return []
     const label = a.kind === 'drop' ? f.t('quest.ltDrop', { s, from: a.from, n: a.total }) : f.t('quest.ltLow', { s, n: a.total })
-    return [{ label, tag: a.kind === 'drop' ? f.day(a.since) : '', route: 'stocks' as const, params: { view: 'score' } }]
+    return [{ label, tag: a.kind === 'drop' ? f.day(a.since) : '', route: 'stocks' as const, params: { view: 'score', ex: 'idx' } }]
   })
 }
 
@@ -589,7 +589,7 @@ function exitLessonAlerts(f: I18n, holdings: readonly Holding[], txns: readonly 
     label: f.t('quest.exitLesson', { s: h.symbol }),
     tag: '',
     route: journalOf(h),
-    params: { view: 'journal', jv: 'notes', holding: h.id, tag: 'exit' },
+    params: { view: 'journal', jv: 'notes', holding: h.id, tag: 'exit', ...exchangeParamsOf(h.assetClass) },
   }))
 }
 

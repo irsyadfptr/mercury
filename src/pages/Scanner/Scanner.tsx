@@ -9,7 +9,7 @@ import { backtest, summarize, type Backtest, type BacktestOptions, type Trade } 
 import { COIN, fetchCryptoFrame, fetchCryptoHistory } from '@/market/binance'
 import { cachedCoinList, FIXED_LIST, loadCoinList, type CoinList } from '@/market/cryptoList'
 import { fetchHistory, fetchHourly, IDX_AVAILABLE, IdxFetchError, type IdxError } from '@/market/idx'
-import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
+import { checkSetup, CROSS_LOOKBACK, CRYPTO_RULES, IDX_RULES, US_RULES, to4h, toMonthly, toWeekly, type Bar, type Check, type MarketRules, type Rule } from '@/market/indicators'
 import { LQ45 } from '@/market/lq45'
 import { MOOD_DEFENSIVE } from '@/market/mood'
 import { marketMood, marketMoodSeries, saveMood, type MarketMood } from '@/market/marketMood'
@@ -24,7 +24,9 @@ import { signalId } from '@/market/signalLog'
 import { addDays, REVIEW_DAYS } from '@/domain/tradeMemory'
 import { CryptoMoodParts } from './CryptoMoodParts'
 import { loadScanLog, recordScan, saveScanLog, scanChanges, type ScanMarket } from '@/market/scanLog'
-import { tradeMarketOfScan } from '@/domain/markets'
+import { MARKET_SHORT, PAPER_CLASS, pricedInUsd, tradeMarketOfScan } from '@/domain/markets'
+import { fetchUsHistory, fetchUsHourly, toUs4h, usAvailable, US_INDEX, US_SYMBOL } from '@/market/us'
+import { DOW30 } from '@/market/usList'
 import { href } from '@/routes'
 import { useSettings } from '@/settings'
 import { useStore } from '@/store'
@@ -105,6 +107,24 @@ const MARKETS: Record<ScanMarket, Market> = {
     price: usd,
     value: (f, n) => `$${n.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })}`,
   },
+  us: {
+    id: 'us',
+    rules: US_RULES,
+    // Checked again when the page renders: locally (Yahoo) always, deployed only with a Twelve Data key.
+    available: usAvailable(),
+    fetch: fetchUsHistory,
+    index: US_INDEX,
+    indexName: 'S&P 500 (SPY)',
+    list: DOW30,
+    listName: 'Dow 30',
+    listNote: 'scan.listSource.us',
+    // Hourly from Yahoo / Twelve Data (4-hour = two session blocks); weekly and monthly from the daily bars.
+    frame: async (symbol, tf, daily) => (tf === '1h' ? fetchUsHourly(symbol) : tf === '4h' ? toUs4h(await fetchUsHourly(symbol)) : tf === '1w' ? toWeekly(daily) : toMonthly(daily)),
+    symbol: US_SYMBOL,
+    example: 'AAPL',
+    price: usd,
+    value: (f, n) => `$${n.toLocaleString(f.locale, { notation: 'compact', maximumFractionDigits: 1 })}`,
+  },
 }
 
 interface Result {
@@ -136,7 +156,7 @@ async function load(m: Market, symbol: string): Promise<Result> {
 }
 
 // Kept outside React so the last check, scans and chosen market survive page switches.
-const lastCheck: Record<ScanMarket, Load> = { idx: { status: 'idle' }, crypto: { status: 'idle' } }
+const lastCheck: Record<ScanMarket, Load> = { idx: { status: 'idle' }, crypto: { status: 'idle' }, us: { status: 'idle' } }
 const lastScan: Partial<Record<ScanMarket, Scan>> = {}
 const TAB_KEY = 'mercury.scanner.market'
 const MODE_KEY = 'mercury.scanner.mode'
@@ -166,7 +186,8 @@ export function Scanner({ market }: { market?: ScanMarket }) {
   const [chosen, setMarketId] = useState(initialMarket)
   const marketId = market ?? chosen
   const [mode, setMode] = useState(initialMode)
-  const m = MARKETS[marketId]
+  const twelveKey = useSettings((s) => s.twelveDataKey)
+  const m = marketId === 'us' ? { ...MARKETS.us, available: usAvailable(twelveKey) } : MARKETS[marketId]
   const save = (key: string, v: string) => {
     try {
       localStorage.setItem(key, v)
@@ -196,7 +217,7 @@ export function Scanner({ market }: { market?: ScanMarket }) {
       </Card>
       {!m.available ? (
         <Card data-tone="red">
-          <p className="text-sm">{t('scan.localOnly')}</p>
+          <p className="text-sm">{t(m.id === 'us' ? 'scan.usNeedsKey' : 'scan.localOnly')}</p>
         </Card>
       ) : mode === 'swing' ? (
         <MarketView key={m.id} m={m} />
@@ -416,7 +437,7 @@ interface MoodFilter {
 }
 
 /** Names used by the shared mood strings. */
-const moodVars = (m: Market) => ({ m: m.id === 'idx' ? 'IDX' : 'Crypto', u: m.listName, i: m.indexName })
+const moodVars = (m: Market) => ({ m: MARKET_SHORT[m.id], u: m.listName, i: m.indexName })
 
 function MoodCard({ m, mood: any, running }: { m: Market; mood?: MarketMood; running: boolean }) {
   const { t, num } = useI18n()
@@ -461,7 +482,7 @@ function ErrorText({ m, error }: { m: Market; error: IdxError }) {
   const { t } = useI18n()
   return (
     <p role="alert" className="text-sm text-down">
-      {error === 'bad-symbol' && m.id === 'crypto' ? t('scan.err.bad-coin') : t(`scan.err.${error}`)}
+      {error === 'bad-symbol' && m.id !== 'idx' ? t(m.id === 'crypto' ? 'scan.err.bad-coin' : 'scan.err.bad-us') : t(`scan.err.${error}`)}
       {error === 'idx-missing' && <code className="ml-1 rounded bg-surface-2 px-1 font-mono text-text">npm install -g ihsg-cli</code>}
     </p>
   )
@@ -482,7 +503,7 @@ function TickerCheck({ m, load, onCheck, filter }: { m: Market; load: Load; onCh
           aria-label={t('scan.ticker')}
           value={symbol}
           onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          maxLength={m.id === 'idx' ? 4 : 10}
+          maxLength={m.id === 'idx' ? 4 : m.id === 'us' ? 7 : 10}
           pattern={m.symbol.source.slice(1, -1)}
           required
           className={`${fieldClass} max-w-32 font-mono uppercase`}
@@ -578,7 +599,7 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
       </div>
 
       {m.id === 'idx' && <ArbNote entry={c.entry} stop={c.stop} price={(n) => m.price(f, n)} />}
-      <ExpectedRange daily={r.bars} horizons={m.id === 'idx' ? [5, 20, 60] : [7, 30, 90]} price={(n) => m.price(f, n)} entry={c.entry} stop={c.stop} />
+      <ExpectedRange daily={r.bars} horizons={m.id === 'crypto' ? [7, 30, 90] : [5, 20, 60]} price={(n) => m.price(f, n)} entry={c.entry} stop={c.stop} />
       <div className="flex flex-col items-stretch gap-3 rounded-md bg-surface-2 px-3 py-2 sm:flex-row sm:items-start sm:gap-4">
         <div className="flex-1">
           <Label>{t('bt.title', { y: years })}</Label>
@@ -597,7 +618,7 @@ function CheckResult({ m, r, filter }: { m: Market; r: Result; filter: MoodFilte
         <PaperTrade m={m} r={r} defensive={filter.defensive} />
       </div>
       <Explain
-        title={`${r.symbol} (${r.name}) ${m.id === 'idx' ? 'IDX stock' : 'crypto'} swing setup check (3–6 month hold), ${c.score}/${c.rules.length} rules pass, close ${price(c.close)} on ${last}`}
+        title={`${r.symbol} (${r.name}) ${m.id === 'crypto' ? 'crypto' : `${MARKET_SHORT[m.id]} stock`} swing setup check (3–6 month hold), ${c.score}/${c.rules.length} rules pass, close ${price(c.close)} on ${last}`}
         facts={[
           ...c.rules.map((rule) => factLine(rule.pass, t(`rule.${rule.id}`), detail[rule.id])),
           ...(filter.defensive ? [t('mood.idx.redWarning', moodVars(m))] : []),
@@ -637,14 +658,14 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   const addHolding = useStore((s) => s.addHolding)
   const addTransaction = useStore((s) => s.addTransaction)
   const c = r.check
-  const crypto = m.id === 'crypto'
-  // Net worth is in rupiah; crypto prices are in USDT (≈ USD), so convert the capital first.
+  const crypto = pricedInUsd(m.id)
+  // Net worth is in rupiah; crypto (USDT ≈ USD) and US stocks are priced in dollars, so convert the capital first.
   const capital = crypto ? (usdIdr ? netWorth / usdIdr : 0) : netWorth
   const units = c.stop !== undefined ? positionSize({ capital, riskPct: tradeLimit, entry: c.entry, stop: c.stop, lot: crypto ? undefined : IDX_LOT }) : 0
   // Pre-trade gate (paper side): a Scanner signal is its own written plan, so only risk, heat, revenge, mood and breaker count.
   const runGate = useGate()
   const addJournal = useStore((s) => s.addJournal)
-  const gate = runGate({ paper: true, assetClass: crypto ? 'crypto' : 'idx_stock', currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
+  const gate = runGate({ paper: true, assetClass: PAPER_CLASS[m.id], currency: crypto ? 'USD' : 'IDR', entry: c.entry, stop: c.stop, units })
   const why =
     c.zone !== 'in'
       ? t('paper.notInZone')
@@ -662,7 +683,7 @@ function PaperTrade({ m, r, defensive }: { m: Market; r: Result; defensive: bool
   const add = () => {
     const now = new Date().toISOString()
     const id = addHolding({
-      assetClass: crypto ? 'crypto' : 'idx_stock',
+      assetClass: PAPER_CLASS[m.id],
       group: 'trading',
       symbol: r.symbol,
       name: r.name,

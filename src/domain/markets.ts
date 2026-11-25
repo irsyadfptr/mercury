@@ -18,9 +18,29 @@ export const MARKET_CLASSES: Record<MarketPage, readonly AssetClass[]> = {
 /** The asset type a new holding starts with on each page. */
 export const DEFAULT_CLASS: Record<MarketPage, AssetClass> = { crypto: 'crypto', stocks: 'idx_stock', funds: 'money_market' }
 
-/** The scanner / signal market behind a trade market. */
-export const SCAN_MARKET: Record<TradeMarket, 'idx' | 'crypto'> = { crypto: 'crypto', stocks: 'idx' }
-export const tradeMarketOfScan = (m: 'idx' | 'crypto'): TradeMarket => (m === 'idx' ? 'stocks' : 'crypto')
+/** Stocks has two exchanges, switched at the top of the Stocks page. */
+export const EXCHANGES = ['idx', 'us'] as const
+export type Exchange = (typeof EXCHANGES)[number]
+export const EXCHANGE_CLASS: Record<Exchange, AssetClass> = { idx: 'idx_stock', us: 'us_stock' }
+
+/** A scanner / signal / mood market: crypto, or one stock exchange. */
+export type ScanMarketId = 'crypto' | Exchange
+/** The scanner market behind a trade market (Stocks: the exchange picked). */
+export const scanMarketOf = (m: TradeMarket, ex: Exchange = 'idx'): ScanMarketId => (m === 'crypto' ? 'crypto' : ex)
+export const tradeMarketOfScan = (m: ScanMarketId): TradeMarket => (m === 'crypto' ? 'crypto' : 'stocks')
+/** Link params that open a scanner market's page on the right exchange. */
+export const exchangeParams = (m: ScanMarketId): Record<string, string> => (m === 'us' ? { ex: 'us' } : m === 'idx' ? { ex: 'idx' } : {})
+/** What a paper trade from that market's scanner is saved as, and its currency. */
+export const PAPER_CLASS: Record<ScanMarketId, AssetClass> = { idx: 'idx_stock', crypto: 'crypto', us: 'us_stock' }
+/** Priced in US dollars (USDT for crypto): sizing converts net worth with the USD/IDR rate. IDX trades in lots. */
+export const pricedInUsd = (m: ScanMarketId) => m !== 'idx'
+/** Short market name used inside sentences ("IDX mood", "US mood"). */
+export const MARKET_SHORT: Record<ScanMarketId, string> = { idx: 'IDX', crypto: 'Crypto', us: 'US' }
+
+/** The exchange a stock holding trades on. */
+export const exchangeOfClass = (c: AssetClass): Exchange => (c === 'us_stock' ? 'us' : 'idx')
+/** Link params that open a holding's market on its exchange (Stocks only). */
+export const exchangeParamsOf = (c: AssetClass): Record<string, string> => (marketOfClass(c) === 'stocks' ? { ex: exchangeOfClass(c) } : {})
 
 export const marketOfClass = (c: AssetClass): MarketPage => MARKET_PAGES.find((m) => MARKET_CLASSES[m].includes(c)) ?? 'stocks'
 

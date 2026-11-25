@@ -78,7 +78,7 @@ export const to4h = (bars: readonly Bar[]): Bar[] =>
   })
 
 /** Bars grouped by key (in order), first open, highest high, lowest low, last close, summed volume. The bar's time is the key. */
-function aggregate(bars: readonly Bar[], keyOf: (time: string) => string): Bar[] {
+export function aggregate(bars: readonly Bar[], keyOf: (time: string) => string): Bar[] {
   const out: Bar[] = []
   let key = ''
   for (const b of bars) {
@@ -175,6 +175,8 @@ export interface MarketRules {
 export const IDX_RULES: MarketRules = { minValue: 5e9, step: () => 1, timeStopBars: 40 }
 /** Crypto (USDT): $10M a day, 5 significant digits (BTC $0.1… XRP $0.0001), 56 days because it trades every day. */
 export const CRYPTO_RULES: MarketRules = { minValue: 10e6, step: (p) => 10 ** (Math.floor(Math.log10(p)) - 4), timeStopBars: 56 }
+/** US stocks and ETFs: $20M a day, cents (sub-dollar: 4 decimals), 40 trading days like IDX. */
+export const US_RULES: MarketRules = { minValue: 20e6, step: (p) => (p < 1 ? 0.0001 : 0.01), timeStopBars: 40 }
 
 /** Round to a step without float noise (0.1 + 0.2 style), down, up or to the nearest. */
 export function roundTo(x: number, step: number, how: 'floor' | 'ceil' | 'round'): number {

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { href, NAV_ROUTES } from '@/routes'
 import { useSettings } from '@/settings'
 import type { Key, Lang, PixelIconName, Route, ShellProps, ThemePref } from '@/types'
+import { useUsMarket } from '@/useUsMarket'
 import { PixelIcon } from './PixelIcon'
 
 const THEME_ORDER: readonly ThemePref[] = ['system', 'light', 'dark']
@@ -31,6 +32,8 @@ export function Shell({ route, children }: ShellProps) {
   const theme = useSettings((s) => s.theme)
   const privacy = useSettings((s) => !!s.privacy)
   const set = useSettings((s) => s.set)
+  // US prices and the USD/IDR rate refresh whichever page is open (at most every 15 minutes).
+  useUsMarket()
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1180px] flex-col gap-4 px-4 py-5 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 sm:pb-5">

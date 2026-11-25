@@ -78,3 +78,20 @@ describe('legacyHash', () => {
     expect(legacyHash('')).toBeUndefined()
   })
 })
+
+describe('stock exchanges', () => {
+  it('maps a trade market and exchange to its scanner market and back', async () => {
+    const { scanMarketOf, tradeMarketOfScan, exchangeParams, exchangeParamsOf, pricedInUsd, PAPER_CLASS } = await import('./markets')
+    expect(scanMarketOf('stocks', 'us')).toBe('us')
+    expect(scanMarketOf('stocks')).toBe('idx')
+    expect(scanMarketOf('crypto', 'us')).toBe('crypto')
+    expect(tradeMarketOfScan('us')).toBe('stocks')
+    expect(exchangeParams('us')).toEqual({ ex: 'us' })
+    expect(exchangeParams('crypto')).toEqual({})
+    expect(exchangeParamsOf('us_stock')).toEqual({ ex: 'us' })
+    expect(exchangeParamsOf('idx_stock')).toEqual({ ex: 'idx' })
+    expect(exchangeParamsOf('gold')).toEqual({})
+    expect([pricedInUsd('idx'), pricedInUsd('us'), pricedInUsd('crypto')]).toEqual([false, true, true])
+    expect(PAPER_CLASS.us).toBe('us_stock')
+  })
+})

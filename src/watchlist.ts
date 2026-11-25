@@ -1,7 +1,7 @@
 // The user's watchlist: tickers always added to the Scanner's scans, per market. Stored with the settings (this browser only).
 import { useSettings } from './settings'
 
-export type WatchMarket = 'idx' | 'crypto'
+export type WatchMarket = 'idx' | 'crypto' | 'us'
 /** Keeps the scan quick and inside the free API limits. */
 export const MAX_WATCH = 20
 
@@ -13,7 +13,7 @@ export function useWatchlist(market: WatchMarket) {
   const set = useSettings((s) => s.set)
   const list = watchlist?.[market] ?? []
   const toggle = (symbol: string) => {
-    const cur = watchlist ?? { idx: [], crypto: [] }
+    const cur = watchlist ?? { idx: [], crypto: [], us: [] }
     const next = list.includes(symbol) ? list.filter((s) => s !== symbol) : list.length < MAX_WATCH ? [...list, symbol] : list
     set({ watchlist: { ...cur, [market]: next } })
   }

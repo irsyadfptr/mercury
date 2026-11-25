@@ -3,6 +3,7 @@ import { fetchCryptoClosed, fetchCryptoHistory } from './binance'
 import { fetchHistory, fetchHourly } from './idx'
 import { to4h, type Bar } from './indicators'
 import type { ShortMarket, Style } from './shortSwing'
+import { fetchUsHistory, fetchUsHourly, toUs4h } from './us'
 
 const FOUR_H = 4 * 3600_000
 
@@ -26,9 +27,10 @@ export function loadShort(market: ShortMarket, style: Style, symbol: string): Pr
   let hit = cache.get(key)
   if (!hit) {
     hit = (async () => {
-      const { name, bars: daily } = market === 'idx' ? await fetchHistory(symbol) : await fetchCryptoHistory(symbol)
+      const { name, bars: daily } = market === 'idx' ? await fetchHistory(symbol) : market === 'us' ? await fetchUsHistory(symbol) : await fetchCryptoHistory(symbol)
       if (style.entryFrame === '1d') return { name, daily, entry: daily }
-      const entry = market === 'idx' ? closedOnly(to4h(await fetchHourly(symbol))) : await fetchCryptoClosed(symbol, '4h')
+      const entry =
+        market === 'idx' ? closedOnly(to4h(await fetchHourly(symbol))) : market === 'us' ? closedOnly(toUs4h(await fetchUsHourly(symbol))) : await fetchCryptoClosed(symbol, '4h')
       return { name, daily, entry }
     })()
     hit.catch(() => cache.delete(key))
