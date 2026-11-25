@@ -1,10 +1,10 @@
 import { PixelIcon } from './PixelIcon'
 
 const fabClass =
-  'fab fab-enter group fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40 block size-16 rounded-lg focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none sm:right-6 sm:bottom-6'
+  'fab fab-enter group fixed right-4 bottom-[calc(84px+env(safe-area-inset-bottom))] z-40 block size-16 rounded-lg focus-visible:ring-4 focus-visible:ring-ring focus-visible:outline-none sm:right-6 sm:bottom-6'
 
 /**
- * The gold pixel-block "+" button, fixed at the bottom right (styles: .fab in index.css). A link with `href`, else a
+ * The gold pixel-block "+" button, fixed at the bottom right (above the phone tab bar) (styles: .fab in index.css). A link with `href`, else a
  * button. Leave room under the page's last card (an h-16 spacer) so it never covers it.
  */
 export function PixelFab({ label, href, onClick }: { label: string; href?: string; onClick?: () => void }) {

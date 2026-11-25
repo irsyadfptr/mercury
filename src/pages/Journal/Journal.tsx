@@ -4,11 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Field, Label, PixelTabs, fieldClass } from '@/components/ui-bits'
 import { localDate } from '@/domain/cashflow'
 import { byDay, journalCalendar, journalStreak } from '@/domain/journal'
+import { journalMarket, MARKET_CLASSES, SCAN_MARKET, type TradeMarket } from '@/domain/markets'
 import { JOURNAL_TAGS } from '@/domain/schema'
 import { useI18n } from '@/i18n'
 import { routeParam } from '@/routes'
 import { useStore } from '@/store'
-import type { Holding, JournalTag } from '@/types'
+import type { Holding, JournalEntry, JournalTag } from '@/types'
 import { useNow } from '@/useNow'
 import { SignalsView } from './Signals'
 import { TradesView } from './Trades'
@@ -20,9 +21,9 @@ const ALL = ''
 const VIEWS = ['notes', 'trades', 'signals'] as const
 type View = (typeof VIEWS)[number]
 const VIEW_KEY = 'mercury.journal.view'
-/** '#/journal?view=trades' wins; a prefilled note ('?tag=…') opens Notes; else the last view used. */
+/** '#/stocks?view=journal&jv=trades' wins; a prefilled note ('?tag=…') opens Notes; else the last view used. */
 function initialView(): View {
-  const asked = routeParam('view')
+  const asked = routeParam('jv')
   if (asked && (VIEWS as readonly string[]).includes(asked)) return asked as View
   if (routeParam('tag') || routeParam('holding')) return 'notes'
   try {
@@ -34,13 +35,17 @@ function initialView(): View {
   return 'notes'
 }
 
-export function Journal() {
+/**
+ * One market's journal (Crypto or Stocks): its notes, trades and signals. A note belongs to the market it was written
+ * in (or its holding's market); old notes with neither are general and show in both, marked "All markets".
+ */
+export function Journal({ market }: { market: TradeMarket }) {
   const { t } = useI18n()
   const [view, setView] = useState(initialView)
-  // A link to '#/journal?view=…' while the Journal is already open (e.g. a Dashboard quest in another tab) still switches.
+  // A link to '…?view=journal&jv=…' while the Journal is already open (e.g. a Home quest) still switches.
   useEffect(() => {
     const follow = () => {
-      const asked = routeParam('view')
+      const asked = routeParam('jv')
       if (asked && (VIEWS as readonly string[]).includes(asked)) setView(asked as View)
       else if (routeParam('tag') || routeParam('holding')) setView('notes')
     }
@@ -58,18 +63,21 @@ export function Journal() {
   const journal = useStore((s) => s.journal)
   const holdings = useStore((s) => s.holdings)
   const today = localDate(useNow())
-  const streak = journalStreak(journal, today)
   const byId = new Map(holdings.map((h) => [h.id, h]))
-  // Open holdings first would need positions; alphabetical is enough to find one.
-  const sorted = [...holdings].sort((a, b) => a.symbol.localeCompare(b.symbol))
+  const mine = journal.filter((j) => {
+    const m = journalMarket(j, byId)
+    return !m || m === market
+  })
+  const streak = journalStreak(mine, today)
+  // This market's holdings; open holdings first would need positions, alphabetical is enough to find one.
+  const sorted = holdings.filter((h) => MARKET_CLASSES[market].includes(h.assetClass)).sort((a, b) => a.symbol.localeCompare(b.symbol))
 
   return (
-    <div className="play-skin contents">
-      <div aria-hidden="true" className="play-confetti" />
-      <Card data-tone="gold" className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6">
+    <>
+      <Card data-tone="purple" className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">{t('jr.title')}</h1>
+            <h2 className="font-display text-3xl leading-none uppercase">{t('jr.title')}</h2>
             <div className="flex items-center gap-2" aria-label={t('jr.streak', { n: streak })}>
               {streak > 0 && <PixelIcon name="flame" size={28} className="flame" />}
               <span className="font-display text-5xl leading-none">{streak}</span>
@@ -79,29 +87,28 @@ export function Journal() {
           <p className="text-sm text-text-muted">{t(`jr.intro.${view}`)}</p>
           <PixelTabs label={t('jr.viewLabel')} options={VIEWS.map((v) => ({ id: v, label: t(`jr.view.${v}`) }))} value={view} onChange={pickView} />
         </div>
-        <NoteCalendar today={today} />
+        <NoteCalendar journal={mine} today={today} />
       </Card>
       {view === 'trades' ? (
-        <TradesView />
+        <TradesView market={market} />
       ) : view === 'signals' ? (
-        <SignalsView />
+        <SignalsView market={SCAN_MARKET[market]} />
       ) : (
         // Write first (the point of a journal), then what you wrote. Wide: side by side.
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           <div className="min-w-0 lg:sticky lg:top-4">
-            <NewEntry today={today} holdings={sorted} />
+            <NewEntry today={today} holdings={sorted} market={market} />
           </div>
-          <Entries byId={byId} holdings={sorted} />
+          <Entries journal={mine} byId={byId} holdings={sorted} market={market} />
         </div>
       )}
-    </div>
+    </>
   )
 }
 
 /** The last five weeks of notes as a pixel calendar: darker = more notes that day; today outlined. */
-function NoteCalendar({ today }: { today: string }) {
+function NoteCalendar({ journal, today }: { journal: readonly JournalEntry[]; today: string }) {
   const { t, day } = useI18n()
-  const journal = useStore((s) => s.journal)
   const cells = journalCalendar(journal, today)
   const written = cells.filter((c) => c.count > 0).length
   return (
@@ -133,7 +140,7 @@ const TAG_TONE: Record<JournalTag, string> = { note: 'teal', plan: 'blue', entry
 
 const holdingLabel = (h: Holding, paper: string) => `${h.symbol}${h.name ? ` · ${h.name}` : ''}${h.paper ? ` · ${paper}` : ''}`
 
-function NewEntry({ today, holdings }: { today: string; holdings: Holding[] }) {
+function NewEntry({ today, holdings, market }: { today: string; holdings: Holding[]; market: TradeMarket }) {
   const { t } = useI18n()
   const addJournal = useStore((s) => s.addJournal)
   const [date, setDate] = useState(today)
@@ -146,7 +153,7 @@ function NewEntry({ today, holdings }: { today: string; holdings: Holding[] }) {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!text.trim()) return
-    addJournal({ date, tag, text: text.trim(), holdingId: holdingId || undefined })
+    addJournal({ date, tag, text: text.trim(), holdingId: holdingId || undefined, market })
     setText('')
     setSaved(true)
   }
@@ -214,9 +221,8 @@ function NewEntry({ today, holdings }: { today: string; holdings: Holding[] }) {
   )
 }
 
-function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Holding[] }) {
+function Entries({ journal, byId, holdings, market }: { journal: readonly JournalEntry[]; byId: Map<string, Holding>; holdings: Holding[]; market: TradeMarket }) {
   const { t, day } = useI18n()
-  const journal = useStore((s) => s.journal)
   const removeJournal = useStore((s) => s.removeJournal)
   const [filter, setFilter] = useState(ALL)
   const [tagFilter, setTagFilter] = useState<JournalTag | typeof ALL>(ALL)
@@ -266,6 +272,11 @@ function Entries({ byId, holdings }: { byId: Map<string, Holding>; holdings: Hol
                         </span>
                         {h && <span className="font-mono text-xs">{h.symbol}</span>}
                         {h?.paper && <Badge tone="paper">{t('badge.paper')}</Badge>}
+                        {journalMarket(j, byId) !== market && (
+                          <span title={t('jr.generalHint')}>
+                            <Badge tone="neutral">{t('jr.general')}</Badge>
+                          </span>
+                        )}
                       </div>
                       <p className="whitespace-pre-wrap">{j.text}</p>
                     </div>

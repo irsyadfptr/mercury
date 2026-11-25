@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ICONS } from '@/components/pixelIcons'
-import type { Holding, Transaction } from './domain'
+import type { AssetClass, Holding, Transaction } from './domain'
 import type { SheetSync, Route } from './app'
 import type { Segment } from './view'
 
@@ -71,7 +71,7 @@ export interface ShellProps {
 
 /** What the dialog is doing: closed, creating a holding, or editing one by id. */
 /** account: preselected "Paid from" account (opened from Cashflow → Invest). */
-export type HoldingDialogTarget = { mode: 'closed' } | { mode: 'create'; account?: string } | { mode: 'edit'; holdingId: string; account?: string }
+export type HoldingDialogTarget = { mode: 'closed' } | { mode: 'create'; account?: string; assetClass?: AssetClass } | { mode: 'edit'; holdingId: string; account?: string }
 
 export interface HoldingDialogProps {
   target: HoldingDialogTarget
@@ -84,6 +84,8 @@ export interface HoldingFormProps {
   onDone: () => void
   /** Preselected account for the money of a buy or sell. */
   account?: string
+  /** A new holding's starting asset type (the market page it was added from). */
+  assetClass?: AssetClass
 }
 
 export interface TransactionsProps {

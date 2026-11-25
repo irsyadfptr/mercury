@@ -4,6 +4,7 @@ import { HoldingDialog } from '@/components/HoldingDialog'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardTitle, Label, PixelTabs } from '@/components/ui-bits'
 import { localDate } from '@/domain/cashflow'
+import { MARKET_CLASSES, type TradeMarket } from '@/domain/markets'
 import { tradeStatus } from '@/domain/tradeMemory'
 import { closedTrades, excursion, filterTrades, KELLY_MIN, reviewStats, type ClosedTrade, type GroupStats, type ReviewKind, type ReviewPeriod } from '@/domain/tradeReview'
 import { useI18n } from '@/i18n'
@@ -29,10 +30,12 @@ const signed = (f: I18n, x: number | undefined, d = 2) => (x === undefined || !N
 const rText = (f: I18n, t: Pick<ClosedTrade, 'r' | 'rApprox'>) => (t.r === undefined ? '—' : `${t.rApprox ? '~' : ''}${signed(f, t.r)}R`)
 
 /** Trade memory (open trades with their thesis and review date) and the trade review (closed trades, stats, AI coach). */
-export function TradesView() {
+export function TradesView({ market }: { market: TradeMarket }) {
   const f = useI18n()
   const { t } = f
-  const holdings = useStore((s) => s.holdings)
+  const everything = useStore((s) => s.holdings)
+  // This market's trades only; the circuit breaker stays on all of them (it guards all your money).
+  const holdings = useMemo(() => everything.filter((h) => MARKET_CLASSES[market].includes(h.assetClass)), [everything, market])
   const txns = useStore((s) => s.transactions)
   const usdIdr = useSettings((s) => s.usdIdr)
   const today = localDate(useNow())
@@ -54,19 +57,19 @@ export function TradesView() {
         ) : (
           <ul className="flex flex-col gap-2">
             {open.map((h) => (
-              <OpenTrade key={h.id} h={h} txns={txns.filter((x) => x.holdingId === h.id)} today={today} onEdit={() => edit(h)} />
+              <OpenTrade key={h.id} h={h} market={market} txns={txns.filter((x) => x.holdingId === h.id)} today={today} onEdit={() => edit(h)} />
             ))}
           </ul>
         )}
         <p className="mt-3 text-xs text-text-muted">{t('tm.openNote')}</p>
       </Card>
-      <Review all={all} today={today} onEdit={edit} />
+      <Review all={all} today={today} onEdit={edit} market={market} />
       <HoldingDialog target={dialog} onClose={() => setDialog({ mode: 'closed' })} />
     </>
   )
 }
 
-function OpenTrade({ h, txns, today, onEdit }: { h: Holding; txns: Transaction[]; today: string; onEdit: () => void }) {
+function OpenTrade({ h, market, txns, today, onEdit }: { h: Holding; market: TradeMarket; txns: Transaction[]; today: string; onEdit: () => void }) {
   const f = useI18n()
   const { t } = f
   const journal = useStore((s) => s.journal)
@@ -97,7 +100,7 @@ function OpenTrade({ h, txns, today, onEdit }: { h: Holding; txns: Transaction[]
       <p className="text-xs text-text-muted">
         {h.stop !== undefined ? t('tm.stopNow', { p: price(h.stop) }) : t('tm.noStop')}
         {moved && ` · ${t('tm.stopMoved', { p: price(h.initialStop!) })}`} · {t('tm.notes', { n: notes })} ·{' '}
-        <a className="underline" href={href('journal', { holding: h.id, tag: 'note' })}>
+        <a className="underline" href={href(market, { view: 'journal', jv: 'notes', holding: h.id, tag: 'note' })}>
           {t('tm.addNote')}
         </a>
       </p>
@@ -105,7 +108,7 @@ function OpenTrade({ h, txns, today, onEdit }: { h: Holding; txns: Transaction[]
   )
 }
 
-function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onEdit: (h: Holding) => void }) {
+function Review({ all, today, onEdit, market }: { all: ClosedTrade[]; today: string; onEdit: (h: Holding) => void; market: TradeMarket }) {
   const f = useI18n()
   const { t, num } = f
   const tradeLimit = useSettings((s) => s.tradeLimit)
@@ -230,7 +233,7 @@ function Review({ all, today, onEdit }: { all: ClosedTrade[]; today: string; onE
                         ✓ {t('tr.col.lesson')}
                       </span>
                     ) : (
-                      <a className="font-label text-[11px] uppercase underline underline-offset-4" href={href('journal', { holding: x.holding.id, tag: 'lesson' })}>
+                      <a className="font-label text-[11px] uppercase underline underline-offset-4" href={href(market, { view: 'journal', jv: 'notes', holding: x.holding.id, tag: 'lesson' })}>
                         {t('tr.writeLesson')}
                       </a>
                     )}

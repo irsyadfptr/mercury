@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { holdingChecks } from '@/ai/holdingChecks'
 import { portfolioFacts } from '@/ai/portfolioFacts'
 import { Explain } from '@/components/Explain'
@@ -10,6 +10,7 @@ import { describeQuest } from '@/components/questText'
 import { SyncBar } from '@/components/SyncBar'
 import { TradeList } from '@/components/TradeList'
 import { Badge, Card, CardTitle, Field, Label, Segments, TonePanel, fieldClass } from '@/components/ui-bits'
+import { DEFAULT_CLASS, isTradeMarket, MARKET_CLASSES, scopeSummary, type MarketPage } from '@/domain/markets'
 import { byType, holdingQuests, IDX_LOT, openGroup, quests, RARITIES, RARITY_MIN_DAYS, rarity, sizeQuote } from '@/domain/portfolio'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -23,44 +24,50 @@ import { useSheetSync } from '@/useSheetSync'
 import { useSummary } from '@/useSummary'
 import { shareBar } from '@/view/bars'
 import { COLOR, RARITY_COLOR, signColor } from '@/view/tokens'
-import type { HoldingRowProps, HoldingRowsProps, SizeInputs } from './Portfolio.types'
+import type { HoldingRowProps, HoldingRowsProps, SizeInputs } from './Holdings.types'
 
 /**
- * Most-needed first. The hero: what it's all worth, how it's doing, and what to fix now (a missing stop, a trade over
- * its risk, a stale price), each one tap from its holding. Then Trading (daily attention: heat, stops, targets) before
- * Investing (checked now and then), then the position-size calculator and the AI review.
- * Phone: one column in that order. Wide: Trading on the left (its rows are tall), Investing, size and review on the right.
+ * One market's holdings (Crypto, Stocks or Funds), most-needed first. The hero: what this market is worth, how it's
+ * doing, and what to fix now (a missing stop, a trade over its risk, a stale price), each one tap from its holding.
+ * Trade markets: Trading (daily attention: heat, stops, targets) before Investing (checked now and then), then the
+ * position-size calculator. Funds: the holdings by type.
+ * Phone: one column in that order. Wide: Trading on the left (its rows are tall), Investing and size on the right.
  */
-export function Portfolio() {
+export function Holdings({ market }: { market: MarketPage }) {
   const { t } = useI18n()
-  const summary = useSummary()
+  const all = useSummary()
+  const summary = useMemo(() => scopeSummary(all, MARKET_CLASSES[market]), [all, market])
   const [dialog, setDialog] = useState<HoldingDialogTarget>({ mode: 'closed' })
   const sync = useSheetSync()
   const scores = useScoreLog(longTermSymbols(summary.rows))
   const edit = (holdingId: string) => setDialog({ mode: 'edit', holdingId })
+  const trade = isTradeMarket(market)
+  const hasTrades = summary.rows.some((r) => r.holding.group === 'trading')
 
   return (
-    <div className="play-skin contents">
-      <div aria-hidden="true" className="play-confetti" />
-      <Hero summary={summary} onEdit={edit} sync={<SyncBar sync={sync} compact />} />
+    <>
+      <Hero summary={summary} onEdit={edit} groups={trade || hasTrades} sync={<SyncBar sync={sync} compact />} />
 
-      {/* One DOM per column; on phones the columns dissolve (contents) and `order` interleaves the cards. */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
-        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
-          <TradingCard summary={summary} onEdit={edit} className="order-1 lg:order-none" />
+      {trade || hasTrades ? (
+        // One DOM per column; on phones the columns dissolve (contents) and `order` interleaves the cards.
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
+          <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+            <TradingCard summary={summary} onEdit={edit} className="order-1 lg:order-none" />
+          </div>
+          <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+            <InvestingCard summary={summary} onEdit={edit} scores={scores} className="order-2 lg:order-none" />
+            {trade && <SizeCalculator netWorth={all.netWorth} lots={market === 'stocks'} className="order-3 lg:order-none" />}
+          </div>
         </div>
-        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
-          <InvestingCard summary={summary} onEdit={edit} scores={scores} className="order-2 lg:order-none" />
-          <SizeCalculator netWorth={summary.netWorth} className="order-3 lg:order-none" />
-          <PortfolioReview className="order-4 lg:order-none" />
-        </div>
-      </div>
+      ) : (
+        <InvestingCard summary={summary} onEdit={edit} scores={scores} />
+      )}
 
       {/* Room under the last card so the add button never covers it. */}
       <div aria-hidden="true" className="h-16" />
-      <PixelFab label={t('pf.addShort')} onClick={() => setDialog({ mode: 'create' })} />
+      <PixelFab label={t('pf.addShort')} onClick={() => setDialog({ mode: 'create', assetClass: DEFAULT_CLASS[market] })} />
       <HoldingDialog target={dialog} onClose={() => setDialog({ mode: 'closed' })} />
-    </div>
+    </>
   )
 }
 
@@ -73,7 +80,7 @@ function scrollToCard(id: string) {
 
 // ---- Hero ----
 
-function Hero({ summary, onEdit, sync }: { summary: Summary; onEdit: (holdingId: string) => void; sync: ReactNode }) {
+function Hero({ summary, onEdit, groups, sync }: { summary: Summary; onEdit: (holdingId: string) => void; groups: boolean; sync: ReactNode }) {
   const f = useI18n()
   const { t, compact, num } = f
   const shown = useCountUp(summary.netWorth)
@@ -86,17 +93,14 @@ function Hero({ summary, onEdit, sync }: { summary: Summary; onEdit: (holdingId:
 
   return (
     // Phone: number, then what to fix, then the jump buttons. Wide: number and jump buttons left, the fix list right.
-    <Card aria-labelledby="pf-title" data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+    <Card aria-label={t('pf.total')} data-tone="gold" className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
       <div className="flex min-w-0 flex-col gap-2 lg:col-start-1 lg:row-start-1">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 id="pf-title" className="font-display text-5xl leading-none uppercase [text-shadow:2px_2px_0_color-mix(in_srgb,var(--tone)_80%,transparent)]">
-            {t('pf.title')}
-          </h1>
+          <Label>{t('pf.total')}</Label>
           <span className="rounded-md bg-primary px-2 py-0.5 font-label text-[11px] font-bold text-primary-foreground shadow-[0_2px_0_var(--accent-deep)]">
             {t('dash.holdings', { n: inv.rows.length + tr.rows.length })}
           </span>
         </div>
-        <Label>{t('pf.total')}</Label>
         <div className="flex items-baseline gap-1.5 leading-[0.8]">
           <span className="font-display text-3xl text-text-muted">Rp</span>
           <span className="font-display text-[clamp(52px,12vw,92px)] tabular-nums" aria-live="off">
@@ -130,10 +134,12 @@ function Hero({ summary, onEdit, sync }: { summary: Summary; onEdit: (holdingId:
         <FixList summary={summary} onEdit={onEdit} />
       </div>
       {/* Jump buttons to the two group cards (their amounts are in the cards' headers). */}
-      <div className="grid grid-cols-2 gap-2 lg:col-start-1 lg:row-start-2">
-        <GroupJump tone="purple" icon="sword" label={t('pf.trading')} g={tr} card="pf-trading" />
-        <GroupJump tone="blue" icon="chest" label={t('pf.investing')} g={inv} card="pf-investing" />
-      </div>
+      {groups && (
+        <div className="grid grid-cols-2 gap-2 lg:col-start-1 lg:row-start-2">
+          <GroupJump tone="purple" icon="sword" label={t('pf.trading')} g={tr} card="pf-trading" />
+          <GroupJump tone="blue" icon="chest" label={t('pf.investing')} g={inv} card="pf-investing" />
+        </div>
+      )}
       <div className="min-w-0 empty:hidden lg:col-span-2">{sync}</div>
     </Card>
   )
@@ -384,11 +390,12 @@ function HoldingRow({ row, onEdit, scores }: HoldingRowProps) {
 
 const optional = (s: string) => (s.trim() === '' ? undefined : Number(s))
 
-function SizeCalculator({ netWorth, className }: { netWorth: number; className?: string }) {
+/** lots: IDX stocks trade in lots of 100, so the result counts lots (the box stays, for odd cases). Crypto: units only. */
+function SizeCalculator({ netWorth, lots, className }: { netWorth: number; lots: boolean; className?: string }) {
   const f = useI18n()
   const { t, money, num, qty } = f
   const tradeLimit = useSettings((s) => s.tradeLimit)
-  const [inputs, setInputs] = useState<SizeInputs>({ capital: '', riskPct: '', entry: '', stop: '', useLots: true })
+  const [inputs, setInputs] = useState<SizeInputs>({ capital: '', riskPct: '', entry: '', stop: '', useLots: lots })
   const set = <K extends keyof SizeInputs>(key: K, value: SizeInputs[K]) => setInputs((s) => ({ ...s, [key]: value }))
 
   // Empty capital / risk fall back to net worth and the per-trade limit.
@@ -411,10 +418,14 @@ function SizeCalculator({ netWorth, className }: { netWorth: number; className?:
         <Field label={t('size.risk')}>
           <input className={fieldClass} type="number" min="0" step="0.1" placeholder={String(tradeLimit)} value={inputs.riskPct} onChange={(e) => set('riskPct', e.target.value)} />
         </Field>
-        <label className="flex items-end gap-2 pb-2 text-sm">
-          <input type="checkbox" checked={inputs.useLots} onChange={(e) => set('useLots', e.target.checked)} className="size-4 accent-[var(--accent)]" />
-          IDX lots
-        </label>
+        {lots ? (
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input type="checkbox" checked={inputs.useLots} onChange={(e) => set('useLots', e.target.checked)} className="size-4 accent-[var(--accent)]" />
+            IDX lots
+          </label>
+        ) : (
+          <span />
+        )}
         <Field label={t('size.entry')}>
           <input className={fieldClass} type="number" min="0" step="any" value={inputs.entry} onChange={(e) => set('entry', e.target.value)} />
         </Field>
@@ -441,7 +452,7 @@ function SizeCalculator({ netWorth, className }: { netWorth: number; className?:
 // ---- AI review ----
 
 /** AI review of the whole portfolio. Sends percentages only (see portfolioFacts); hidden in privacy mode. */
-function PortfolioReview({ className }: { className?: string }) {
+export function PortfolioReview({ className }: { className?: string }) {
   const { t } = useI18n()
   const summary = useSummary()
   const { heatLimit, tradeLimit, privacy } = useSettings()

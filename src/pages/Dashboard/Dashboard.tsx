@@ -9,12 +9,14 @@ import { Card, CardTitle, Label, Segments, TonePanel } from '@/components/ui-bit
 import { accountsTotal } from '@/domain/accounts'
 import { billsDue, dueTag } from '@/domain/bills'
 import { localDate, monthOf, monthSummary } from '@/domain/cashflow'
+import { isTradeMarket, marketOfClass, MARKET_PAGES, tradeMarketOfScan, type TradeMarket } from '@/domain/markets'
 import { heatTier, level, openGroup, quests, speedOf, winnersLosers } from '@/domain/portfolio'
 import { freshSignals, loadScanLog, loadShortLog, scanChanges } from '@/market/scanLog'
 import { scoreAlert, type ScoreLog } from '@/market/scoreLog'
 import { useI18n } from '@/i18n'
 import { AccountChips, DueBills } from '@/pages/Cashflow/MoneyNow'
 import { SafeSpend } from '@/pages/Cashflow/SafeSpend'
+import { PortfolioReview } from '@/pages/Market/Holdings'
 import { href } from '@/routes'
 import { useBreakers } from '@/useGate'
 import type { Breaker } from '@/domain/circuitBreaker'
@@ -34,9 +36,9 @@ import { ASSET_CLASS_TILE, COLOR, signColor } from '@/view/tokens'
 import type { StatTile } from './Dashboard.types'
 
 /**
- * The daily glance, most-needed first: what you're worth and where it is (accounts, investing, running trades), what
- * to do today (quests), what you can spend today and how the month is going, then where the money sits and the heat,
- * winners and losers, and the market's mood.
+ * Home, the daily glance, most-needed first: what you're worth and where it is (accounts, investing, running trades),
+ * what to do today (quests), what you can spend today and how the month is going, then where the money sits and the
+ * heat, winners and losers, the market's mood, and the AI review of everything. Each market has its own page.
  * Money, the month and quests show even without holdings; only the holding cards wait for a first holding.
  */
 export function Dashboard() {
@@ -64,6 +66,7 @@ export function Dashboard() {
         {hasHoldings && <WinnersLosers rows={summary.rows} />}
         <MoodCard />
       </div>
+      <PortfolioReview />
     </div>
   )
 }
@@ -85,7 +88,7 @@ function WinnersLosers({ rows }: { rows: readonly Row[] }) {
       <ul className="flex flex-col gap-1.5">
         {items.map((r) => (
           <li key={r.holding.id}>
-            <a href={href('portfolio')} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+            <a href={href(marketOfClass(r.holding.assetClass), { view: 'holdings' })} className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3 py-2 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
               <span className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">{r.holding.symbol}</span>
                 <span className="font-display text-xl leading-none" style={{ color: up ? COLOR.up : COLOR.down }}>
@@ -128,9 +131,14 @@ function EmptyDashboard() {
       <PixelIcon name="chest" size={40} />
       <h2 className="font-display text-3xl leading-none uppercase">{t('empty.title')}</h2>
       <p className="text-text-muted">{t('empty.body')}</p>
-      <a href={href('portfolio')} className="font-label text-xs text-accent-text uppercase underline underline-offset-4">
-        {t('pf.add')}
-      </a>
+      <p className="font-label text-xs uppercase">{t('pf.add')}</p>
+      <div className="flex flex-wrap justify-center gap-3">
+        {MARKET_PAGES.map((m) => (
+          <a key={m} href={href(m, { view: 'holdings' })} className="font-label text-xs text-accent-text uppercase underline underline-offset-4">
+            {t(`nav.${m}`)}
+          </a>
+        ))}
+      </div>
     </Card>
   )
 }
@@ -498,7 +506,7 @@ function Tile({ item, largest = false }: { item: AllocationItem; largest?: boole
 // ---- Quests ----
 
 /** The circuit breaker, when it stops new entries (real first). */
-function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>): QuestView[] {
+function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>, market: TradeMarket): QuestView[] {
   return (['real', 'paper'] as const).flatMap((side) => {
     const x = b[side]
     if (x.status === 'allowed') return []
@@ -507,8 +515,8 @@ function breakerAlerts(f: I18n, b: Record<'real' | 'paper', Breaker>): QuestView
       {
         label: f.t(`quest.breaker.${side}`, { s: f.t(`cb.status.${x.status}`) }),
         tag: until ? f.t('quest.breakerUntil', { d: f.day(until) }) : f.t('quest.breakerFix'),
-        route: 'journal' as const,
-        params: { view: 'trades' },
+        route: market,
+        params: { view: 'journal', jv: 'trades' },
       },
     ]
   })
@@ -521,8 +529,8 @@ function scanAlerts(f: I18n): QuestView[] {
     if (!c) return []
     const tag = f.day(c.date)
     return [
-      ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: 'scanner' as const }] : []),
-      ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: 'scanner' as const }] : []),
+      ...(c.newPassing.length ? [{ label: f.t('quest.newSetups', { s: c.newPassing.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan' } }] : []),
+      ...(c.newInZone.length ? [{ label: f.t('quest.newInZone', { s: c.newInZone.join(', ') }), tag, route: tradeMarketOfScan(m), params: { view: 'scan' } }] : []),
     ]
   })
 }
@@ -534,7 +542,7 @@ function shortAlerts(f: I18n): QuestView[] {
       const fresh = freshSignals(loadShortLog(m, st), st)
       if (!fresh.length) return []
       const list = fresh.map((x) => x.symbol).join(', ')
-      return [{ label: f.t('quest.shortSignals', { s: list, h: f.t(`short.style.${st}`), m: f.t(`scan.market.${m}`) }), tag: f.t('quest.shortTag'), route: 'scanner' as const }]
+      return [{ label: f.t('quest.shortSignals', { s: list, h: f.t(`short.style.${st}`), m: f.t(`scan.market.${m}`) }), tag: f.t('quest.shortTag'), route: tradeMarketOfScan(m), params: { view: 'scan' } }]
     }),
   )
 }
@@ -545,7 +553,7 @@ function scoreAlerts(f: I18n, symbols: string[], log: ScoreLog): QuestView[] {
     const a = scoreAlert(log[s])
     if (!a) return []
     const label = a.kind === 'drop' ? f.t('quest.ltDrop', { s, from: a.from, n: a.total }) : f.t('quest.ltLow', { s, n: a.total })
-    return [{ label, tag: a.kind === 'drop' ? f.day(a.since) : '', route: 'longterm' as const }]
+    return [{ label, tag: a.kind === 'drop' ? f.day(a.since) : '', route: 'stocks' as const, params: { view: 'score' } }]
   })
 }
 
@@ -562,13 +570,26 @@ function billAlerts(f: I18n, bills: readonly Bill[], today: string): QuestView[]
   }))
 }
 
+/** The journal a holding's notes go in (a Funds holding has none: Stocks). */
+function journalOf(h: Holding): TradeMarket {
+  const m = marketOfClass(h.assetClass)
+  return isTradeMarket(m) ? m : 'stocks'
+}
+
+/** Where the circuit breaker sends you: the market you trade most (its Trades view shows the breaker). */
+function mainTradeMarket(holdings: readonly Holding[]): TradeMarket {
+  const crypto = holdings.filter((h) => h.group === 'trading' && marketOfClass(h.assetClass) === 'crypto').length
+  const stocks = holdings.filter((h) => h.group === 'trading' && marketOfClass(h.assetClass) === 'stocks').length
+  return crypto > stocks ? 'crypto' : 'stocks'
+}
+
 /** Sells of the last two weeks without an exit or lesson note: write it while it's fresh. */
 function exitLessonAlerts(f: I18n, holdings: readonly Holding[], txns: readonly Transaction[], journal: readonly JournalEntry[], today: string): QuestView[] {
   return exitLessonsDue(holdings, txns, journal, today).map((h) => ({
     label: f.t('quest.exitLesson', { s: h.symbol }),
     tag: '',
-    route: 'journal' as const,
-    params: { holding: h.id, tag: 'exit' },
+    route: journalOf(h),
+    params: { view: 'journal', jv: 'notes', holding: h.id, tag: 'exit' },
   }))
 }
 
@@ -584,14 +605,15 @@ function Quests({ summary }: { summary: Summary }) {
   const today = localDate(now)
   const streak = journalStreak(journal, today)
   const breakers = useBreakers()
-  const list = [...breakerAlerts(f, breakers),...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
+  const main = mainTradeMarket(holdings)
+  const list = [...breakerAlerts(f, breakers, main),...billAlerts(f, bills, today), ...exitLessonAlerts(f, holdings, transactions, journal, today), ...quests(summary, { tradeLimit, lastExportAt, now }).map((q) => describeQuest(q, f)), ...scanAlerts(f), ...shortAlerts(f), ...scoreAlerts(f, held, scores)]
 
   return (
     <Card aria-label={f.t('quests.title')} data-tone="orange">
       <CardTitle
         icon="star"
         aside={
-          <a href={href('journal')} className="flex items-center gap-1 hover:underline">
+          <a href={href(main, { view: 'journal' })} className="flex items-center gap-1 hover:underline">
             {streak > 0 && <PixelIcon name="flame" size={12} />}
             {f.t('quests.journalStreak', { n: streak })}
           </a>

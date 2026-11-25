@@ -48,11 +48,13 @@ async function barsFor(market: SignalMarket, style: SignalStyle, symbol: string)
 }
 
 /** Signal postmortem: how the scanner's buy signals turned out, live vs paused by the mood, taken vs missed. */
-export function SignalsView() {
+/** fixed: the market page it sits on (its signals only); without it, a market filter. */
+export function SignalsView({ market: fixed }: { market?: SignalMarket }) {
   const f = useI18n()
   const { t } = f
   const [log, setLog] = useState(loadSignals)
-  const [market, setMarket] = useState<MarketFilter>('all')
+  const [chosen, setMarket] = useState<MarketFilter>('all')
+  const market: MarketFilter = fixed ?? chosen
   const [style, setStyle] = useState<StyleFilter>('all')
   const [progress, setProgress] = useState<{ n: number; total: number }>()
   const holdings = useStore((s) => s.holdings)
@@ -124,7 +126,7 @@ export function SignalsView() {
       </CardTitle>
       <p className="mb-3 text-sm text-text-muted">{t('sg.intro')}</p>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <PixelTabs label={t('sg.market')} options={(['all', 'idx', 'crypto'] as const).map((m) => ({ id: m, label: t(m === 'all' ? 'sg.all' : `scan.market.${m}`) }))} value={market} onChange={setMarket} />
+        {!fixed && <PixelTabs label={t('sg.market')} options={(['all', 'idx', 'crypto'] as const).map((m) => ({ id: m, label: t(m === 'all' ? 'sg.all' : `scan.market.${m}`) }))} value={market} onChange={setMarket} />}
         <PixelTabs label={t('sg.style')} options={(['all', ...SIGNAL_STYLES] as const).map((x) => ({ id: x, label: t(x === 'all' ? 'sg.all' : `scan.mode.${x}`) }))} value={style} onChange={setStyle} />
         <Button onClick={() => void check()} disabled={!!progress || !log.length} className={primary}>
           {progress ? t('sg.checking', { n: progress.n, total: progress.total }) : t('sg.check')}

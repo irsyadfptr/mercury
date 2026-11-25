@@ -30,7 +30,7 @@ Code calculates every number (prices, indicators, scores, risk). The AI reads th
 
 ## Capabilities and Constraints
 
-- Pages: Dashboard, Portfolio (Investing / Trading groups), Scanner, Ticker check, Journal. See NOTES.md for build order.
+- Pages (since 2026-11-25), one per kind of money: Home (net worth, quests, month, AI review), Crypto and Stocks (each: Holdings, Scan, Fundamentals, Journal), Funds (money market, bond funds, gold), Cashflow; Settings behind the header gear. See NOTES.md.
 - UI text in English and Bahasa Indonesia, switchable, from day one.
 - Undecided: US stocks/ETF data source.
 

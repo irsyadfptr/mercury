@@ -57,6 +57,7 @@ export const JOURNAL_COLUMNS: readonly ColumnSpec[] = [
   ['text', 'string'],
   ['holdingId', 'string'],
   ['createdAt', 'string'],
+  ['market', 'string'],
 ]
 
 export const headerRow = (cols: readonly ColumnSpec[]): string[] => cols.map(([name]) => name)
